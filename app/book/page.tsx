@@ -73,6 +73,7 @@ export default function BookingPage() {
     useState<Instrument | null>(null);
 
   const [slots, setSlots] = useState<LessonSlot[]>([]);
+
   const [selectedSlot, setSelectedSlot] =
     useState<LessonSlot | null>(null);
 
@@ -97,6 +98,11 @@ export default function BookingPage() {
     setLoading(true);
     setError("");
 
+    /*
+     * Load the number of days that customers
+     * are allowed to see.
+     */
+
     const {
       data: settings,
       error: settingsError,
@@ -107,13 +113,20 @@ export default function BookingPage() {
       .maybeSingle();
 
     if (settingsError) {
-      console.error(settingsError);
+      console.error(
+        "Booking settings error:",
+        settingsError
+      );
     }
 
     const days =
       settings?.availability_days ?? 14;
 
     setAvailabilityDays(days);
+
+    /*
+     * Load only the customer-visible booking window.
+     */
 
     const today = new Date();
 
@@ -125,27 +138,32 @@ export default function BookingPage() {
       future.getDate() + days + 1
     );
 
-    const { data, error: slotsError } =
-      await supabase
-        .from("lesson_slots")
-        .select(
-          "id, instrument, starts_at, ends_at, is_available"
-        )
-        .eq("is_available", true)
-        .gte(
-          "starts_at",
-          today.toISOString()
-        )
-        .lt(
-          "starts_at",
-          future.toISOString()
-        )
-        .order("starts_at", {
-          ascending: true,
-        });
+    const {
+      data,
+      error: slotsError,
+    } = await supabase
+      .from("lesson_slots")
+      .select(
+        "id, instrument, starts_at, ends_at, is_available"
+      )
+      .eq("is_available", true)
+      .gte(
+        "starts_at",
+        today.toISOString()
+      )
+      .lt(
+        "starts_at",
+        future.toISOString()
+      )
+      .order("starts_at", {
+        ascending: true,
+      });
 
     if (slotsError) {
-      console.error(slotsError);
+      console.error(
+        "Lesson slots error:",
+        slotsError
+      );
 
       setError(
         "We couldn't load available trial lessons. Please try again."
@@ -159,13 +177,24 @@ export default function BookingPage() {
     setLoading(false);
   }
 
+  /*
+   * Only show slots belonging to the selected
+   * instrument.
+   */
+
   const instrumentSlots = useMemo(() => {
-    if (!instrument) return [];
+    if (!instrument) {
+      return [];
+    }
 
     return slots.filter(
       (slot) => slot.instrument === instrument
     );
   }, [slots, instrument]);
+
+  /*
+   * Group available slots by date.
+   */
 
   const groupedDates = useMemo(() => {
     const groups = new Map<
@@ -198,10 +227,22 @@ export default function BookingPage() {
     return Array.from(groups.values());
   }, [instrumentSlots]);
 
+  /*
+   * Select exactly one slot.
+   *
+   * Once selected, the availability list disappears
+   * and the customer proceeds to their details.
+   */
+
   function selectSlot(slot: LessonSlot) {
     setSelectedSlot(slot);
     setError("");
   }
+
+  /*
+   * Create the booking through the atomic Supabase
+   * RPC.
+   */
 
   async function handleBooking() {
     if (!selectedSlot) {
@@ -212,7 +253,9 @@ export default function BookingPage() {
     }
 
     if (!name.trim()) {
-      setError("Please enter your full name.");
+      setError(
+        "Please enter your full name."
+      );
       return;
     }
 
@@ -233,51 +276,140 @@ export default function BookingPage() {
     setSubmitting(true);
     setError("");
 
+    /*
+     * The RPC handles:
+     *
+     * 1. Locking the slot
+     * 2. Verifying availability
+     * 3. Verifying instrument
+     * 4. Creating/updating the lead
+     * 5. Creating the booking
+     * 6. Marking the slot unavailable
+     */
+
     const {
-      data: currentSlot,
-      error: slotError,
-    } = await supabase
-      .from("lesson_slots")
-      .select(
-        "id, instrument, starts_at, ends_at, is_available"
-      )
-      .eq("id", selectedSlot.id)
-      .eq("is_available", true)
-      .maybeSingle();
+      data: bookingResult,
+      error: bookingError,
+    } = await supabase.rpc(
+      "create_trial_booking",
+      {
+        p_slot_id: selectedSlot.id,
+        p_instrument: instrument,
+        p_full_name: name.trim(),
+        p_email: email.trim(),
+        p_whatsapp_number: whatsapp.trim(),
+      }
+    );
 
-    if (slotError) {
+    if (bookingError) {
+      console.error(
+        "Booking error:",
+        bookingError
+      );
+
+      const message =
+        bookingError.message || "";
+
+      /*
+       * Someone else booked the same slot.
+       */
+
+      if (
+        message.includes(
+          "SLOT_ALREADY_BOOKED"
+        )
+      ) {
+        setError(
+          "Sorry, that time has just been booked. Please choose another."
+        );
+
+        setSelectedSlot(null);
+
+        await loadBookingPage();
+
+        setSubmitting(false);
+        return;
+      }
+
+      /*
+       * Slot no longer exists.
+       */
+
+      if (
+        message.includes(
+          "SLOT_NOT_FOUND"
+        )
+      ) {
+        setError(
+          "That lesson slot could not be found. Please choose another."
+        );
+
+        setSelectedSlot(null);
+
+        await loadBookingPage();
+
+        setSubmitting(false);
+        return;
+      }
+
+      /*
+       * Instrument mismatch.
+       */
+
+      if (
+        message.includes(
+          "INSTRUMENT_MISMATCH"
+        )
+      ) {
+        setError(
+          "There was a problem with the selected instrument. Please choose another slot."
+        );
+
+        setSelectedSlot(null);
+
+        await loadBookingPage();
+
+        setSubmitting(false);
+        return;
+      }
+
+      /*
+       * Generic booking error.
+       */
+
       setError(
-        "We couldn't verify that time. Please try again."
+        "We couldn't complete your booking. Please try again."
       );
 
       setSubmitting(false);
       return;
     }
 
-    if (!currentSlot) {
+    /*
+     * The RPC should return the created booking.
+     */
+
+    if (!bookingResult) {
       setError(
-        "Sorry, that time has just been booked. Please choose another."
+        "We couldn't confirm your booking. Please try again."
       );
-
-      setSelectedSlot(null);
-
-      await loadBookingPage();
 
       setSubmitting(false);
       return;
     }
 
-    console.log({
-      slot: currentSlot,
-      name: name.trim(),
-      email: email.trim(),
-      whatsapp: whatsapp.trim(),
-      instrument,
-    });
+    console.log(
+      "Trial booking created:",
+      bookingResult
+    );
 
     setSuccess(true);
     setSubmitting(false);
   }
+
+  /*
+   * SUCCESS SCREEN
+   */
 
   if (success && selectedSlot) {
     return (
@@ -286,6 +418,8 @@ export default function BookingPage() {
         <div className="mx-auto flex min-h-[80vh] max-w-[500px] items-center justify-center">
 
           <div className="st-card w-full p-7 text-center sm:p-10">
+
+            {/* SUCCESS ICON */}
 
             <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-[var(--st-red)] text-white">
               <Check size={28} />
@@ -304,6 +438,8 @@ export default function BookingPage() {
               confirmation.
             </p>
 
+            {/* SELECTED LESSON */}
+
             <div className="mt-7 rounded-2xl bg-[var(--st-bg-soft)] p-5 text-left">
 
               <p className="m-0 text-[9px] font-bold uppercase tracking-[0.12em] text-[var(--st-gray)]">
@@ -311,28 +447,40 @@ export default function BookingPage() {
               </p>
 
               {/* INSTRUMENT */}
+
               <p className="mt-2 mb-0 text-[22px] font-bold tracking-[-0.03em] text-[var(--st-charcoal-dark)]">
                 {instrumentInfo[instrument!].name}
               </p>
 
               {/* DATE */}
+
               <div className="mt-4 flex items-center gap-2 text-[12px] font-medium text-[var(--st-charcoal)]">
+
                 <Clock3 size={16} />
+
                 {formatLongDate(
-                  new Date(selectedSlot.starts_at)
+                  new Date(
+                    selectedSlot.starts_at
+                  )
                 )}
+
               </div>
 
               {/* TIME RANGE */}
+
               <div className="mt-3 flex items-center gap-2">
+
                 <Clock3
                   size={18}
                   className="shrink-0 text-[var(--st-red)]"
                 />
 
                 <span className="text-[20px] font-extrabold tracking-[-0.03em] text-[var(--st-red)]">
-                  {formatTimeRange(selectedSlot)}
+                  {formatTimeRange(
+                    selectedSlot
+                  )}
                 </span>
+
               </div>
 
             </div>
@@ -345,9 +493,14 @@ export default function BookingPage() {
           </div>
 
         </div>
+
       </main>
     );
   }
+
+  /*
+   * MAIN BOOKING PAGE
+   */
 
   return (
     <main className="min-h-screen bg-[var(--st-bg)]">
@@ -358,6 +511,8 @@ export default function BookingPage() {
 
         <div className="mx-auto flex max-w-[1100px] items-center justify-between px-5 py-4 sm:px-8">
 
+          {/* BRAND */}
+
           <div className="flex items-center gap-3">
 
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[var(--st-red)] text-[11px] font-extrabold text-white">
@@ -365,6 +520,7 @@ export default function BookingPage() {
             </div>
 
             <div>
+
               <p className="m-0 text-[12px] font-bold text-[var(--st-charcoal-dark)]">
                 Sauti Tamu
               </p>
@@ -372,6 +528,7 @@ export default function BookingPage() {
               <p className="mt-0.5 mb-0 text-[8px] font-bold tracking-[0.16em] text-[var(--st-gray)]">
                 PIANO CENTER
               </p>
+
             </div>
 
           </div>
@@ -417,8 +574,11 @@ export default function BookingPage() {
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
 
               {(
-                Object.keys(instrumentInfo) as Instrument[]
+                Object.keys(
+                  instrumentInfo
+                ) as Instrument[]
               ).map((item) => {
+
                 const Icon =
                   instrumentInfo[item].icon;
 
@@ -458,7 +618,10 @@ export default function BookingPage() {
                       </p>
 
                       <p className="mt-1 mb-0 text-[10px] text-[var(--st-gray)]">
-                        {instrumentInfo[item].description}
+                        {
+                          instrumentInfo[item]
+                            .description
+                        }
                       </p>
 
                     </div>
@@ -474,6 +637,7 @@ export default function BookingPage() {
               })}
 
             </div>
+
           </section>
         )}
 
@@ -487,22 +651,32 @@ export default function BookingPage() {
             </p>
 
             <p className="mb-4 text-[10px] text-[var(--st-gray)]">
+
               Showing available lessons for the next{" "}
+
               <strong>
                 {availabilityDays} days
               </strong>
+
               .
+
             </p>
 
             {loading ? (
+
               <div className="st-card flex items-center justify-center gap-2 p-10 text-[10px] text-[var(--st-gray)]">
+
                 <Loader2
                   size={15}
                   className="animate-spin"
                 />
+
                 Loading available lessons...
+
               </div>
+
             ) : groupedDates.length === 0 ? (
+
               <div className="st-card p-7 text-center">
 
                 <p className="m-0 text-[13px] font-bold text-[var(--st-charcoal-dark)]">
@@ -514,63 +688,80 @@ export default function BookingPage() {
                 </p>
 
               </div>
+
             ) : (
+
               <div className="space-y-4">
 
-                {groupedDates.map((group) => (
-                  <div
-                    key={group.key}
-                    className="st-card overflow-hidden"
-                  >
+                {groupedDates.map(
+                  (group) => (
 
-                    <div className="border-b border-[var(--st-border)] bg-white px-5 py-4">
+                    <div
+                      key={group.key}
+                      className="st-card overflow-hidden"
+                    >
 
-                      <p className="m-0 text-[13px] font-bold text-[var(--st-charcoal-dark)]">
-                        {formatDate(group.date)}
-                      </p>
+                      <div className="border-b border-[var(--st-border)] bg-white px-5 py-4">
 
-                      <p className="mt-1 mb-0 text-[9px] text-[var(--st-gray)]">
-                        {group.slots.length} available time
-                        {group.slots.length === 1
-                          ? ""
-                          : "s"}
-                      </p>
+                        <p className="m-0 text-[13px] font-bold text-[var(--st-charcoal-dark)]">
+                          {formatDate(
+                            group.date
+                          )}
+                        </p>
+
+                        <p className="mt-1 mb-0 text-[9px] text-[var(--st-gray)]">
+
+                          {group.slots.length}{" "}
+
+                          available time
+                          {group.slots.length === 1
+                            ? ""
+                            : "s"}
+
+                        </p>
+
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2 p-4 sm:grid-cols-3">
+
+                        {group.slots.map(
+                          (slot) => (
+
+                            <button
+                              key={slot.id}
+                              type="button"
+                              onClick={() =>
+                                selectSlot(
+                                  slot
+                                )
+                              }
+                              className="rounded-xl border border-[var(--st-border)] bg-white px-3 py-3 text-center text-[var(--st-charcoal-dark)] transition-all hover:border-[var(--st-red)] hover:bg-[var(--st-bg-soft)]"
+                            >
+
+                              <span className="block text-[12px] font-bold">
+                                {formatTime(
+                                  slot.starts_at
+                                )}
+                              </span>
+
+                              <span className="mt-1 block text-[8px] text-[var(--st-gray)]">
+                                60 min
+                              </span>
+
+                            </button>
+
+                          )
+                        )}
+
+                      </div>
 
                     </div>
 
-                    <div className="grid grid-cols-2 gap-2 p-4 sm:grid-cols-3">
-
-                      {group.slots.map((slot) => {
-                        return (
-                          <button
-                            key={slot.id}
-                            type="button"
-                            onClick={() =>
-                              selectSlot(slot)
-                            }
-                            className="rounded-xl border border-[var(--st-border)] bg-white px-3 py-3 text-center text-[var(--st-charcoal-dark)] transition-all hover:border-[var(--st-red)] hover:bg-[var(--st-bg-soft)]"
-                          >
-
-                            <span className="block text-[12px] font-bold">
-                              {formatTime(
-                                slot.starts_at
-                              )}
-                            </span>
-
-                            <span className="mt-1 block text-[8px] text-[var(--st-gray)]">
-                              60 min
-                            </span>
-
-                          </button>
-                        );
-                      })}
-
-                    </div>
-
-                  </div>
-                ))}
+                  )
+                )}
 
               </div>
+
             )}
 
           </section>
@@ -618,7 +809,9 @@ export default function BookingPage() {
                     {/* LARGE TIME RANGE */}
 
                     <p className="mt-2 mb-0 text-[25px] font-extrabold leading-none tracking-[-0.04em] text-white sm:text-[29px]">
-                      {formatTimeRange(selectedSlot)}
+                      {formatTimeRange(
+                        selectedSlot
+                      )}
                     </p>
 
                     <p className="mt-2 mb-0 text-[9px] font-medium uppercase tracking-[0.08em] text-white/65">
@@ -634,6 +827,8 @@ export default function BookingPage() {
                 </div>
 
               </div>
+
+              {/* DETAILS */}
 
               <div className="p-5 sm:p-7">
 
@@ -671,9 +866,12 @@ export default function BookingPage() {
                         type="text"
                         value={name}
                         onChange={(e) =>
-                          setName(e.target.value)
+                          setName(
+                            e.target.value
+                          )
                         }
                         placeholder="Your full name"
+                        autoComplete="name"
                         className="w-full rounded-xl border border-[var(--st-border)] bg-white py-3.5 pl-11 pr-4 text-[12px] outline-none focus:border-[var(--st-red)] focus:ring-2 focus:ring-[var(--st-red)]/10"
                       />
 
@@ -700,9 +898,12 @@ export default function BookingPage() {
                         type="email"
                         value={email}
                         onChange={(e) =>
-                          setEmail(e.target.value)
+                          setEmail(
+                            e.target.value
+                          )
                         }
                         placeholder="you@example.com"
+                        autoComplete="email"
                         className="w-full rounded-xl border border-[var(--st-border)] bg-white py-3.5 pl-11 pr-4 text-[12px] outline-none focus:border-[var(--st-red)] focus:ring-2 focus:ring-[var(--st-red)]/10"
                       />
 
@@ -730,9 +931,12 @@ export default function BookingPage() {
                         inputMode="tel"
                         value={whatsapp}
                         onChange={(e) =>
-                          setWhatsapp(e.target.value)
+                          setWhatsapp(
+                            e.target.value
+                          )
                         }
                         placeholder="+254 712 345 678"
+                        autoComplete="tel"
                         className="w-full rounded-xl border border-[var(--st-border)] bg-white py-3.5 pl-11 pr-4 text-[12px] outline-none focus:border-[var(--st-red)] focus:ring-2 focus:ring-[var(--st-red)]/10"
                       />
 
@@ -748,13 +952,19 @@ export default function BookingPage() {
 
                 </div>
 
+                {/* ERROR */}
+
                 {error && (
                   <div className="mt-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3">
+
                     <p className="m-0 text-[10px] leading-relaxed text-red-700">
                       {error}
                     </p>
+
                   </div>
                 )}
+
+                {/* CONFIRM */}
 
                 <button
                   type="button"
@@ -762,6 +972,7 @@ export default function BookingPage() {
                   disabled={submitting}
                   className="st-button st-button-primary mt-6 w-full disabled:cursor-not-allowed disabled:opacity-60"
                 >
+
                   {submitting ? (
                     <>
                       <Loader2
@@ -776,7 +987,10 @@ export default function BookingPage() {
                       <ArrowRight size={15} />
                     </>
                   )}
+
                 </button>
+
+                {/* CHANGE TIME */}
 
                 <button
                   type="button"
@@ -786,8 +1000,11 @@ export default function BookingPage() {
                   }}
                   className="mx-auto mt-4 flex items-center gap-2 text-[10px] font-bold text-[var(--st-gray)]"
                 >
+
                   <ArrowLeft size={13} />
+
                   Choose a different time
+
                 </button>
 
                 <p className="mt-5 text-center text-[9px] leading-relaxed text-[var(--st-gray)]">
@@ -815,12 +1032,16 @@ export default function BookingPage() {
             }}
             className="mx-auto mt-7 flex items-center gap-2 text-[10px] font-bold text-[var(--st-gray)]"
           >
+
             <ArrowLeft size={13} />
+
             Change instrument
+
           </button>
         )}
 
       </div>
+
     </main>
   );
 }
