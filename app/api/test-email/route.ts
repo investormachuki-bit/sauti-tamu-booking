@@ -8,64 +8,76 @@ export async function GET() {
   try {
     const { data, error } =
       await resend.emails.send({
-        from: "Sauti Tamu Piano Center <onboarding@resend.dev>",
+        from:
+          "Sauti Tamu Piano Center <onboarding@resend.dev>",
         to: ["marvelelectrical77@gmail.com"],
         subject:
           "Sauti Tamu — Email System Test",
         html: `
-          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 30px;">
-            
-            <div style="background:#C62828; color:white; padding:24px; border-radius:16px 16px 0 0;">
-              <div style="font-size:12px; font-weight:bold; letter-spacing:2px;">
-                SAUTI TAMU
+          <div style="font-family: Arial, sans-serif; background:#f5f5f5; padding:40px 20px;">
+            <div style="max-width:600px; margin:0 auto; background:#ffffff; border-radius:18px; overflow:hidden;">
+
+              <div style="background:#C62828; color:#ffffff; padding:28px;">
+                <div style="font-size:13px; font-weight:700; letter-spacing:2px;">
+                  SAUTI TAMU
+                </div>
+
+                <div style="font-size:10px; margin-top:5px; letter-spacing:2px; opacity:0.8;">
+                  PIANO CENTER
+                </div>
               </div>
-              <div style="font-size:10px; margin-top:5px; opacity:.8;">
-                PIANO CENTER
-              </div>
-            </div>
 
-            <div style="padding:30px; border:1px solid #eee; border-top:0; border-radius:0 0 16px 16px;">
-              
-              <p style="font-size:12px; color:#C62828; font-weight:bold; letter-spacing:1px;">
-                EMAIL SYSTEM TEST
-              </p>
+              <div style="padding:32px;">
 
-              <h1 style="font-size:28px; color:#1F2933; margin-bottom:12px;">
-                It works! 🎹
-              </h1>
+                <div style="font-size:10px; font-weight:700; letter-spacing:1.5px; color:#C62828; text-transform:uppercase;">
+                  Email System Test
+                </div>
 
-              <p style="font-size:15px; line-height:1.6; color:#5B6573;">
-                The Sauti Tamu booking system can now send emails through Resend.
-              </p>
+                <h1 style="font-size:30px; color:#1F2933; margin:12px 0 10px;">
+                  It works! 🎹
+                </h1>
 
-              <div style="background:#F7F7F7; padding:18px; border-radius:12px; margin-top:24px;">
-                <strong style="color:#1F2933;">
-                  Email infrastructure is connected.
-                </strong>
-                <p style="font-size:13px; color:#5B6573; margin-bottom:0;">
-                  We can now connect this to real trial lesson confirmations.
+                <p style="font-size:15px; line-height:1.7; color:#5B6573;">
+                  The Sauti Tamu booking system has successfully connected to Resend.
                 </p>
+
+                <div style="margin-top:24px; padding:20px; background:#f7f7f7; border-radius:14px;">
+
+                  <div style="font-size:14px; font-weight:700; color:#1F2933;">
+                    Email infrastructure connected
+                  </div>
+
+                  <div style="font-size:13px; line-height:1.6; color:#5B6573; margin-top:6px;">
+                    We can now connect this system to real trial lesson confirmations and automated reminders.
+                  </div>
+
+                </div>
+
+                <div style="margin-top:30px; padding-top:20px; border-top:1px solid #eeeeee; font-size:11px; color:#999999;">
+                  Sauti Tamu Piano Center
+                </div>
+
               </div>
 
-              <p style="font-size:11px; color:#999; margin-top:30px;">
-                Sauti Tamu Piano Center
-              </p>
-
             </div>
-
           </div>
         `,
       });
 
     if (error) {
-      console.error("Resend error:", error);
+      console.error(
+        "Resend email error:",
+        error
+      );
 
       return Response.json(
         {
           success: false,
           error: error.message,
         },
-        { status: 400 }
+        {
+          status: 400,
+        }
       );
     }
 
@@ -74,6 +86,7 @@ export async function GET() {
       message: "Test email sent successfully.",
       data,
     });
+
   } catch (error) {
     console.error(
       "Unexpected email error:",
@@ -85,7 +98,9 @@ export async function GET() {
         success: false,
         error: "Unable to send test email.",
       },
-      { status: 500 }
+      {
+        status: 500,
+      }
     );
   }
 }
