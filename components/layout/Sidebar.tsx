@@ -74,6 +74,7 @@ export default function Sidebar({
         <div
           className="st-sidebar-overlay"
           onClick={onClose}
+          aria-hidden="true"
         />
       )}
 
@@ -82,13 +83,13 @@ export default function Sidebar({
           open ? "open" : ""
         }`}
       >
+        {/* BRAND */}
         <div className="st-sidebar-brand">
           <div className="flex w-full items-center justify-between">
-            <Link href="/admin" onClick={onClose}>
-              <span className="sr-only">
-                Sauti Tamu Dashboard
-              </span>
-
+            <Link
+              href="/admin"
+              onClick={onClose}
+            >
               <div className="st-logo">
                 <div className="st-logo-mark">
                   ST
@@ -106,9 +107,10 @@ export default function Sidebar({
               </div>
             </Link>
 
+            {/* Mobile close button */}
             <button
               type="button"
-              className="st-icon-button md:hidden"
+              className="st-icon-button"
               onClick={onClose}
               aria-label="Close navigation"
             >
@@ -117,6 +119,7 @@ export default function Sidebar({
           </div>
         </div>
 
+        {/* NAVIGATION */}
         <nav className="st-sidebar-nav">
           {navigation.map((group) => (
             <div
@@ -138,7 +141,10 @@ export default function Sidebar({
                     onClick={onClose}
                   >
                     <span className="st-nav-icon">
-                      <Icon size={17} strokeWidth={1.8} />
+                      <Icon
+                        size={17}
+                        strokeWidth={1.8}
+                      />
                     </span>
 
                     <span>{item.label}</span>
@@ -149,21 +155,40 @@ export default function Sidebar({
           ))}
         </nav>
 
+        {/* FOOTER */}
         <div className="st-sidebar-footer">
           <div
             className="
               rounded-xl
-              border border-[var(--st-border)]
+              border
+              border-[var(--st-border)]
               bg-[var(--st-bg-soft)]
-              px-3 py-3
+              px-3
+              py-3
             "
           >
-            <p className="m-0 text-[9px] font-bold uppercase tracking-[0.15em] text-[var(--st-gray)]">
+            <p
+              className="
+                m-0
+                text-[9px]
+                font-bold
+                uppercase
+                tracking-[0.15em]
+                text-[var(--st-gray)]
+              "
+            >
               Sauti Tamu
             </p>
 
-            <p className="mt-1 mb-0 text-[10px] text-[var(--st-gray)]">
-              Booking & Follow-up
+            <p
+              className="
+                mt-1
+                mb-0
+                text-[10px]
+                text-[var(--st-gray)]
+              "
+            >
+              Booking &amp; Follow-up
             </p>
           </div>
         </div>
