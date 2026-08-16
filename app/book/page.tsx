@@ -47,11 +47,25 @@ function formatDate(date: Date) {
   }).format(date);
 }
 
+function formatLongDate(date: Date) {
+  return new Intl.DateTimeFormat("en-KE", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+  }).format(date);
+}
+
 function formatTime(dateString: string) {
   return new Intl.DateTimeFormat("en-KE", {
     hour: "numeric",
     minute: "2-digit",
   }).format(new Date(dateString));
+}
+
+function formatTimeRange(slot: LessonSlot) {
+  return `${formatTime(slot.starts_at)} – ${formatTime(
+    slot.ends_at
+  )}`;
 }
 
 export default function BookingPage() {
@@ -83,10 +97,6 @@ export default function BookingPage() {
     setLoading(true);
     setError("");
 
-    /*
-     * Load booking visibility setting
-     */
-
     const {
       data: settings,
       error: settingsError,
@@ -104,11 +114,6 @@ export default function BookingPage() {
       settings?.availability_days ?? 14;
 
     setAvailabilityDays(days);
-
-    /*
-     * Only load the number of days that customers
-     * are actually allowed to see.
-     */
 
     const today = new Date();
 
@@ -196,11 +201,6 @@ export default function BookingPage() {
   function selectSlot(slot: LessonSlot) {
     setSelectedSlot(slot);
     setError("");
-
-    /*
-     * The selected slot is now the only thing that matters.
-     * The availability list disappears from the UI.
-     */
   }
 
   async function handleBooking() {
@@ -232,10 +232,6 @@ export default function BookingPage() {
 
     setSubmitting(true);
     setError("");
-
-    /*
-     * Verify the selected slot is still available.
-     */
 
     const {
       data: currentSlot,
@@ -270,12 +266,6 @@ export default function BookingPage() {
       setSubmitting(false);
       return;
     }
-
-    /*
-     * TEMPORARY:
-     * Actual booking + lead creation will be connected
-     * after we wire the existing database schema.
-     */
 
     console.log({
       slot: currentSlot,
@@ -320,22 +310,29 @@ export default function BookingPage() {
                 TRIAL LESSON
               </p>
 
-              <p className="mt-2 mb-0 text-[18px] font-bold text-[var(--st-charcoal-dark)]">
+              {/* INSTRUMENT */}
+              <p className="mt-2 mb-0 text-[22px] font-bold tracking-[-0.03em] text-[var(--st-charcoal-dark)]">
                 {instrumentInfo[instrument!].name}
               </p>
 
-              <div className="mt-4 flex items-center gap-2 text-[11px] text-[var(--st-charcoal)]">
-                <Clock3 size={15} />
-                {formatDate(
+              {/* DATE */}
+              <div className="mt-4 flex items-center gap-2 text-[12px] font-medium text-[var(--st-charcoal)]">
+                <Clock3 size={16} />
+                {formatLongDate(
                   new Date(selectedSlot.starts_at)
                 )}
               </div>
 
-              <div className="mt-2 flex items-center gap-2 text-[11px] text-[var(--st-charcoal)]">
-                <Clock3 size={15} />
-                {formatTime(
-                  selectedSlot.starts_at
-                )}
+              {/* TIME RANGE */}
+              <div className="mt-3 flex items-center gap-2">
+                <Clock3
+                  size={18}
+                  className="shrink-0 text-[var(--st-red)]"
+                />
+
+                <span className="text-[20px] font-extrabold tracking-[-0.03em] text-[var(--st-red)]">
+                  {formatTimeRange(selectedSlot)}
+                </span>
               </div>
 
             </div>
@@ -590,36 +587,48 @@ export default function BookingPage() {
 
             <div className="st-card overflow-hidden">
 
-              <div className="bg-[var(--st-red)] px-5 py-5 text-white">
+              {/* SELECTED SLOT HERO */}
+
+              <div className="bg-[var(--st-red)] px-5 py-6 text-white">
 
                 <p className="m-0 text-[9px] font-bold uppercase tracking-[0.15em] text-white/70">
                   SELECTED TIME
                 </p>
 
-                <div className="mt-2 flex items-center justify-between gap-4">
+                <div className="mt-3 flex items-start justify-between gap-4">
 
-                  <div>
+                  <div className="min-w-0">
 
-                    <h2 className="m-0 text-[20px] font-bold">
+                    {/* INSTRUMENT */}
+
+                    <h2 className="m-0 text-[23px] font-bold tracking-[-0.03em]">
                       {instrumentInfo[instrument].name}
                     </h2>
 
-                    <p className="mt-1 mb-0 text-[11px] text-white/75">
-                      {formatDate(
+                    {/* DATE */}
+
+                    <p className="mt-2 mb-0 text-[12px] font-medium text-white/85">
+                      {formatLongDate(
                         new Date(
                           selectedSlot.starts_at
                         )
                       )}
-                      {" · "}
-                      {formatTime(
-                        selectedSlot.starts_at
-                      )}
+                    </p>
+
+                    {/* LARGE TIME RANGE */}
+
+                    <p className="mt-2 mb-0 text-[25px] font-extrabold leading-none tracking-[-0.04em] text-white sm:text-[29px]">
+                      {formatTimeRange(selectedSlot)}
+                    </p>
+
+                    <p className="mt-2 mb-0 text-[9px] font-medium uppercase tracking-[0.08em] text-white/65">
+                      60-minute free trial lesson
                     </p>
 
                   </div>
 
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/15">
-                    <Check size={18} />
+                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-white/15">
+                    <Check size={19} />
                   </div>
 
                 </div>
