@@ -54,10 +54,6 @@ function formatTime(dateString: string) {
   }).format(new Date(dateString));
 }
 
-function dateKey(date: Date) {
-  return date.toISOString().slice(0, 10);
-}
-
 export default function BookingPage() {
   const [instrument, setInstrument] =
     useState<Instrument | null>(null);
@@ -65,6 +61,9 @@ export default function BookingPage() {
   const [slots, setSlots] = useState<LessonSlot[]>([]);
   const [selectedSlot, setSelectedSlot] =
     useState<LessonSlot | null>(null);
+
+  const [availabilityDays, setAvailabilityDays] =
+    useState(14);
 
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -77,12 +76,39 @@ export default function BookingPage() {
   const [success, setSuccess] = useState(false);
 
   useEffect(() => {
-    loadSlots();
+    loadBookingPage();
   }, []);
 
-  async function loadSlots() {
+  async function loadBookingPage() {
     setLoading(true);
     setError("");
+
+    /*
+     * Load booking visibility setting
+     */
+
+    const {
+      data: settings,
+      error: settingsError,
+    } = await supabase
+      .from("booking_settings")
+      .select("availability_days")
+      .limit(1)
+      .maybeSingle();
+
+    if (settingsError) {
+      console.error(settingsError);
+    }
+
+    const days =
+      settings?.availability_days ?? 14;
+
+    setAvailabilityDays(days);
+
+    /*
+     * Only load the number of days that customers
+     * are actually allowed to see.
+     */
 
     const today = new Date();
 
@@ -90,25 +116,36 @@ export default function BookingPage() {
 
     const future = new Date(today);
 
-    future.setDate(future.getDate() + 28);
+    future.setDate(
+      future.getDate() + days + 1
+    );
 
-    const { data, error } = await supabase
-      .from("lesson_slots")
-      .select(
-        "id, instrument, starts_at, ends_at, is_available"
-      )
-      .eq("is_available", true)
-      .gte("starts_at", today.toISOString())
-      .lt("starts_at", future.toISOString())
-      .order("starts_at", {
-        ascending: true,
-      });
+    const { data, error: slotsError } =
+      await supabase
+        .from("lesson_slots")
+        .select(
+          "id, instrument, starts_at, ends_at, is_available"
+        )
+        .eq("is_available", true)
+        .gte(
+          "starts_at",
+          today.toISOString()
+        )
+        .lt(
+          "starts_at",
+          future.toISOString()
+        )
+        .order("starts_at", {
+          ascending: true,
+        });
 
-    if (error) {
-      console.error(error);
+    if (slotsError) {
+      console.error(slotsError);
+
       setError(
         "We couldn't load available trial lessons. Please try again."
       );
+
       setLoading(false);
       return;
     }
@@ -137,7 +174,10 @@ export default function BookingPage() {
 
     instrumentSlots.forEach((slot) => {
       const date = new Date(slot.starts_at);
-      const key = dateKey(date);
+
+      const key = date
+        .toISOString()
+        .slice(0, 10);
 
       if (!groups.has(key)) {
         groups.set(key, {
@@ -153,9 +193,21 @@ export default function BookingPage() {
     return Array.from(groups.values());
   }, [instrumentSlots]);
 
+  function selectSlot(slot: LessonSlot) {
+    setSelectedSlot(slot);
+    setError("");
+
+    /*
+     * The selected slot is now the only thing that matters.
+     * The availability list disappears from the UI.
+     */
+  }
+
   async function handleBooking() {
     if (!selectedSlot) {
-      setError("Please select a trial lesson time.");
+      setError(
+        "Please select a trial lesson time."
+      );
       return;
     }
 
@@ -165,12 +217,16 @@ export default function BookingPage() {
     }
 
     if (!email.trim()) {
-      setError("Please enter your email address.");
+      setError(
+        "Please enter your email address."
+      );
       return;
     }
 
     if (!whatsapp.trim()) {
-      setError("Please enter your WhatsApp number.");
+      setError(
+        "Please enter your WhatsApp number."
+      );
       return;
     }
 
@@ -178,27 +234,26 @@ export default function BookingPage() {
     setError("");
 
     /*
-     * Booking transaction will be connected to the existing
-     * bookings/leads schema after we inspect the live database.
-     *
-     * For now we verify that the slot is still available
-     * immediately before submission.
+     * Verify the selected slot is still available.
      */
 
-    const { data: currentSlot, error: slotError } =
-      await supabase
-        .from("lesson_slots")
-        .select(
-          "id, instrument, starts_at, ends_at, is_available"
-        )
-        .eq("id", selectedSlot.id)
-        .eq("is_available", true)
-        .maybeSingle();
+    const {
+      data: currentSlot,
+      error: slotError,
+    } = await supabase
+      .from("lesson_slots")
+      .select(
+        "id, instrument, starts_at, ends_at, is_available"
+      )
+      .eq("id", selectedSlot.id)
+      .eq("is_available", true)
+      .maybeSingle();
 
     if (slotError) {
       setError(
         "We couldn't verify that time. Please try again."
       );
+
       setSubmitting(false);
       return;
     }
@@ -209,7 +264,8 @@ export default function BookingPage() {
       );
 
       setSelectedSlot(null);
-      await loadSlots();
+
+      await loadBookingPage();
 
       setSubmitting(false);
       return;
@@ -217,8 +273,8 @@ export default function BookingPage() {
 
     /*
      * TEMPORARY:
-     * We stop here until the exact existing booking/lead
-     * schema is connected.
+     * Actual booking + lead creation will be connected
+     * after we wire the existing database schema.
      */
 
     console.log({
@@ -236,7 +292,9 @@ export default function BookingPage() {
   if (success && selectedSlot) {
     return (
       <main className="min-h-screen bg-[var(--st-bg)] px-5 py-10">
+
         <div className="mx-auto flex min-h-[80vh] max-w-[500px] items-center justify-center">
+
           <div className="st-card w-full p-7 text-center sm:p-10">
 
             <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-[var(--st-red)] text-white">
@@ -275,7 +333,9 @@ export default function BookingPage() {
 
               <div className="mt-2 flex items-center gap-2 text-[11px] text-[var(--st-charcoal)]">
                 <Clock3 size={15} />
-                {formatTime(selectedSlot.starts_at)}
+                {formatTime(
+                  selectedSlot.starts_at
+                )}
               </div>
 
             </div>
@@ -286,6 +346,7 @@ export default function BookingPage() {
             </p>
 
           </div>
+
         </div>
       </main>
     );
@@ -297,6 +358,7 @@ export default function BookingPage() {
       {/* HEADER */}
 
       <header className="border-b border-[var(--st-border)] bg-white">
+
         <div className="mx-auto flex max-w-[1100px] items-center justify-between px-5 py-4 sm:px-8">
 
           <div className="flex items-center gap-3">
@@ -322,6 +384,7 @@ export default function BookingPage() {
           </span>
 
         </div>
+
       </header>
 
       <div className="mx-auto max-w-[900px] px-5 py-9 sm:px-8 sm:py-12">
@@ -347,81 +410,91 @@ export default function BookingPage() {
 
         {/* INSTRUMENT */}
 
-        <section className="mt-9">
+        {!selectedSlot && (
+          <section className="mt-9">
 
-          <p className="mb-3 text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--st-charcoal)]">
-            01 · Choose your instrument
-          </p>
+            <p className="mb-3 text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--st-charcoal)]">
+              01 · Choose your instrument
+            </p>
 
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
 
-            {(
-              Object.keys(instrumentInfo) as Instrument[]
-            ).map((item) => {
-              const Icon =
-                instrumentInfo[item].icon;
+              {(
+                Object.keys(instrumentInfo) as Instrument[]
+              ).map((item) => {
+                const Icon =
+                  instrumentInfo[item].icon;
 
-              const selected =
-                instrument === item;
+                const selected =
+                  instrument === item;
 
-              return (
-                <button
-                  key={item}
-                  type="button"
-                  onClick={() => {
-                    setInstrument(item);
-                    setSelectedSlot(null);
-                    setError("");
-                  }}
-                  className={`flex items-center gap-4 rounded-2xl border bg-white p-5 text-left transition-all ${
-                    selected
-                      ? "border-[var(--st-red)] bg-[var(--st-bg-soft)] shadow-sm"
-                      : "border-[var(--st-border)]"
-                  }`}
-                >
-
-                  <div
-                    className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-xl ${
+                return (
+                  <button
+                    key={item}
+                    type="button"
+                    onClick={() => {
+                      setInstrument(item);
+                      setSelectedSlot(null);
+                      setError("");
+                    }}
+                    className={`flex items-center gap-4 rounded-2xl border bg-white p-5 text-left transition-all ${
                       selected
-                        ? "bg-[var(--st-red)] text-white"
-                        : "bg-[var(--st-bg-soft)] text-[var(--st-red)]"
+                        ? "border-[var(--st-red)] bg-[var(--st-bg-soft)] shadow-sm"
+                        : "border-[var(--st-border)]"
                     }`}
                   >
-                    <Icon size={21} />
-                  </div>
 
-                  <div className="flex-1">
-
-                    <p className="m-0 text-[14px] font-bold text-[var(--st-charcoal-dark)]">
-                      {instrumentInfo[item].name}
-                    </p>
-
-                    <p className="mt-1 mb-0 text-[10px] text-[var(--st-gray)]">
-                      {instrumentInfo[item].description}
-                    </p>
-
-                  </div>
-
-                  {selected && (
-                    <div className="flex h-6 w-6 items-center justify-center rounded-full bg-[var(--st-red)] text-white">
-                      <Check size={13} />
+                    <div
+                      className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-xl ${
+                        selected
+                          ? "bg-[var(--st-red)] text-white"
+                          : "bg-[var(--st-bg-soft)] text-[var(--st-red)]"
+                      }`}
+                    >
+                      <Icon size={21} />
                     </div>
-                  )}
 
-                </button>
-              );
-            })}
+                    <div className="flex-1">
 
-          </div>
-        </section>
+                      <p className="m-0 text-[14px] font-bold text-[var(--st-charcoal-dark)]">
+                        {instrumentInfo[item].name}
+                      </p>
 
-        {/* DATE & TIME */}
+                      <p className="mt-1 mb-0 text-[10px] text-[var(--st-gray)]">
+                        {instrumentInfo[item].description}
+                      </p>
 
-        {instrument && (
+                    </div>
+
+                    {selected && (
+                      <div className="flex h-6 w-6 items-center justify-center rounded-full bg-[var(--st-red)] text-white">
+                        <Check size={13} />
+                      </div>
+                    )}
+
+                  </button>
+                );
+              })}
+
+            </div>
+          </section>
+        )}
+
+        {/* DATE + TIME */}
+
+        {instrument && !selectedSlot && (
           <section className="mt-9">
 
             <p className="mb-3 text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--st-charcoal)]">
               02 · Choose a date and time
+            </p>
+
+            <p className="mb-4 text-[10px] text-[var(--st-gray)]">
+              Showing available lessons for the next{" "}
+              <strong>
+                {availabilityDays} days
+              </strong>
+              .
             </p>
 
             {loading ? (
@@ -434,6 +507,7 @@ export default function BookingPage() {
               </div>
             ) : groupedDates.length === 0 ? (
               <div className="st-card p-7 text-center">
+
                 <p className="m-0 text-[13px] font-bold text-[var(--st-charcoal-dark)]">
                   No available trial lessons
                 </p>
@@ -441,6 +515,7 @@ export default function BookingPage() {
                 <p className="mt-2 mb-0 text-[10px] text-[var(--st-gray)]">
                   Please check again later.
                 </p>
+
               </div>
             ) : (
               <div className="space-y-4">
@@ -452,6 +527,7 @@ export default function BookingPage() {
                   >
 
                     <div className="border-b border-[var(--st-border)] bg-white px-5 py-4">
+
                       <p className="m-0 text-[13px] font-bold text-[var(--st-charcoal-dark)]">
                         {formatDate(group.date)}
                       </p>
@@ -462,48 +538,38 @@ export default function BookingPage() {
                           ? ""
                           : "s"}
                       </p>
+
                     </div>
 
                     <div className="grid grid-cols-2 gap-2 p-4 sm:grid-cols-3">
 
                       {group.slots.map((slot) => {
-                        const selected =
-                          selectedSlot?.id === slot.id;
-
                         return (
                           <button
                             key={slot.id}
                             type="button"
-                            onClick={() => {
-                              setSelectedSlot(slot);
-                              setError("");
-                            }}
-                            className={`rounded-xl border px-3 py-3 text-center transition-all ${
-                              selected
-                                ? "border-[var(--st-red)] bg-[var(--st-red)] text-white"
-                                : "border-[var(--st-border)] bg-white text-[var(--st-charcoal-dark)] hover:border-[var(--st-red)]"
-                            }`}
+                            onClick={() =>
+                              selectSlot(slot)
+                            }
+                            className="rounded-xl border border-[var(--st-border)] bg-white px-3 py-3 text-center text-[var(--st-charcoal-dark)] transition-all hover:border-[var(--st-red)] hover:bg-[var(--st-bg-soft)]"
                           >
+
                             <span className="block text-[12px] font-bold">
                               {formatTime(
                                 slot.starts_at
                               )}
                             </span>
 
-                            <span
-                              className={`mt-1 block text-[8px] ${
-                                selected
-                                  ? "text-white/70"
-                                  : "text-[var(--st-gray)]"
-                              }`}
-                            >
+                            <span className="mt-1 block text-[8px] text-[var(--st-gray)]">
                               60 min
                             </span>
+
                           </button>
                         );
                       })}
 
                     </div>
+
                   </div>
                 ))}
 
@@ -513,187 +579,224 @@ export default function BookingPage() {
           </section>
         )}
 
-        {/* CUSTOMER DETAILS */}
+        {/* SELECTED SLOT + DETAILS */}
 
-        {selectedSlot && (
+        {selectedSlot && instrument && (
           <section className="mt-9">
 
             <p className="mb-3 text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--st-charcoal)]">
-              03 · Your details
+              02 · Your selected trial
             </p>
 
-            <div className="st-card p-5 sm:p-7">
+            <div className="st-card overflow-hidden">
 
-              <div className="mb-6 rounded-xl bg-[var(--st-bg-soft)] p-4">
+              <div className="bg-[var(--st-red)] px-5 py-5 text-white">
 
-                <p className="m-0 text-[9px] font-bold uppercase tracking-[0.12em] text-[var(--st-red)]">
-                  SELECTED TRIAL
+                <p className="m-0 text-[9px] font-bold uppercase tracking-[0.15em] text-white/70">
+                  SELECTED TIME
                 </p>
 
-                <p className="mt-2 mb-0 text-[13px] font-bold text-[var(--st-charcoal-dark)]">
-                  {instrumentInfo[instrument!].name}
-                  {" · "}
-                  {formatDate(
-                    new Date(selectedSlot.starts_at)
-                  )}
-                  {" · "}
-                  {formatTime(
-                    selectedSlot.starts_at
-                  )}
-                </p>
+                <div className="mt-2 flex items-center justify-between gap-4">
 
-              </div>
+                  <div>
 
-              <div className="space-y-5">
+                    <h2 className="m-0 text-[20px] font-bold">
+                      {instrumentInfo[instrument].name}
+                    </h2>
 
-                {/* NAME */}
-
-                <div>
-                  <label className="mb-2 block text-[10px] font-bold uppercase tracking-[0.08em] text-[var(--st-charcoal)]">
-                    Full name
-                  </label>
-
-                  <div className="relative">
-
-                    <User
-                      size={16}
-                      className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--st-gray)]"
-                    />
-
-                    <input
-                      type="text"
-                      value={name}
-                      onChange={(e) =>
-                        setName(e.target.value)
-                      }
-                      placeholder="Your full name"
-                      className="w-full rounded-xl border border-[var(--st-border)] bg-white py-3.5 pl-11 pr-4 text-[12px] outline-none focus:border-[var(--st-red)] focus:ring-2 focus:ring-[var(--st-red)]/10"
-                    />
-
-                  </div>
-                </div>
-
-                {/* EMAIL */}
-
-                <div>
-                  <label className="mb-2 block text-[10px] font-bold uppercase tracking-[0.08em] text-[var(--st-charcoal)]">
-                    Email address
-                  </label>
-
-                  <div className="relative">
-
-                    <Mail
-                      size={16}
-                      className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--st-gray)]"
-                    />
-
-                    <input
-                      type="email"
-                      value={email}
-                      onChange={(e) =>
-                        setEmail(e.target.value)
-                      }
-                      placeholder="you@example.com"
-                      className="w-full rounded-xl border border-[var(--st-border)] bg-white py-3.5 pl-11 pr-4 text-[12px] outline-none focus:border-[var(--st-red)] focus:ring-2 focus:ring-[var(--st-red)]/10"
-                    />
-
-                  </div>
-                </div>
-
-                {/* WHATSAPP */}
-
-                <div>
-                  <label className="mb-2 block text-[10px] font-bold uppercase tracking-[0.08em] text-[var(--st-charcoal)]">
-                    WhatsApp number
-                  </label>
-
-                  <div className="relative">
-
-                    <Phone
-                      size={16}
-                      className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--st-gray)]"
-                    />
-
-                    <input
-                      type="tel"
-                      inputMode="tel"
-                      value={whatsapp}
-                      onChange={(e) =>
-                        setWhatsapp(e.target.value)
-                      }
-                      placeholder="+254 712 345 678"
-                      className="w-full rounded-xl border border-[var(--st-border)] bg-white py-3.5 pl-11 pr-4 text-[12px] outline-none focus:border-[var(--st-red)] focus:ring-2 focus:ring-[var(--st-red)]/10"
-                    />
+                    <p className="mt-1 mb-0 text-[11px] text-white/75">
+                      {formatDate(
+                        new Date(
+                          selectedSlot.starts_at
+                        )
+                      )}
+                      {" · "}
+                      {formatTime(
+                        selectedSlot.starts_at
+                      )}
+                    </p>
 
                   </div>
 
-                  <p className="mt-2 mb-0 text-[9px] text-[var(--st-gray)]">
-                    Enter your WhatsApp number in
-                    international format, e.g.
-                    +254 712 345 678
-                  </p>
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/15">
+                    <Check size={18} />
+                  </div>
+
                 </div>
 
               </div>
 
-              {/* ERROR */}
+              <div className="p-5 sm:p-7">
 
-              {error && (
-                <div className="mt-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3">
-                  <p className="m-0 text-[10px] leading-relaxed text-red-700">
-                    {error}
+                <div className="mb-6">
+
+                  <p className="m-0 text-[9px] font-bold uppercase tracking-[0.12em] text-[var(--st-gray)]">
+                    03 · Your details
                   </p>
+
+                  <p className="mt-2 mb-0 text-[10px] text-[var(--st-gray)]">
+                    Your selected time is reserved on this
+                    screen while you complete your details.
+                  </p>
+
                 </div>
-              )}
 
-              {/* SUBMIT */}
+                <div className="space-y-5">
 
-              <button
-                type="button"
-                onClick={handleBooking}
-                disabled={submitting}
-                className="st-button st-button-primary mt-6 w-full disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {submitting ? (
-                  <>
-                    <Loader2
-                      size={15}
-                      className="animate-spin"
-                    />
-                    Confirming...
-                  </>
-                ) : (
-                  <>
-                    Confirm free trial
-                    <ArrowRight size={15} />
-                  </>
+                  {/* NAME */}
+
+                  <div>
+
+                    <label className="mb-2 block text-[10px] font-bold uppercase tracking-[0.08em] text-[var(--st-charcoal)]">
+                      Full name
+                    </label>
+
+                    <div className="relative">
+
+                      <User
+                        size={16}
+                        className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--st-gray)]"
+                      />
+
+                      <input
+                        type="text"
+                        value={name}
+                        onChange={(e) =>
+                          setName(e.target.value)
+                        }
+                        placeholder="Your full name"
+                        className="w-full rounded-xl border border-[var(--st-border)] bg-white py-3.5 pl-11 pr-4 text-[12px] outline-none focus:border-[var(--st-red)] focus:ring-2 focus:ring-[var(--st-red)]/10"
+                      />
+
+                    </div>
+
+                  </div>
+
+                  {/* EMAIL */}
+
+                  <div>
+
+                    <label className="mb-2 block text-[10px] font-bold uppercase tracking-[0.08em] text-[var(--st-charcoal)]">
+                      Email address
+                    </label>
+
+                    <div className="relative">
+
+                      <Mail
+                        size={16}
+                        className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--st-gray)]"
+                      />
+
+                      <input
+                        type="email"
+                        value={email}
+                        onChange={(e) =>
+                          setEmail(e.target.value)
+                        }
+                        placeholder="you@example.com"
+                        className="w-full rounded-xl border border-[var(--st-border)] bg-white py-3.5 pl-11 pr-4 text-[12px] outline-none focus:border-[var(--st-red)] focus:ring-2 focus:ring-[var(--st-red)]/10"
+                      />
+
+                    </div>
+
+                  </div>
+
+                  {/* WHATSAPP */}
+
+                  <div>
+
+                    <label className="mb-2 block text-[10px] font-bold uppercase tracking-[0.08em] text-[var(--st-charcoal)]">
+                      WhatsApp number
+                    </label>
+
+                    <div className="relative">
+
+                      <Phone
+                        size={16}
+                        className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--st-gray)]"
+                      />
+
+                      <input
+                        type="tel"
+                        inputMode="tel"
+                        value={whatsapp}
+                        onChange={(e) =>
+                          setWhatsapp(e.target.value)
+                        }
+                        placeholder="+254 712 345 678"
+                        className="w-full rounded-xl border border-[var(--st-border)] bg-white py-3.5 pl-11 pr-4 text-[12px] outline-none focus:border-[var(--st-red)] focus:ring-2 focus:ring-[var(--st-red)]/10"
+                      />
+
+                    </div>
+
+                    <p className="mt-2 mb-0 text-[9px] text-[var(--st-gray)]">
+                      Enter your WhatsApp number in
+                      international format, e.g.
+                      +254 712 345 678
+                    </p>
+
+                  </div>
+
+                </div>
+
+                {error && (
+                  <div className="mt-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3">
+                    <p className="m-0 text-[10px] leading-relaxed text-red-700">
+                      {error}
+                    </p>
+                  </div>
                 )}
-              </button>
 
-              <p className="mt-4 text-center text-[9px] leading-relaxed text-[var(--st-gray)]">
-                By booking, you agree that Sauti Tamu may
-                contact you about your trial lesson and
-                learning program.
-              </p>
+                <button
+                  type="button"
+                  onClick={handleBooking}
+                  disabled={submitting}
+                  className="st-button st-button-primary mt-6 w-full disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {submitting ? (
+                    <>
+                      <Loader2
+                        size={15}
+                        className="animate-spin"
+                      />
+                      Confirming...
+                    </>
+                  ) : (
+                    <>
+                      Confirm free trial
+                      <ArrowRight size={15} />
+                    </>
+                  )}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedSlot(null);
+                    setError("");
+                  }}
+                  className="mx-auto mt-4 flex items-center gap-2 text-[10px] font-bold text-[var(--st-gray)]"
+                >
+                  <ArrowLeft size={13} />
+                  Choose a different time
+                </button>
+
+                <p className="mt-5 text-center text-[9px] leading-relaxed text-[var(--st-gray)]">
+                  By booking, you agree that Sauti Tamu
+                  may contact you about your trial lesson
+                  and learning program.
+                </p>
+
+              </div>
 
             </div>
 
           </section>
         )}
 
-        {/* ERROR OUTSIDE */}
+        {/* CHANGE INSTRUMENT */}
 
-        {!selectedSlot && error && (
-          <div className="mt-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3">
-            <p className="m-0 text-[10px] text-red-700">
-              {error}
-            </p>
-          </div>
-        )}
-
-        {/* BACK */}
-
-        {instrument && (
+        {instrument && !selectedSlot && (
           <button
             type="button"
             onClick={() => {
