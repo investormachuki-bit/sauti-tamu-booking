@@ -1,7 +1,7 @@
 @import "tailwindcss";
 
 /* =========================================================
-   SAUTI TAMU DESIGN SYSTEM
+   SAUTI TAMU — DESIGN SYSTEM
    ========================================================= */
 
 :root {
@@ -23,7 +23,7 @@
   --st-gray-light: #c8c5c5;
   --st-gray-muted: #aaa6a6;
 
-  /* Utility */
+  /* Status */
   --st-success: #5f8f69;
   --st-warning: #c58a32;
   --st-danger: #b83a3a;
@@ -70,10 +70,7 @@ body {
   min-height: 100vh;
   background: var(--st-bg);
   color: var(--st-charcoal);
-  font-family:
-    Arial,
-    Helvetica,
-    sans-serif;
+  font-family: Arial, Helvetica, sans-serif;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
@@ -122,7 +119,7 @@ img {
 }
 
 /* =========================================================
-   TEXT SYSTEM
+   TEXT
    ========================================================= */
 
 .st-eyebrow {
@@ -288,7 +285,7 @@ img {
   align-items: center;
   justify-content: space-between;
   padding: 0 30px;
-  background: rgba(255, 255, 255, 0.9);
+  background: rgba(255, 255, 255, 0.94);
   border-bottom: 1px solid var(--st-border);
   backdrop-filter: blur(14px);
 }
@@ -325,11 +322,12 @@ img {
   display: flex;
   width: 38px;
   height: 38px;
+  flex-shrink: 0;
   align-items: center;
   justify-content: center;
   border-radius: 10px;
   background: var(--st-red);
-  color: white;
+  color: #ffffff;
   font-size: 12px;
   font-weight: 800;
   letter-spacing: -0.05em;
@@ -359,6 +357,7 @@ img {
   display: inline-flex;
   width: 38px;
   height: 38px;
+  flex-shrink: 0;
   align-items: center;
   justify-content: center;
   border: 1px solid var(--st-border);
@@ -378,7 +377,7 @@ img {
 }
 
 /* =========================================================
-   USER MENU
+   USER
    ========================================================= */
 
 .st-user-menu {
@@ -394,11 +393,12 @@ img {
   display: flex;
   width: 34px;
   height: 34px;
+  flex-shrink: 0;
   align-items: center;
   justify-content: center;
   border-radius: 50%;
   background: var(--st-red);
-  color: white;
+  color: #ffffff;
   font-size: 11px;
   font-weight: 800;
 }
@@ -467,7 +467,7 @@ img {
 
 .st-button-primary {
   background: var(--st-red);
-  color: white;
+  color: #ffffff;
 }
 
 .st-button-primary:hover {
@@ -475,7 +475,7 @@ img {
 }
 
 .st-button-secondary {
-  background: white;
+  background: #ffffff;
   border-color: var(--st-border);
   color: var(--st-charcoal-dark);
 }
@@ -532,26 +532,32 @@ img {
 }
 
 /* =========================================================
-   RESPONSIVE
+   MOBILE SIDEBAR
    ========================================================= */
+
+.st-sidebar-overlay {
+  display: none;
+}
 
 @media (max-width: 900px) {
   :root {
-    --sidebar-width: 0px;
+    --sidebar-width: 250px;
   }
 
   .st-sidebar {
+    width: 250px;
     transform: translateX(-100%);
+    overflow: hidden;
     transition: transform 220ms ease;
   }
 
   .st-sidebar.open {
     transform: translateX(0);
-    width: 250px;
     box-shadow: var(--shadow-lg);
   }
 
   .st-main-area {
+    width: 100%;
     margin-left: 0;
   }
 
@@ -559,25 +565,37 @@ img {
     display: inline-flex;
   }
 
-  .st-content {
-    padding: 24px 20px;
-  }
-
-  .st-topbar {
-    padding: 0 20px;
-  }
-
   .st-sidebar-overlay {
     position: fixed;
     inset: 0;
     z-index: 45;
+    display: block;
     background: rgba(53, 53, 53, 0.35);
     backdrop-filter: blur(2px);
   }
+
+  .st-content {
+    width: 100%;
+    padding: 24px 20px;
+  }
+
+  .st-topbar {
+    width: 100%;
+    padding: 0 20px;
+  }
+
+  .st-user-details {
+    display: none;
+  }
 }
+
+/* =========================================================
+   SMALL MOBILE
+   ========================================================= */
 
 @media (max-width: 600px) {
   .st-topbar {
+    height: 64px;
     padding: 0 14px;
   }
 
@@ -585,11 +603,38 @@ img {
     padding: 20px 14px;
   }
 
-  .st-user-details {
-    display: none;
+  .st-topbar-left {
+    min-width: 0;
+    gap: 10px;
+  }
+
+  .st-topbar-left > div:last-child {
+    min-width: 0;
+  }
+
+  .st-topbar-left .st-eyebrow {
+    font-size: 8px;
+    letter-spacing: 0.13em;
+  }
+
+  .st-topbar-left p:last-child {
+    max-width: 180px;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
   }
 
   .st-topbar-right {
+    flex-shrink: 0;
     gap: 5px;
+  }
+
+  .st-user-menu {
+    margin-left: 2px;
+    padding-left: 7px;
+  }
+
+  .st-user-details {
+    display: none;
   }
 }
