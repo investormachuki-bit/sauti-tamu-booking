@@ -273,6 +273,16 @@ img {
 }
 
 /* =========================================================
+   SIDEBAR CLOSE BUTTON
+   Hidden on desktop.
+   Appears only when sidebar becomes mobile navigation.
+   ========================================================= */
+
+.st-sidebar-brand .st-icon-button {
+  display: none;
+}
+
+/* =========================================================
    TOPBAR
    ========================================================= */
 
@@ -572,6 +582,11 @@ img {
     display: block;
     background: rgba(53, 53, 53, 0.35);
     backdrop-filter: blur(2px);
+  }
+
+  /* Show sidebar close button ONLY on mobile */
+  .st-sidebar-brand .st-icon-button {
+    display: inline-flex;
   }
 
   .st-content {
