@@ -44,6 +44,7 @@ function formatDate(date: Date) {
     weekday: "short",
     day: "numeric",
     month: "short",
+    timeZone: "Africa/Nairobi",
   }).format(date);
 }
 
@@ -52,6 +53,8 @@ function formatLongDate(date: Date) {
     weekday: "long",
     day: "numeric",
     month: "long",
+    year: "numeric",
+    timeZone: "Africa/Nairobi",
   }).format(date);
 }
 
@@ -59,6 +62,7 @@ function formatTime(dateString: string) {
   return new Intl.DateTimeFormat("en-KE", {
     hour: "numeric",
     minute: "2-digit",
+    timeZone: "Africa/Nairobi",
   }).format(new Date(dateString));
 }
 
@@ -99,8 +103,7 @@ export default function BookingPage() {
     setError("");
 
     /*
-     * Load the number of days that customers
-     * are allowed to see.
+     * Load customer-facing availability setting.
      */
 
     const {
@@ -125,7 +128,8 @@ export default function BookingPage() {
     setAvailabilityDays(days);
 
     /*
-     * Load only the customer-visible booking window.
+     * Only load slots within the customer-visible
+     * booking window.
      */
 
     const today = new Date();
@@ -173,13 +177,16 @@ export default function BookingPage() {
       return;
     }
 
-    setSlots((data ?? []) as LessonSlot[]);
+    setSlots(
+      (data ?? []) as LessonSlot[]
+    );
+
     setLoading(false);
   }
 
   /*
-   * Only show slots belonging to the selected
-   * instrument.
+   * Only show slots belonging to the
+   * selected instrument.
    */
 
   const instrumentSlots = useMemo(() => {
@@ -188,12 +195,13 @@ export default function BookingPage() {
     }
 
     return slots.filter(
-      (slot) => slot.instrument === instrument
+      (slot) =>
+        slot.instrument === instrument
     );
   }, [slots, instrument]);
 
   /*
-   * Group available slots by date.
+   * Group slots by date.
    */
 
   const groupedDates = useMemo(() => {
@@ -207,11 +215,19 @@ export default function BookingPage() {
     >();
 
     instrumentSlots.forEach((slot) => {
-      const date = new Date(slot.starts_at);
+      const date = new Date(
+        slot.starts_at
+      );
 
-      const key = date
-        .toISOString()
-        .slice(0, 10);
+      const key = new Intl.DateTimeFormat(
+        "en-CA",
+        {
+          timeZone: "Africa/Nairobi",
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit",
+        }
+      ).format(date);
 
       if (!groups.has(key)) {
         groups.set(key, {
@@ -224,24 +240,28 @@ export default function BookingPage() {
       groups.get(key)!.slots.push(slot);
     });
 
-    return Array.from(groups.values());
+    return Array.from(
+      groups.values()
+    );
   }, [instrumentSlots]);
 
   /*
    * Select exactly one slot.
    *
-   * Once selected, the availability list disappears
-   * and the customer proceeds to their details.
+   * Once selected, the availability list
+   * disappears.
    */
 
-  function selectSlot(slot: LessonSlot) {
+  function selectSlot(
+    slot: LessonSlot
+  ) {
     setSelectedSlot(slot);
     setError("");
   }
 
   /*
-   * Create the booking through the atomic Supabase
-   * RPC.
+   * Submit booking through our secure
+   * server-side API.
    */
 
   async function handleBooking() {
@@ -276,48 +296,51 @@ export default function BookingPage() {
     setSubmitting(true);
     setError("");
 
-    /*
-     * The RPC handles:
-     *
-     * 1. Locking the slot
-     * 2. Verifying availability
-     * 3. Verifying instrument
-     * 4. Creating/updating the lead
-     * 5. Creating the booking
-     * 6. Marking the slot unavailable
-     */
+    try {
+      /*
+       * The server route handles:
+       *
+       * 1. Creating the lead
+       * 2. Creating the booking
+       * 3. Locking the slot
+       * 4. Sending customer email
+       * 5. Sending admin email
+       * 6. Updating confirmation_sent_at
+       */
 
-    const {
-      data: bookingResult,
-      error: bookingError,
-    } = await supabase.rpc(
-      "create_trial_booking",
-      {
-        p_slot_id: selectedSlot.id,
-        p_instrument: instrument,
-        p_full_name: name.trim(),
-        p_email: email.trim(),
-        p_whatsapp_number: whatsapp.trim(),
-      }
-    );
+      const response = await fetch(
+        "/api/bookings/confirm",
+        {
+          method: "POST",
 
-    if (bookingError) {
-      console.error(
-        "Booking error:",
-        bookingError
+          headers: {
+            "Content-Type":
+              "application/json",
+          },
+
+          body: JSON.stringify({
+            slotId:
+              selectedSlot.id,
+            fullName:
+              name.trim(),
+            email:
+              email.trim(),
+            whatsappNumber:
+              whatsapp.trim(),
+          }),
+        }
       );
 
-      const message =
-        bookingError.message || "";
+      const result =
+        await response.json();
 
       /*
-       * Someone else booked the same slot.
+       * Slot was taken by somebody else.
        */
 
       if (
-        message.includes(
-          "SLOT_ALREADY_BOOKED"
-        )
+        result.code ===
+        "SLOT_ALREADY_BOOKED"
       ) {
         setError(
           "Sorry, that time has just been booked. Please choose another."
@@ -332,86 +355,58 @@ export default function BookingPage() {
       }
 
       /*
-       * Slot no longer exists.
+       * Other booking errors.
        */
 
       if (
-        message.includes(
-          "SLOT_NOT_FOUND"
-        )
+        !response.ok ||
+        !result.success
       ) {
         setError(
-          "That lesson slot could not be found. Please choose another."
+          result.error ||
+            "We couldn't complete your booking. Please try again."
         );
-
-        setSelectedSlot(null);
-
-        await loadBookingPage();
 
         setSubmitting(false);
         return;
       }
 
       /*
-       * Instrument mismatch.
+       * Booking successfully created.
        */
 
-      if (
-        message.includes(
-          "INSTRUMENT_MISMATCH"
-        )
-      ) {
-        setError(
-          "There was a problem with the selected instrument. Please choose another slot."
-        );
+      console.log(
+        "Trial booking confirmed:",
+        result
+      );
 
-        setSelectedSlot(null);
+      setSuccess(true);
+      setSubmitting(false);
 
-        await loadBookingPage();
-
-        setSubmitting(false);
-        return;
-      }
-
-      /*
-       * Generic booking error.
-       */
+    } catch (error) {
+      console.error(
+        "Booking submission error:",
+        error
+      );
 
       setError(
-        "We couldn't complete your booking. Please try again."
+        "We couldn't connect to the booking service. Please check your internet connection and try again."
       );
 
       setSubmitting(false);
-      return;
     }
-
-    /*
-     * The RPC should return the created booking.
-     */
-
-    if (!bookingResult) {
-      setError(
-        "We couldn't confirm your booking. Please try again."
-      );
-
-      setSubmitting(false);
-      return;
-    }
-
-    console.log(
-      "Trial booking created:",
-      bookingResult
-    );
-
-    setSuccess(true);
-    setSubmitting(false);
   }
 
   /*
+   * ----------------------------------------
    * SUCCESS SCREEN
+   * ----------------------------------------
    */
 
-  if (success && selectedSlot) {
+  if (
+    success &&
+    selectedSlot
+  ) {
     return (
       <main className="min-h-screen bg-[var(--st-bg)] px-5 py-10">
 
@@ -426,30 +421,32 @@ export default function BookingPage() {
             </div>
 
             <p className="mt-6 text-[10px] font-bold uppercase tracking-[0.18em] text-[var(--st-red)]">
-              Trial lesson selected
+              Trial lesson confirmed
             </p>
 
             <h1 className="mt-2 text-[28px] font-bold tracking-[-0.04em] text-[var(--st-charcoal-dark)]">
-              You&apos;re almost booked.
+              You&apos;re booked.
             </h1>
 
             <p className="mx-auto mt-3 max-w-[360px] text-[12px] leading-relaxed text-[var(--st-gray)]">
-              Your selected trial lesson is ready for
-              confirmation.
+              Your free trial lesson has been
+              successfully confirmed.
             </p>
 
-            {/* SELECTED LESSON */}
+            {/* BOOKING DETAILS */}
 
             <div className="mt-7 rounded-2xl bg-[var(--st-bg-soft)] p-5 text-left">
 
               <p className="m-0 text-[9px] font-bold uppercase tracking-[0.12em] text-[var(--st-gray)]">
-                TRIAL LESSON
+                YOUR TRIAL LESSON
               </p>
 
-              {/* INSTRUMENT */}
-
               <p className="mt-2 mb-0 text-[22px] font-bold tracking-[-0.03em] text-[var(--st-charcoal-dark)]">
-                {instrumentInfo[instrument!].name}
+                {
+                  instrumentInfo[
+                    instrument!
+                  ].name
+                }
               </p>
 
               {/* DATE */}
@@ -466,7 +463,7 @@ export default function BookingPage() {
 
               </div>
 
-              {/* TIME RANGE */}
+              {/* TIME */}
 
               <div className="mt-3 flex items-center gap-2">
 
@@ -483,11 +480,41 @@ export default function BookingPage() {
 
               </div>
 
+              <p className="mt-2 mb-0 text-[9px] font-medium uppercase tracking-[0.08em] text-[var(--st-gray)]">
+                60-minute free trial lesson
+              </p>
+
+            </div>
+
+            {/* LOCATION */}
+
+            <div className="mt-4 rounded-2xl border border-[var(--st-border)] bg-white p-5 text-left">
+
+              <p className="m-0 text-[9px] font-bold uppercase tracking-[0.12em] text-[var(--st-red)]">
+                LOCATION
+              </p>
+
+              <p className="mt-2 mb-0 text-[12px] font-bold text-[var(--st-charcoal-dark)]">
+                Sauti Tamu Piano Center
+              </p>
+
+              <p className="mt-1 mb-0 text-[10px] leading-relaxed text-[var(--st-gray)]">
+                Junction Trade Center,
+                4th Floor, Room F401
+                <br />
+                Above Equity Bank Tearoom
+                Branch
+                <br />
+                Nairobi CBD
+              </p>
+
             </div>
 
             <p className="mt-6 text-[10px] leading-relaxed text-[var(--st-gray)]">
-              We&apos;ll send your confirmation to the
-              email and WhatsApp number you provided.
+              A confirmation has been sent to
+              your email. We&apos;ll also contact
+              you on WhatsApp with your lesson
+              details.
             </p>
 
           </div>
@@ -499,7 +526,9 @@ export default function BookingPage() {
   }
 
   /*
+   * ----------------------------------------
    * MAIN BOOKING PAGE
+   * ----------------------------------------
    */
 
   return (
@@ -556,8 +585,9 @@ export default function BookingPage() {
           </h1>
 
           <p className="mx-auto mt-3 max-w-[500px] text-[12px] leading-relaxed text-[var(--st-gray)]">
-            Choose your instrument, pick a convenient
-            time and reserve your first lesson.
+            Choose your instrument, pick a
+            convenient time and reserve your
+            first lesson.
           </p>
 
         </div>
@@ -591,7 +621,9 @@ export default function BookingPage() {
                     type="button"
                     onClick={() => {
                       setInstrument(item);
-                      setSelectedSlot(null);
+                      setSelectedSlot(
+                        null
+                      );
                       setError("");
                     }}
                     className={`flex items-center gap-4 rounded-2xl border bg-white p-5 text-left transition-all ${
@@ -614,13 +646,18 @@ export default function BookingPage() {
                     <div className="flex-1">
 
                       <p className="m-0 text-[14px] font-bold text-[var(--st-charcoal-dark)]">
-                        {instrumentInfo[item].name}
+                        {
+                          instrumentInfo[
+                            item
+                          ].name
+                        }
                       </p>
 
                       <p className="mt-1 mb-0 text-[10px] text-[var(--st-gray)]">
                         {
-                          instrumentInfo[item]
-                            .description
+                          instrumentInfo[
+                            item
+                          ].description
                         }
                       </p>
 
@@ -643,402 +680,438 @@ export default function BookingPage() {
 
         {/* DATE + TIME */}
 
-        {instrument && !selectedSlot && (
-          <section className="mt-9">
+        {instrument &&
+          !selectedSlot && (
+            <section className="mt-9">
 
-            <p className="mb-3 text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--st-charcoal)]">
-              02 · Choose a date and time
-            </p>
+              <p className="mb-3 text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--st-charcoal)]">
+                02 · Choose a date and time
+              </p>
 
-            <p className="mb-4 text-[10px] text-[var(--st-gray)]">
+              <p className="mb-4 text-[10px] text-[var(--st-gray)]">
 
-              Showing available lessons for the next{" "}
+                Showing available lessons
+                for the next{" "}
 
-              <strong>
-                {availabilityDays} days
-              </strong>
+                <strong>
+                  {availabilityDays} days
+                </strong>
+                .
 
-              .
+              </p>
 
-            </p>
+              {loading ? (
 
-            {loading ? (
+                <div className="st-card flex items-center justify-center gap-2 p-10 text-[10px] text-[var(--st-gray)]">
 
-              <div className="st-card flex items-center justify-center gap-2 p-10 text-[10px] text-[var(--st-gray)]">
+                  <Loader2
+                    size={15}
+                    className="animate-spin"
+                  />
 
-                <Loader2
-                  size={15}
-                  className="animate-spin"
-                />
-
-                Loading available lessons...
-
-              </div>
-
-            ) : groupedDates.length === 0 ? (
-
-              <div className="st-card p-7 text-center">
-
-                <p className="m-0 text-[13px] font-bold text-[var(--st-charcoal-dark)]">
-                  No available trial lessons
-                </p>
-
-                <p className="mt-2 mb-0 text-[10px] text-[var(--st-gray)]">
-                  Please check again later.
-                </p>
-
-              </div>
-
-            ) : (
-
-              <div className="space-y-4">
-
-                {groupedDates.map(
-                  (group) => (
-
-                    <div
-                      key={group.key}
-                      className="st-card overflow-hidden"
-                    >
-
-                      <div className="border-b border-[var(--st-border)] bg-white px-5 py-4">
-
-                        <p className="m-0 text-[13px] font-bold text-[var(--st-charcoal-dark)]">
-                          {formatDate(
-                            group.date
-                          )}
-                        </p>
-
-                        <p className="mt-1 mb-0 text-[9px] text-[var(--st-gray)]">
-
-                          {group.slots.length}{" "}
-
-                          available time
-                          {group.slots.length === 1
-                            ? ""
-                            : "s"}
-
-                        </p>
-
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-2 p-4 sm:grid-cols-3">
-
-                        {group.slots.map(
-                          (slot) => (
-
-                            <button
-                              key={slot.id}
-                              type="button"
-                              onClick={() =>
-                                selectSlot(
-                                  slot
-                                )
-                              }
-                              className="rounded-xl border border-[var(--st-border)] bg-white px-3 py-3 text-center text-[var(--st-charcoal-dark)] transition-all hover:border-[var(--st-red)] hover:bg-[var(--st-bg-soft)]"
-                            >
-
-                              <span className="block text-[12px] font-bold">
-                                {formatTime(
-                                  slot.starts_at
-                                )}
-                              </span>
-
-                              <span className="mt-1 block text-[8px] text-[var(--st-gray)]">
-                                60 min
-                              </span>
-
-                            </button>
-
-                          )
-                        )}
-
-                      </div>
-
-                    </div>
-
-                  )
-                )}
-
-              </div>
-
-            )}
-
-          </section>
-        )}
-
-        {/* SELECTED SLOT + DETAILS */}
-
-        {selectedSlot && instrument && (
-          <section className="mt-9">
-
-            <p className="mb-3 text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--st-charcoal)]">
-              02 · Your selected trial
-            </p>
-
-            <div className="st-card overflow-hidden">
-
-              {/* SELECTED SLOT HERO */}
-
-              <div className="bg-[var(--st-red)] px-5 py-6 text-white">
-
-                <p className="m-0 text-[9px] font-bold uppercase tracking-[0.15em] text-white/70">
-                  SELECTED TIME
-                </p>
-
-                <div className="mt-3 flex items-start justify-between gap-4">
-
-                  <div className="min-w-0">
-
-                    {/* INSTRUMENT */}
-
-                    <h2 className="m-0 text-[23px] font-bold tracking-[-0.03em]">
-                      {instrumentInfo[instrument].name}
-                    </h2>
-
-                    {/* DATE */}
-
-                    <p className="mt-2 mb-0 text-[12px] font-medium text-white/85">
-                      {formatLongDate(
-                        new Date(
-                          selectedSlot.starts_at
-                        )
-                      )}
-                    </p>
-
-                    {/* LARGE TIME RANGE */}
-
-                    <p className="mt-2 mb-0 text-[25px] font-extrabold leading-none tracking-[-0.04em] text-white sm:text-[29px]">
-                      {formatTimeRange(
-                        selectedSlot
-                      )}
-                    </p>
-
-                    <p className="mt-2 mb-0 text-[9px] font-medium uppercase tracking-[0.08em] text-white/65">
-                      60-minute free trial lesson
-                    </p>
-
-                  </div>
-
-                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-white/15">
-                    <Check size={19} />
-                  </div>
+                  Loading available
+                  lessons...
 
                 </div>
 
-              </div>
+              ) : groupedDates.length ===
+                0 ? (
 
-              {/* DETAILS */}
+                <div className="st-card p-7 text-center">
 
-              <div className="p-5 sm:p-7">
-
-                <div className="mb-6">
-
-                  <p className="m-0 text-[9px] font-bold uppercase tracking-[0.12em] text-[var(--st-gray)]">
-                    03 · Your details
+                  <p className="m-0 text-[13px] font-bold text-[var(--st-charcoal-dark)]">
+                    No available trial
+                    lessons
                   </p>
 
                   <p className="mt-2 mb-0 text-[10px] text-[var(--st-gray)]">
-                    Your selected time is reserved on this
-                    screen while you complete your details.
+                    Please check again
+                    later.
                   </p>
 
                 </div>
 
-                <div className="space-y-5">
+              ) : (
 
-                  {/* NAME */}
+                <div className="space-y-4">
 
-                  <div>
+                  {groupedDates.map(
+                    (group) => (
 
-                    <label className="mb-2 block text-[10px] font-bold uppercase tracking-[0.08em] text-[var(--st-charcoal)]">
-                      Full name
-                    </label>
+                      <div
+                        key={group.key}
+                        className="st-card overflow-hidden"
+                      >
 
-                    <div className="relative">
+                        <div className="border-b border-[var(--st-border)] bg-white px-5 py-4">
 
-                      <User
-                        size={16}
-                        className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--st-gray)]"
-                      />
+                          <p className="m-0 text-[13px] font-bold text-[var(--st-charcoal-dark)]">
+                            {formatDate(
+                              group.date
+                            )}
+                          </p>
 
-                      <input
-                        type="text"
-                        value={name}
-                        onChange={(e) =>
-                          setName(
-                            e.target.value
-                          )
+                          <p className="mt-1 mb-0 text-[9px] text-[var(--st-gray)]">
+
+                            {
+                              group
+                                .slots
+                                .length
+                            }{" "}
+                            available time
+                            {group.slots
+                              .length ===
+                            1
+                              ? ""
+                              : "s"}
+
+                          </p>
+
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-2 p-4 sm:grid-cols-3">
+
+                          {group.slots.map(
+                            (slot) => (
+
+                              <button
+                                key={
+                                  slot.id
+                                }
+                                type="button"
+                                onClick={() =>
+                                  selectSlot(
+                                    slot
+                                  )
+                                }
+                                className="rounded-xl border border-[var(--st-border)] bg-white px-3 py-3 text-center text-[var(--st-charcoal-dark)] transition-all hover:border-[var(--st-red)] hover:bg-[var(--st-bg-soft)]"
+                              >
+
+                                <span className="block text-[12px] font-bold">
+                                  {formatTime(
+                                    slot.starts_at
+                                  )}
+                                </span>
+
+                                <span className="mt-1 block text-[8px] text-[var(--st-gray)]">
+                                  60 min
+                                </span>
+
+                              </button>
+
+                            )
+                          )}
+
+                        </div>
+
+                      </div>
+
+                    )
+                  )}
+
+                </div>
+
+              )}
+
+            </section>
+          )}
+
+        {/* SELECTED SLOT + DETAILS */}
+
+        {selectedSlot &&
+          instrument && (
+            <section className="mt-9">
+
+              <p className="mb-3 text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--st-charcoal)]">
+                02 · Your selected trial
+              </p>
+
+              <div className="st-card overflow-hidden">
+
+                {/* SELECTED SLOT */}
+
+                <div className="bg-[var(--st-red)] px-5 py-6 text-white">
+
+                  <p className="m-0 text-[9px] font-bold uppercase tracking-[0.15em] text-white/70">
+                    SELECTED TIME
+                  </p>
+
+                  <div className="mt-3 flex items-start justify-between gap-4">
+
+                    <div className="min-w-0">
+
+                      <h2 className="m-0 text-[23px] font-bold tracking-[-0.03em]">
+                        {
+                          instrumentInfo[
+                            instrument
+                          ].name
                         }
-                        placeholder="Your full name"
-                        autoComplete="name"
-                        className="w-full rounded-xl border border-[var(--st-border)] bg-white py-3.5 pl-11 pr-4 text-[12px] outline-none focus:border-[var(--st-red)] focus:ring-2 focus:ring-[var(--st-red)]/10"
-                      />
+                      </h2>
+
+                      <p className="mt-2 mb-0 text-[12px] font-medium text-white/85">
+                        {formatLongDate(
+                          new Date(
+                            selectedSlot.starts_at
+                          )
+                        )}
+                      </p>
+
+                      <p className="mt-2 mb-0 text-[25px] font-extrabold leading-none tracking-[-0.04em] text-white sm:text-[29px]">
+                        {formatTimeRange(
+                          selectedSlot
+                        )}
+                      </p>
+
+                      <p className="mt-2 mb-0 text-[9px] font-medium uppercase tracking-[0.08em] text-white/65">
+                        60-minute free
+                        trial lesson
+                      </p>
 
                     </div>
 
-                  </div>
-
-                  {/* EMAIL */}
-
-                  <div>
-
-                    <label className="mb-2 block text-[10px] font-bold uppercase tracking-[0.08em] text-[var(--st-charcoal)]">
-                      Email address
-                    </label>
-
-                    <div className="relative">
-
-                      <Mail
-                        size={16}
-                        className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--st-gray)]"
-                      />
-
-                      <input
-                        type="email"
-                        value={email}
-                        onChange={(e) =>
-                          setEmail(
-                            e.target.value
-                          )
-                        }
-                        placeholder="you@example.com"
-                        autoComplete="email"
-                        className="w-full rounded-xl border border-[var(--st-border)] bg-white py-3.5 pl-11 pr-4 text-[12px] outline-none focus:border-[var(--st-red)] focus:ring-2 focus:ring-[var(--st-red)]/10"
-                      />
-
+                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-white/15">
+                      <Check size={19} />
                     </div>
-
-                  </div>
-
-                  {/* WHATSAPP */}
-
-                  <div>
-
-                    <label className="mb-2 block text-[10px] font-bold uppercase tracking-[0.08em] text-[var(--st-charcoal)]">
-                      WhatsApp number
-                    </label>
-
-                    <div className="relative">
-
-                      <Phone
-                        size={16}
-                        className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--st-gray)]"
-                      />
-
-                      <input
-                        type="tel"
-                        inputMode="tel"
-                        value={whatsapp}
-                        onChange={(e) =>
-                          setWhatsapp(
-                            e.target.value
-                          )
-                        }
-                        placeholder="+254 712 345 678"
-                        autoComplete="tel"
-                        className="w-full rounded-xl border border-[var(--st-border)] bg-white py-3.5 pl-11 pr-4 text-[12px] outline-none focus:border-[var(--st-red)] focus:ring-2 focus:ring-[var(--st-red)]/10"
-                      />
-
-                    </div>
-
-                    <p className="mt-2 mb-0 text-[9px] text-[var(--st-gray)]">
-                      Enter your WhatsApp number in
-                      international format, e.g.
-                      +254 712 345 678
-                    </p>
 
                   </div>
 
                 </div>
 
-                {/* ERROR */}
+                {/* DETAILS */}
 
-                {error && (
-                  <div className="mt-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3">
+                <div className="p-5 sm:p-7">
 
-                    <p className="m-0 text-[10px] leading-relaxed text-red-700">
-                      {error}
+                  <div className="mb-6">
+
+                    <p className="m-0 text-[9px] font-bold uppercase tracking-[0.12em] text-[var(--st-gray)]">
+                      03 · Your details
+                    </p>
+
+                    <p className="mt-2 mb-0 text-[10px] text-[var(--st-gray)]">
+                      Your selected time
+                      is reserved on
+                      this screen while
+                      you complete your
+                      details.
                     </p>
 
                   </div>
-                )}
 
-                {/* CONFIRM */}
+                  <div className="space-y-5">
 
-                <button
-                  type="button"
-                  onClick={handleBooking}
-                  disabled={submitting}
-                  className="st-button st-button-primary mt-6 w-full disabled:cursor-not-allowed disabled:opacity-60"
-                >
+                    {/* NAME */}
 
-                  {submitting ? (
-                    <>
-                      <Loader2
-                        size={15}
-                        className="animate-spin"
-                      />
-                      Confirming...
-                    </>
-                  ) : (
-                    <>
-                      Confirm free trial
-                      <ArrowRight size={15} />
-                    </>
+                    <div>
+
+                      <label className="mb-2 block text-[10px] font-bold uppercase tracking-[0.08em] text-[var(--st-charcoal)]">
+                        Full name
+                      </label>
+
+                      <div className="relative">
+
+                        <User
+                          size={16}
+                          className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--st-gray)]"
+                        />
+
+                        <input
+                          type="text"
+                          value={name}
+                          onChange={(e) =>
+                            setName(
+                              e.target
+                                .value
+                            )
+                          }
+                          placeholder="Your full name"
+                          autoComplete="name"
+                          className="w-full rounded-xl border border-[var(--st-border)] bg-white py-3.5 pl-11 pr-4 text-[12px] outline-none focus:border-[var(--st-red)] focus:ring-2 focus:ring-[var(--st-red)]/10"
+                        />
+
+                      </div>
+
+                    </div>
+
+                    {/* EMAIL */}
+
+                    <div>
+
+                      <label className="mb-2 block text-[10px] font-bold uppercase tracking-[0.08em] text-[var(--st-charcoal)]">
+                        Email address
+                      </label>
+
+                      <div className="relative">
+
+                        <Mail
+                          size={16}
+                          className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--st-gray)]"
+                        />
+
+                        <input
+                          type="email"
+                          value={email}
+                          onChange={(e) =>
+                            setEmail(
+                              e.target
+                                .value
+                            )
+                          }
+                          placeholder="you@example.com"
+                          autoComplete="email"
+                          className="w-full rounded-xl border border-[var(--st-border)] bg-white py-3.5 pl-11 pr-4 text-[12px] outline-none focus:border-[var(--st-red)] focus:ring-2 focus:ring-[var(--st-red)]/10"
+                        />
+
+                      </div>
+
+                    </div>
+
+                    {/* WHATSAPP */}
+
+                    <div>
+
+                      <label className="mb-2 block text-[10px] font-bold uppercase tracking-[0.08em] text-[var(--st-charcoal)]">
+                        WhatsApp number
+                      </label>
+
+                      <div className="relative">
+
+                        <Phone
+                          size={16}
+                          className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--st-gray)]"
+                        />
+
+                        <input
+                          type="tel"
+                          inputMode="tel"
+                          value={whatsapp}
+                          onChange={(e) =>
+                            setWhatsapp(
+                              e.target
+                                .value
+                            )
+                          }
+                          placeholder="+254 712 345 678"
+                          autoComplete="tel"
+                          className="w-full rounded-xl border border-[var(--st-border)] bg-white py-3.5 pl-11 pr-4 text-[12px] outline-none focus:border-[var(--st-red)] focus:ring-2 focus:ring-[var(--st-red)]/10"
+                        />
+
+                      </div>
+
+                      <p className="mt-2 mb-0 text-[9px] text-[var(--st-gray)]">
+                        Enter your WhatsApp
+                        number in
+                        international format,
+                        e.g. +254 712 345 678
+                      </p>
+
+                    </div>
+
+                  </div>
+
+                  {/* ERROR */}
+
+                  {error && (
+                    <div className="mt-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3">
+
+                      <p className="m-0 text-[10px] leading-relaxed text-red-700">
+                        {error}
+                      </p>
+
+                    </div>
                   )}
 
-                </button>
+                  {/* CONFIRM */}
 
-                {/* CHANGE TIME */}
+                  <button
+                    type="button"
+                    onClick={
+                      handleBooking
+                    }
+                    disabled={
+                      submitting
+                    }
+                    className="st-button st-button-primary mt-6 w-full disabled:cursor-not-allowed disabled:opacity-60"
+                  >
 
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSelectedSlot(null);
-                    setError("");
-                  }}
-                  className="mx-auto mt-4 flex items-center gap-2 text-[10px] font-bold text-[var(--st-gray)]"
-                >
+                    {submitting ? (
+                      <>
+                        <Loader2
+                          size={15}
+                          className="animate-spin"
+                        />
+                        Confirming...
+                      </>
+                    ) : (
+                      <>
+                        Confirm free
+                        trial
+                        <ArrowRight
+                          size={15}
+                        />
+                      </>
+                    )}
 
-                  <ArrowLeft size={13} />
+                  </button>
 
-                  Choose a different time
+                  {/* CHANGE TIME */}
 
-                </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedSlot(
+                        null
+                      );
+                      setError("");
+                    }}
+                    className="mx-auto mt-4 flex items-center gap-2 text-[10px] font-bold text-[var(--st-gray)]"
+                  >
 
-                <p className="mt-5 text-center text-[9px] leading-relaxed text-[var(--st-gray)]">
-                  By booking, you agree that Sauti Tamu
-                  may contact you about your trial lesson
-                  and learning program.
-                </p>
+                    <ArrowLeft
+                      size={13}
+                    />
+
+                    Choose a
+                    different time
+
+                  </button>
+
+                  <p className="mt-5 text-center text-[9px] leading-relaxed text-[var(--st-gray)]">
+                    By booking, you agree
+                    that Sauti Tamu may
+                    contact you about your
+                    trial lesson and
+                    learning program.
+                  </p>
+
+                </div>
 
               </div>
 
-            </div>
-
-          </section>
-        )}
+            </section>
+          )}
 
         {/* CHANGE INSTRUMENT */}
 
-        {instrument && !selectedSlot && (
-          <button
-            type="button"
-            onClick={() => {
-              setInstrument(null);
-              setSelectedSlot(null);
-              setError("");
-            }}
-            className="mx-auto mt-7 flex items-center gap-2 text-[10px] font-bold text-[var(--st-gray)]"
-          >
+        {instrument &&
+          !selectedSlot && (
+            <button
+              type="button"
+              onClick={() => {
+                setInstrument(null);
+                setSelectedSlot(null);
+                setError("");
+              }}
+              className="mx-auto mt-7 flex items-center gap-2 text-[10px] font-bold text-[var(--st-gray)]"
+            >
 
-            <ArrowLeft size={13} />
+              <ArrowLeft
+                size={13}
+              />
 
-            Change instrument
+              Change instrument
 
-          </button>
-        )}
+            </button>
+          )}
 
       </div>
 
