@@ -10,7 +10,7 @@ export async function GET() {
       await resend.emails.send({
         from:
           "Sauti Tamu Piano Center <onboarding@resend.dev>",
-        to: ["marvelelectrical77@gmail.com"],
+        to: ["machukimuiruri123@gmail.com"],
         subject:
           "Sauti Tamu — Email System Test",
         html: `
