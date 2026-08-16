@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   CalendarDays,
   Check,
@@ -10,6 +10,7 @@ import {
   Music2,
   RefreshCw,
   Settings,
+  Save,
 } from "lucide-react";
 
 import AppShell from "@/components/layout/AppShell";
@@ -76,10 +77,7 @@ const defaultSchedule: DaySchedule[] = [
 ];
 
 function timeToMinutes(time: string) {
-  const [hours, minutes] = time
-    .split(":")
-    .map(Number);
-
+  const [hours, minutes] = time.split(":").map(Number);
   return hours * 60 + minutes;
 }
 
@@ -89,18 +87,11 @@ function addDays(date: Date, days: number) {
   return result;
 }
 
-function dateKey(date: Date) {
-  return date.toISOString().slice(0, 10);
-}
-
 function formatTime(time: string) {
-  const [hour, minute] = time
-    .split(":")
-    .map(Number);
+  const [hour, minute] = time.split(":").map(Number);
 
   const suffix = hour >= 12 ? "PM" : "AM";
-  const displayHour =
-    hour % 12 === 0 ? 12 : hour % 12;
+  const displayHour = hour % 12 === 0 ? 12 : hour % 12;
 
   return `${displayHour}:${String(minute).padStart(
     2,
@@ -115,11 +106,96 @@ export default function SettingsPage() {
   const [piano, setPiano] = useState(true);
   const [guitar, setGuitar] = useState(true);
 
+  const [availabilityDays, setAvailabilityDays] =
+    useState(14);
+
+  const [loadingSettings, setLoadingSettings] =
+    useState(true);
+
+  const [savingSettings, setSavingSettings] =
+    useState(false);
+
   const [generating, setGenerating] =
     useState(false);
 
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    loadBookingSettings();
+  }, []);
+
+  async function loadBookingSettings() {
+    setLoadingSettings(true);
+
+    const { data, error } = await supabase
+      .from("booking_settings")
+      .select("availability_days")
+      .limit(1)
+      .maybeSingle();
+
+    if (error) {
+      console.error(error);
+      setError(
+        "Could not load booking page settings."
+      );
+    } else if (data) {
+      setAvailabilityDays(data.availability_days);
+    }
+
+    setLoadingSettings(false);
+  }
+
+  async function saveBookingSettings() {
+    setSavingSettings(true);
+    setMessage("");
+    setError("");
+
+    const { data: existing, error: findError } =
+      await supabase
+        .from("booking_settings")
+        .select("id")
+        .limit(1)
+        .maybeSingle();
+
+    if (findError) {
+      setError(findError.message);
+      setSavingSettings(false);
+      return;
+    }
+
+    let saveError;
+
+    if (existing?.id) {
+      const result = await supabase
+        .from("booking_settings")
+        .update({
+          availability_days: availabilityDays,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", existing.id);
+
+      saveError = result.error;
+    } else {
+      const result = await supabase
+        .from("booking_settings")
+        .insert({
+          availability_days: availabilityDays,
+        });
+
+      saveError = result.error;
+    }
+
+    if (saveError) {
+      setError(saveError.message);
+    } else {
+      setMessage(
+        `Booking page will now show availability for the next ${availabilityDays} days.`
+      );
+    }
+
+    setSavingSettings(false);
+  }
 
   const weeklySlotCount = useMemo(() => {
     let count = 0;
@@ -177,16 +253,9 @@ export default function SettingsPage() {
       }
 
       const today = new Date();
-
       today.setHours(0, 0, 0, 0);
 
       const endDate = addDays(today, 28);
-
-      /*
-       * Load existing slots first.
-       * This prevents the generator from creating
-       * duplicates when you run it again.
-       */
 
       const { data: existingSlots, error: fetchError } =
         await supabase
@@ -223,24 +292,12 @@ export default function SettingsPage() {
         is_available: boolean;
       }[] = [];
 
-      /*
-       * Generate every day for the next 28 days.
-       */
-
       for (
         let current = new Date(today);
         current < endDate;
         current = addDays(current, 1)
       ) {
         const dayIndex = current.getDay();
-
-        /*
-         * JS:
-         * 0 = Sunday
-         * 1 = Monday
-         * ...
-         * 6 = Saturday
-         */
 
         const scheduleIndex =
           dayIndex === 0 ? 6 : dayIndex - 1;
@@ -313,11 +370,6 @@ export default function SettingsPage() {
         return;
       }
 
-      /*
-       * Insert in batches so we don't send one
-       * enormous request to Supabase.
-       */
-
       const batchSize = 100;
 
       for (
@@ -377,13 +429,12 @@ export default function SettingsPage() {
           </p>
         </div>
 
-        {/* =====================================================
-            WEEKLY AVAILABILITY
-        ===================================================== */}
+        {/* WEEKLY AVAILABILITY */}
 
         <section className="st-card overflow-hidden">
 
           <div className="border-b border-[var(--st-border)] px-5 py-5 sm:px-6">
+
             <div className="flex items-start gap-3">
 
               <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[var(--st-bg-soft)] text-[var(--st-red)]">
@@ -403,6 +454,7 @@ export default function SettingsPage() {
               </div>
 
             </div>
+
           </div>
 
           <div className="divide-y divide-[var(--st-border)]">
@@ -412,8 +464,6 @@ export default function SettingsPage() {
                 key={day.day}
                 className="flex flex-col gap-4 px-5 py-4 sm:flex-row sm:items-center sm:px-6"
               >
-
-                {/* DAY */}
 
                 <div className="flex w-full items-center gap-3 sm:w-[150px]">
 
@@ -429,7 +479,6 @@ export default function SettingsPage() {
                         ? "bg-[var(--st-red)]"
                         : "bg-[#d7d2d2]"
                     }`}
-                    aria-label={`Toggle ${day.day}`}
                   >
                     <span
                       className={`absolute top-1 h-4 w-4 rounded-full bg-white shadow-sm transition-transform ${
@@ -451,8 +500,6 @@ export default function SettingsPage() {
                   </div>
 
                 </div>
-
-                {/* HOURS */}
 
                 {day.enabled ? (
                   <div className="flex flex-1 flex-col gap-3 sm:flex-row sm:items-center">
@@ -515,13 +562,115 @@ export default function SettingsPage() {
           </div>
         </section>
 
-        {/* =====================================================
-            LESSON SETTINGS
-        ===================================================== */}
+        {/* BOOKING PAGE VISIBILITY */}
+
+        <section className="st-card mt-5 p-5 sm:p-6">
+
+          <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
+
+            <div className="flex items-start gap-3">
+
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[var(--st-bg-soft)] text-[var(--st-red)]">
+                <CalendarDays size={18} />
+              </div>
+
+              <div>
+                <h2 className="st-section-title">
+                  Booking page visibility
+                </h2>
+
+                <p className="mt-1 max-w-[500px] text-[10px] leading-relaxed text-[var(--st-gray)]">
+                  Choose how far ahead customers can see
+                  available trial lessons on the public
+                  booking page.
+                </p>
+              </div>
+
+            </div>
+
+            <div className="w-full lg:w-[250px]">
+
+              <label className="mb-2 block text-[9px] font-bold uppercase tracking-[0.12em] text-[var(--st-gray)]">
+                Customer booking window
+              </label>
+
+              <select
+                value={availabilityDays}
+                onChange={(event) =>
+                  setAvailabilityDays(
+                    Number(event.target.value)
+                  )
+                }
+                disabled={loadingSettings || savingSettings}
+                className="w-full rounded-xl border border-[var(--st-border)] bg-white px-4 py-3 text-[12px] font-semibold text-[var(--st-charcoal-dark)] outline-none focus:border-[var(--st-red)]"
+              >
+                <option value={7}>
+                  Next 7 days
+                </option>
+
+                <option value={14}>
+                  Next 14 days
+                </option>
+
+                <option value={21}>
+                  Next 21 days
+                </option>
+
+                <option value={28}>
+                  Next 28 days
+                </option>
+              </select>
+
+              <p className="mt-2 mb-0 text-[9px] text-[var(--st-gray)]">
+                Recommended: 14 days
+              </p>
+
+            </div>
+
+          </div>
+
+          <div className="mt-5 flex flex-col gap-4 rounded-xl bg-[var(--st-bg-soft)] p-4 sm:flex-row sm:items-center sm:justify-between">
+
+            <div>
+              <p className="m-0 text-[10px] font-bold text-[var(--st-charcoal-dark)]">
+                Customers currently see
+              </p>
+
+              <p className="mt-1 mb-0 text-[9px] text-[var(--st-gray)]">
+                The next {availabilityDays} days of available
+                trial lessons.
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={saveBookingSettings}
+              disabled={savingSettings || loadingSettings}
+              className="st-button st-button-primary shrink-0"
+            >
+              {savingSettings ? (
+                <>
+                  <Loader2
+                    size={14}
+                    className="animate-spin"
+                  />
+                  Saving...
+                </>
+              ) : (
+                <>
+                  <Save size={14} />
+                  Save setting
+                </>
+              )}
+            </button>
+
+          </div>
+
+        </section>
+
+        {/* INSTRUMENTS + LENGTH */}
 
         <section className="mt-5 grid grid-cols-1 gap-5 lg:grid-cols-2">
-
-          {/* INSTRUMENTS */}
 
           <div className="st-card p-5 sm:p-6">
 
@@ -555,6 +704,7 @@ export default function SettingsPage() {
                     : "border-[var(--st-border)] bg-white"
                 }`}
               >
+
                 <div
                   className={`flex h-8 w-8 items-center justify-center rounded-lg ${
                     piano
@@ -578,6 +728,7 @@ export default function SettingsPage() {
                     1 slot / hour
                   </p>
                 </div>
+
               </button>
 
               <button
@@ -591,6 +742,7 @@ export default function SettingsPage() {
                     : "border-[var(--st-border)] bg-white"
                 }`}
               >
+
                 <div
                   className={`flex h-8 w-8 items-center justify-center rounded-lg ${
                     guitar
@@ -614,12 +766,12 @@ export default function SettingsPage() {
                     1 slot / hour
                   </p>
                 </div>
+
               </button>
 
             </div>
-          </div>
 
-          {/* LESSON LENGTH */}
+          </div>
 
           <div className="st-card p-5 sm:p-6">
 
@@ -661,13 +813,12 @@ export default function SettingsPage() {
               </div>
 
             </div>
+
           </div>
 
         </section>
 
-        {/* =====================================================
-            GENERATOR
-        ===================================================== */}
+        {/* GENERATOR */}
 
         <section className="mt-5 overflow-hidden rounded-2xl bg-[var(--st-charcoal-dark)] text-white">
 
@@ -747,16 +898,15 @@ export default function SettingsPage() {
             </div>
 
           </div>
+
         </section>
 
-        {/* =====================================================
-            RESULT
-        ===================================================== */}
+        {/* MESSAGES */}
 
         {message && (
           <div className="mt-4 rounded-xl border border-green-200 bg-green-50 px-4 py-4">
             <p className="m-0 text-[10px] font-bold text-green-800">
-              Availability updated
+              Settings updated
             </p>
 
             <p className="mt-1 mb-0 text-[10px] text-green-700">
@@ -768,7 +918,7 @@ export default function SettingsPage() {
         {error && (
           <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-4">
             <p className="m-0 text-[10px] font-bold text-red-800">
-              Could not generate availability
+              Something went wrong
             </p>
 
             <p className="mt-1 mb-0 text-[10px] text-red-700">
@@ -777,18 +927,17 @@ export default function SettingsPage() {
           </div>
         )}
 
-        {/* FOOTER */}
-
         <div className="mt-7 flex items-center gap-2 border-t border-[var(--st-border)] pt-5">
+
           <Settings
             size={12}
             className="text-[var(--st-gray)]"
           />
 
           <p className="m-0 text-[9px] text-[var(--st-gray)]">
-            Changes to the weekly schedule affect future
-            availability generation. Existing bookings are
-            never changed.
+            Changes to availability settings affect future
+            customer bookings. Existing bookings are never
+            changed.
           </p>
 
         </div>
