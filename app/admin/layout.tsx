@@ -1,4 +1,5 @@
 import AdminGuard from "@/components/auth/AdminGuard";
+import AppShell from "@/components/layout/AppShell";
 
 export default function AdminLayout({
   children,
@@ -7,7 +8,9 @@ export default function AdminLayout({
 }) {
   return (
     <AdminGuard>
-      {children}
+      <AppShell>
+        {children}
+      </AppShell>
     </AdminGuard>
   );
 }
