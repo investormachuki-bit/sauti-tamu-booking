@@ -6,6 +6,12 @@ const resend = new Resend(
   process.env.RESEND_API_KEY
 );
 
+/*
+ * ----------------------------------------
+ * DATE / TIME HELPERS
+ * ----------------------------------------
+ */
+
 function formatDate(dateString: string) {
   return new Intl.DateTimeFormat("en-KE", {
     weekday: "long",
@@ -33,19 +39,46 @@ function formatTimeRange(
   )}`;
 }
 
-function getInstrumentName(instrument: string) {
+function getInstrumentName(
+  instrument: string
+) {
   return instrument.toLowerCase() === "piano"
     ? "Piano"
     : "Guitar";
 }
+
+/*
+ * ----------------------------------------
+ * HTML ESCAPE
+ * ----------------------------------------
+ *
+ * Prevents customer-provided values such as
+ * names from being interpreted as HTML.
+ */
+
+function escapeHtml(value: string) {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+/*
+ * ----------------------------------------
+ * POST
+ * ----------------------------------------
+ */
 
 export async function POST(
   request: NextRequest
 ) {
   try {
     /*
-     * Make sure the required server-side
-     * configuration exists.
+     * --------------------------------------
+     * SERVER CONFIGURATION
+     * --------------------------------------
      */
 
     if (!process.env.RESEND_API_KEY) {
@@ -73,7 +106,9 @@ export async function POST(
     } = body;
 
     /*
-     * Validate request.
+     * --------------------------------------
+     * VALIDATION
+     * --------------------------------------
      */
 
     if (!slotId) {
@@ -139,9 +174,25 @@ export async function POST(
       whatsappNumber.trim();
 
     /*
-     * Create the booking atomically.
+     * Escaped versions are used only inside
+     * HTML emails.
+     */
+
+    const emailName =
+      escapeHtml(cleanName);
+
+    const emailAddress =
+      escapeHtml(cleanEmail);
+
+    const emailWhatsapp =
+      escapeHtml(cleanWhatsapp);
+
+    /*
+     * --------------------------------------
+     * CREATE BOOKING ATOMICALLY
+     * --------------------------------------
      *
-     * The Supabase function:
+     * The database RPC:
      *
      * - claims the slot
      * - prevents double booking
@@ -174,8 +225,8 @@ export async function POST(
         bookingError.message || "";
 
       /*
-       * Friendly response when somebody
-       * has already taken the slot.
+       * Friendly response when the slot has
+       * already been taken.
        */
 
       if (
@@ -229,11 +280,13 @@ export async function POST(
       bookingResult[0];
 
     /*
-     * Get the booking details from the database.
+     * --------------------------------------
+     * GET AUTHORITATIVE BOOKING DETAILS
+     * --------------------------------------
      *
-     * We deliberately use database values for
-     * instrument/date/time instead of trusting
-     * values from the browser.
+     * We use database values rather than
+     * trusting instrument/date/time values
+     * supplied by the browser.
      */
 
     const {
@@ -267,8 +320,8 @@ export async function POST(
       );
 
       /*
-       * The booking has already been created.
-       * We do not pretend it wasn't.
+       * The booking already exists.
+       * Never pretend that it failed.
        */
 
       return NextResponse.json(
@@ -277,6 +330,7 @@ export async function POST(
           bookingCreated: true,
           confirmationSent: false,
           adminNotificationSent: false,
+          followUpsCreated: false,
           warning:
             "Your booking was created, but we could not prepare the confirmation message.",
           bookingId:
@@ -286,8 +340,9 @@ export async function POST(
     }
 
     /*
-     * Database function already returned the
-     * authoritative slot times.
+     * --------------------------------------
+     * AUTHORITATIVE DATE / TIME
+     * --------------------------------------
      */
 
     const startsAt =
@@ -311,9 +366,9 @@ export async function POST(
       );
 
     /*
-     * ----------------------------------------
+     * --------------------------------------
      * CUSTOMER CONFIRMATION EMAIL
-     * ----------------------------------------
+     * --------------------------------------
      */
 
     const customerEmailResult =
@@ -354,7 +409,7 @@ export async function POST(
                 </div>
 
                 <h1 style="font-size:28px;line-height:1.2;color:#1F2933;margin:12px 0 12px;">
-                  You’re booked, ${cleanName}.
+                  You’re booked, ${emailName}.
                 </h1>
 
                 <p style="font-size:14px;line-height:1.7;color:#5B6573;margin:0;">
@@ -439,9 +494,9 @@ export async function POST(
       });
 
     /*
-     * ----------------------------------------
+     * --------------------------------------
      * ADMIN NOTIFICATION EMAIL
-     * ----------------------------------------
+     * --------------------------------------
      */
 
     const adminEmail =
@@ -495,7 +550,7 @@ export async function POST(
                   </div>
 
                   <h1 style="font-size:28px;color:#1F2933;margin:10px 0 24px;">
-                    ${cleanName}
+                    ${emailName}
                   </h1>
 
                   <!-- LESSON -->
@@ -537,15 +592,15 @@ export async function POST(
                     <div style="margin-top:12px;font-size:13px;line-height:2;color:#4B5563;">
 
                       <strong>Name:</strong>
-                      ${cleanName}
+                      ${emailName}
                       <br/>
 
                       <strong>Email:</strong>
-                      ${cleanEmail}
+                      ${emailAddress}
                       <br/>
 
                       <strong>WhatsApp:</strong>
-                      ${cleanWhatsapp}
+                      ${emailWhatsapp}
                       <br/>
 
                       <strong>Instrument:</strong>
@@ -589,9 +644,9 @@ export async function POST(
     }
 
     /*
-     * ----------------------------------------
+     * --------------------------------------
      * EMAIL RESULTS
-     * ----------------------------------------
+     * --------------------------------------
      */
 
     const customerEmailFailed =
@@ -615,8 +670,9 @@ export async function POST(
     }
 
     /*
-     * Only record confirmation_sent_at when
-     * the CUSTOMER confirmation email succeeded.
+     * --------------------------------------
+     * RECORD CUSTOMER CONFIRMATION TIME
+     * --------------------------------------
      */
 
     if (!customerEmailFailed) {
@@ -642,7 +698,272 @@ export async function POST(
     }
 
     /*
-     * Return the actual result.
+     * ======================================
+     * AUTOMATIC FOLLOW-UP TASKS
+     * ======================================
+     *
+     * We create:
+     *
+     * 1. 24-hour reminder
+     * 2. 2-hour reminder
+     * 3. Post-trial follow-up
+     *
+     * IMPORTANT:
+     *
+     * A task is created ONLY if its due time
+     * is still in the future.
+     *
+     * Therefore:
+     *
+     * Booking 30 hours before:
+     *   → 24h reminder
+     *   → 2h reminder
+     *   → post-trial
+     *
+     * Booking 10 hours before:
+     *   → 2h reminder
+     *   → post-trial
+     *
+     * Booking 1 hour before:
+     *   → post-trial
+     *
+     * The immediate confirmation email still
+     * goes out regardless of booking timing.
+     */
+
+    let followUpsCreated = 0;
+
+    try {
+      const now =
+        new Date();
+
+      const lessonStart =
+        new Date(startsAt);
+
+      const lessonEnd =
+        new Date(endsAt);
+
+      /*
+       * Build the possible follow-up tasks.
+       */
+
+      const possibleFollowUps = [
+        {
+          lead_id:
+            bookingDetails.lead_id,
+
+          booking_id:
+            bookingDetails.id,
+
+          task_type:
+            "trial_reminder_24h",
+
+          due_at:
+            new Date(
+              lessonStart.getTime() -
+                24 *
+                  60 *
+                  60 *
+                  1000
+            ).toISOString(),
+
+          status:
+            "pending",
+
+          channel:
+            null,
+
+          message_template:
+            `Reminder: ${cleanName} has a ${instrumentName} trial lesson scheduled for ${dateText} at ${timeText}.`,
+        },
+
+        {
+          lead_id:
+            bookingDetails.lead_id,
+
+          booking_id:
+            bookingDetails.id,
+
+          task_type:
+            "trial_reminder_2h",
+
+          due_at:
+            new Date(
+              lessonStart.getTime() -
+                2 *
+                  60 *
+                  60 *
+                  1000
+            ).toISOString(),
+
+          status:
+            "pending",
+
+          channel:
+            null,
+
+          message_template:
+            `Final reminder: ${cleanName} has a ${instrumentName} trial lesson today at ${timeText}.`,
+        },
+
+        {
+          lead_id:
+            bookingDetails.lead_id,
+
+          booking_id:
+            bookingDetails.id,
+
+          task_type:
+            "post_trial_follow_up",
+
+          due_at:
+            new Date(
+              lessonEnd.getTime() +
+                60 *
+                  60 *
+                  1000
+            ).toISOString(),
+
+          status:
+            "pending",
+
+          channel:
+            null,
+
+          message_template:
+            `Follow up with ${cleanName} after their ${instrumentName} trial lesson and discuss registration.`,
+        },
+      ];
+
+      /*
+       * Only retain tasks whose due time is
+       * still in the future.
+       */
+
+      const futureFollowUps =
+        possibleFollowUps.filter(
+          (task) =>
+            new Date(
+              task.due_at
+            ).getTime() >
+            now.getTime()
+        );
+
+      /*
+       * --------------------------------------
+       * CHECK FOR EXISTING TASKS
+       * --------------------------------------
+       *
+       * This protects us if the booking request
+       * is accidentally submitted twice or the
+       * API is retried.
+       */
+
+      const {
+        data: existingTasks,
+        error:
+          existingTasksError,
+      } = await supabaseServer
+        .from("follow_up_tasks")
+        .select(
+          "id, task_type"
+        )
+        .eq(
+          "booking_id",
+          bookingDetails.id
+        );
+
+      if (existingTasksError) {
+        console.error(
+          "Could not check existing follow-up tasks:",
+          existingTasksError
+        );
+      } else {
+        const existingTaskTypes =
+          new Set(
+            (
+              existingTasks ||
+              []
+            ).map(
+              (task) =>
+                task.task_type
+            )
+          );
+
+        /*
+         * Remove anything that already exists.
+         */
+
+        const tasksToCreate =
+          futureFollowUps.filter(
+            (task) =>
+              !existingTaskTypes.has(
+                task.task_type
+              )
+          );
+
+        /*
+         * ------------------------------------
+         * INSERT FOLLOW-UP TASKS
+         * ------------------------------------
+         */
+
+        if (
+          tasksToCreate.length >
+          0
+        ) {
+          const {
+            error:
+              followUpInsertError,
+          } = await supabaseServer
+            .from(
+              "follow_up_tasks"
+            )
+            .insert(
+              tasksToCreate
+            );
+
+          if (
+            followUpInsertError
+          ) {
+            console.error(
+              "Follow-up task creation failed:",
+              followUpInsertError
+            );
+          } else {
+            followUpsCreated =
+              tasksToCreate.length;
+
+            console.log(
+              `Created ${tasksToCreate.length} follow-up task(s) for booking ${bookingDetails.id}`
+            );
+          }
+        } else {
+          console.log(
+            `No new follow-up tasks needed for booking ${bookingDetails.id}`
+          );
+        }
+      }
+    } catch (
+      followUpError
+    ) {
+      /*
+       * VERY IMPORTANT:
+       *
+       * Follow-up failure must NEVER turn a
+       * successful booking into a failed booking.
+       */
+
+      console.error(
+        "Unexpected follow-up creation error:",
+        followUpError
+      );
+    }
+
+    /*
+     * --------------------------------------
+     * RETURN ACTUAL RESULT
+     * --------------------------------------
      */
 
     return NextResponse.json({
@@ -656,6 +977,8 @@ export async function POST(
       adminNotificationSent:
         !adminEmailFailed &&
         Boolean(adminEmail),
+
+      followUpsCreated,
 
       bookingId:
         bookingDetails.id,
