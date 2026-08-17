@@ -1,10 +1,10 @@
 "use client";
 
+import { useEffect, useMemo, useState } from "react";
 import {
+  ArrowRight,
   Check,
   CheckCircle2,
-  ChevronRight,
-  Clock3,
   Mail,
   MessageCircle,
   MoreHorizontal,
@@ -16,101 +16,88 @@ import {
   Users,
   X,
 } from "lucide-react";
-import { FormEvent, useEffect, useMemo, useState } from "react";
 
-import { createClient } from "@/lib/supabase/client";
+import { supabase } from "@/lib/supabase";
 
-type LeadStatus = "new" | "contacted" | "registered";
+type LeadStatus =
+  | "new"
+  | "contacted"
+  | "registered";
 
 type Lead = {
   id: string;
   full_name: string;
-  whatsapp_number: string;
   email: string;
+  whatsapp_number: string;
   status: LeadStatus;
-  first_contact_at: string;
-  last_contact_at: string | null;
-  next_follow_up_at: string | null;
-  notes: string | null;
   created_at: string;
-  updated_at: string;
 };
 
-type FilterStatus = "all" | LeadStatus;
-
-const supabase = createClient();
+const NAIROBI_TIME_ZONE = "Africa/Nairobi";
 
 /* =========================================================
    HELPERS
 ========================================================= */
 
-function getInitials(name: string) {
+function formatDate(dateString: string) {
+  return new Intl.DateTimeFormat("en-KE", {
+    timeZone: NAIROBI_TIME_ZONE,
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  }).format(new Date(dateString));
+}
+
+function formatLongDate(dateString: string) {
+  return new Intl.DateTimeFormat("en-KE", {
+    timeZone: NAIROBI_TIME_ZONE,
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  }).format(new Date(dateString));
+}
+
+function initials(name: string) {
   return name
     .trim()
     .split(/\s+/)
-    .map((part) => part[0])
+    .map((word) => word[0])
     .join("")
     .slice(0, 2)
     .toUpperCase();
 }
 
-function formatDate(value: string | null) {
-  if (!value) return "—";
+function prettyStatus(status: LeadStatus) {
+  switch (status) {
+    case "new":
+      return "New";
 
-  return new Intl.DateTimeFormat("en-GB", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-    timeZone: "Africa/Nairobi",
-  }).format(new Date(value));
-}
+    case "contacted":
+      return "Contacted";
 
-function formatRelativeDate(value: string) {
-  const date = new Date(value);
+    case "registered":
+      return "Registered";
 
-  return new Intl.DateTimeFormat("en-GB", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-    timeZone: "Africa/Nairobi",
-  }).format(date);
-}
-
-function formatFollowUp(value: string | null) {
-  if (!value) return "No follow-up scheduled";
-
-  const date = new Date(value);
-  const now = new Date();
-
-  const today = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Africa/Nairobi",
-  }).format(now);
-
-  const followUpDay = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Africa/Nairobi",
-  }).format(date);
-
-  if (followUpDay === today) {
-    return `Today · ${new Intl.DateTimeFormat("en-GB", {
-      hour: "numeric",
-      minute: "2-digit",
-      timeZone: "Africa/Nairobi",
-    }).format(date)}`;
+    default:
+      return status;
   }
-
-  return formatDate(value);
 }
 
-function isFollowUpDue(value: string | null) {
-  if (!value) return false;
+function statusClasses(status: LeadStatus) {
+  switch (status) {
+    case "new":
+      return "bg-red-50 text-[var(--st-red)]";
 
-  return new Date(value).getTime() <= Date.now();
-}
+    case "contacted":
+      return "bg-amber-50 text-amber-700";
 
-function statusLabel(status: LeadStatus) {
-  if (status === "new") return "New";
-  if (status === "contacted") return "Contacted";
-  return "Registered";
+    case "registered":
+      return "bg-green-50 text-green-700";
+
+    default:
+      return "bg-gray-50 text-gray-700";
+  }
 }
 
 /* =========================================================
@@ -132,18 +119,20 @@ function StatCard({
 }) {
   return (
     <div
-      className={`st-card st-card-hover overflow-hidden p-5 ${
-        accent ? "border border-[var(--st-border-red)]" : ""
+      className={`st-card p-5 ${
+        accent
+          ? "border border-[var(--st-border-red)]"
+          : ""
       }`}
     >
       <div className="flex items-start justify-between gap-4">
-        <div className="min-w-0">
-          <p className="m-0 text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--st-gray)]">
+        <div>
+          <p className="m-0 text-[10px] font-bold uppercase tracking-[0.08em] text-[var(--st-gray)]">
             {label}
           </p>
 
           <p
-            className={`mt-3 mb-0 text-[34px] font-bold leading-none tracking-[-0.04em] ${
+            className={`mt-3 mb-0 text-[32px] font-bold leading-none tracking-[-0.04em] ${
               accent
                 ? "text-[var(--st-red)]"
                 : "text-[var(--st-charcoal-dark)]"
@@ -152,12 +141,12 @@ function StatCard({
             {value}
           </p>
 
-          <p className="mt-3 mb-0 text-[10px] leading-relaxed text-[var(--st-gray)]">
+          <p className="mt-3 mb-0 text-[10px] text-[var(--st-gray)]">
             {description}
           </p>
         </div>
 
-        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[var(--st-bg-soft)] text-[var(--st-red)]">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[var(--st-bg-soft)] text-[var(--st-red)]">
           {icon}
         </div>
       </div>
@@ -166,285 +155,93 @@ function StatCard({
 }
 
 /* =========================================================
-   STATUS BADGE
-========================================================= */
-
-function StatusBadge({ status }: { status: LeadStatus }) {
-  const classes =
-    status === "registered"
-      ? "st-badge st-badge-green"
-      : status === "contacted"
-        ? "st-badge st-badge-yellow"
-        : "st-badge st-badge-red";
-
-  return (
-    <span className={classes}>
-      {status === "registered" && <CheckCircle2 size={11} />}
-      {statusLabel(status)}
-    </span>
-  );
-}
-
-/* =========================================================
-   LEAD CARD
-========================================================= */
-
-function LeadCard({
-  lead,
-  onView,
-  onStatusChange,
-  onMenu,
-  menuOpen,
-}: {
-  lead: Lead;
-  onView: () => void;
-  onStatusChange: (status: LeadStatus) => void;
-  onMenu: () => void;
-  menuOpen: boolean;
-}) {
-  const whatsappUrl = `https://wa.me/${lead.whatsapp_number.replace(
-    /\D/g,
-    "",
-  )}`;
-
-  const telUrl = `tel:${lead.whatsapp_number}`;
-
-  const mailUrl = `mailto:${lead.email}`;
-
-  return (
-    <article className="st-card relative overflow-visible">
-      {/* HEADER */}
-
-      <div className="flex items-start justify-between gap-4 p-5">
-        <button
-          type="button"
-          onClick={onView}
-          className="flex min-w-0 items-center gap-3 text-left"
-        >
-          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[var(--st-bg-soft)] text-[11px] font-bold text-[var(--st-red)]">
-            {getInitials(lead.full_name)}
-          </div>
-
-          <div className="min-w-0">
-            <p className="m-0 truncate text-[13px] font-bold text-[var(--st-charcoal-dark)]">
-              {lead.full_name}
-            </p>
-
-            <p className="mt-1 mb-0 text-[10px] text-[var(--st-gray)]">
-              Added {formatRelativeDate(lead.created_at)}
-            </p>
-          </div>
-        </button>
-
-        <div className="relative shrink-0">
-          <button
-            type="button"
-            onClick={onMenu}
-            className="st-icon-button"
-            aria-label={`More options for ${lead.full_name}`}
-          >
-            <MoreHorizontal size={17} />
-          </button>
-
-          {menuOpen && (
-            <div className="absolute right-0 top-11 z-30 w-48 overflow-hidden rounded-2xl border border-[var(--st-border)] bg-white shadow-xl">
-              <button
-                type="button"
-                onClick={() => onStatusChange("new")}
-                className="block w-full px-4 py-3 text-left text-[11px] text-[var(--st-charcoal-dark)] hover:bg-[var(--st-bg-soft)]"
-              >
-                Mark as new
-              </button>
-
-              <button
-                type="button"
-                onClick={() => onStatusChange("contacted")}
-                className="block w-full px-4 py-3 text-left text-[11px] text-[var(--st-charcoal-dark)] hover:bg-[var(--st-bg-soft)]"
-              >
-                Mark contacted
-              </button>
-
-              <button
-                type="button"
-                onClick={() => onStatusChange("registered")}
-                className="block w-full px-4 py-3 text-left text-[11px] text-[var(--st-charcoal-dark)] hover:bg-[var(--st-bg-soft)]"
-              >
-                Mark registered
-              </button>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* STATUS */}
-
-      <div className="px-5 pb-4">
-        <StatusBadge status={lead.status} />
-      </div>
-
-      {/* CONTACT DETAILS */}
-
-      <div className="space-y-2 border-t border-[var(--st-border)] px-5 py-4">
-        <a
-          href={mailUrl}
-          className="flex min-w-0 items-center gap-3 rounded-full bg-[var(--st-bg-soft)] px-4 py-3 transition-colors hover:bg-white"
-        >
-          <Mail
-            size={16}
-            className="shrink-0 text-[var(--st-red)]"
-          />
-
-          <span className="min-w-0 truncate text-[11px] text-[var(--st-charcoal-dark)]">
-            {lead.email}
-          </span>
-        </a>
-
-        <a
-          href={telUrl}
-          className="flex min-w-0 items-center gap-3 rounded-full bg-[var(--st-bg-soft)] px-4 py-3 transition-colors hover:bg-white"
-        >
-          <Phone
-            size={16}
-            className="shrink-0 text-[var(--st-red)]"
-          />
-
-          <span className="min-w-0 truncate text-[11px] text-[var(--st-charcoal-dark)]">
-            {lead.whatsapp_number}
-          </span>
-        </a>
-      </div>
-
-      {/* FOLLOW UP */}
-
-      <div className="border-t border-[var(--st-border)] px-5 py-4">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="min-w-0">
-            <p className="m-0 text-[9px] font-semibold uppercase tracking-[0.08em] text-[var(--st-gray)]">
-              Next follow-up
-            </p>
-
-            <p
-              className={`mt-1 mb-0 text-[11px] font-semibold ${
-                isFollowUpDue(lead.next_follow_up_at)
-                  ? "text-[var(--st-red)]"
-                  : "text-[var(--st-charcoal-dark)]"
-              }`}
-            >
-              {formatFollowUp(lead.next_follow_up_at)}
-            </p>
-          </div>
-
-          <button
-            type="button"
-            onClick={onView}
-            className="flex shrink-0 items-center gap-1 text-left text-[11px] font-bold text-[var(--st-red)]"
-          >
-            View lead
-            <ChevronRight size={14} />
-          </button>
-        </div>
-      </div>
-
-      {/* CONTACT ACTIONS */}
-
-      <div className="grid grid-cols-3 gap-2 border-t border-[var(--st-border)] bg-[var(--st-bg-soft)] p-3">
-        <a
-          href={whatsappUrl}
-          target="_blank"
-          rel="noreferrer"
-          className="flex min-h-[42px] items-center justify-center gap-2 rounded-full bg-white px-2 text-[10px] font-semibold text-[var(--st-charcoal-dark)] transition-colors hover:text-[var(--st-red)]"
-        >
-          <MessageCircle size={15} />
-          <span>WhatsApp</span>
-        </a>
-
-        <a
-          href={telUrl}
-          className="flex min-h-[42px] items-center justify-center gap-2 rounded-full bg-white px-2 text-[10px] font-semibold text-[var(--st-charcoal-dark)] transition-colors hover:text-[var(--st-red)]"
-        >
-          <Phone size={15} />
-          <span>Call</span>
-        </a>
-
-        <a
-          href={mailUrl}
-          className="flex min-h-[42px] items-center justify-center gap-2 rounded-full bg-white px-2 text-[10px] font-semibold text-[var(--st-charcoal-dark)] transition-colors hover:text-[var(--st-red)]"
-        >
-          <Mail size={15} />
-          <span>Email</span>
-        </a>
-      </div>
-    </article>
-  );
-}
-
-/* =========================================================
    PAGE
 ========================================================= */
 
-export default function LeadsPage() {
+export default function AdminLeadsPage() {
   const [leads, setLeads] = useState<Lead[]>([]);
+
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
+  const [error, setError] = useState("");
+
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] =
-    useState<FilterStatus>("all");
+
+  const [filter, setFilter] = useState<
+    "all" | LeadStatus
+  >("all");
 
   const [selectedLead, setSelectedLead] =
     useState<Lead | null>(null);
 
-  const [openMenuId, setOpenMenuId] =
+  const [menuLeadId, setMenuLeadId] =
     useState<string | null>(null);
 
-  const [showAddModal, setShowAddModal] =
+  const [updatingId, setUpdatingId] =
+    useState<string | null>(null);
+
+  const [showAddLead, setShowAddLead] =
     useState(false);
 
-  const [saving, setSaving] = useState(false);
+  const [addingLead, setAddingLead] =
+    useState(false);
 
-  const [form, setForm] = useState({
+  const [newLead, setNewLead] = useState({
     full_name: "",
     email: "",
     whatsapp_number: "",
-    notes: "",
   });
 
-  /* =======================================================
+  /* =========================================================
      LOAD LEADS
-  ======================================================= */
+  ========================================================= */
 
-  async function loadLeads(showRefreshState = false) {
-    if (showRefreshState) {
+  async function loadLeads(silent = false) {
+    if (silent) {
       setRefreshing(true);
     } else {
       setLoading(true);
     }
 
-    const { data, error } = await supabase
+    setError("");
+
+    const {
+      data,
+      error: loadError,
+    } = await supabase
       .from("leads")
       .select(
         `
           id,
           full_name,
-          whatsapp_number,
           email,
+          whatsapp_number,
           status,
-          first_contact_at,
-          last_contact_at,
-          next_follow_up_at,
-          notes,
-          created_at,
-          updated_at
-        `,
+          created_at
+        `
       )
-      .order("created_at", { ascending: false });
+      .order("created_at", {
+        ascending: false,
+      });
 
-    if (error) {
-      console.error("Failed to load leads:", error);
-      setLeads([]);
-    } else {
-      setLeads((data ?? []) as Lead[]);
+    if (loadError) {
+      console.error(
+        "Lead load error:",
+        loadError
+      );
+
+      setError(
+        "We couldn't load your leads. Please try again."
+      );
+
+      setLoading(false);
+      setRefreshing(false);
+
+      return;
     }
+
+    setLeads((data ?? []) as Lead[]);
 
     setLoading(false);
     setRefreshing(false);
@@ -454,280 +251,366 @@ export default function LeadsPage() {
     loadLeads();
   }, []);
 
-  /* =======================================================
+  /* =========================================================
      STATS
-  ======================================================= */
+  ========================================================= */
 
   const stats = useMemo(() => {
-    const total = leads.length;
-
-    const newLeads = leads.filter(
-      (lead) => lead.status === "new",
-    ).length;
-
-    const contacted = leads.filter(
-      (lead) => lead.status === "contacted",
-    ).length;
-
-    const registered = leads.filter(
-      (lead) => lead.status === "registered",
-    ).length;
-
-    const followUpsDue = leads.filter((lead) =>
-      isFollowUpDue(lead.next_follow_up_at),
-    ).length;
-
     return {
-      total,
-      newLeads,
-      contacted,
-      registered,
-      followUpsDue,
+      total: leads.length,
+
+      newLeads: leads.filter(
+        (lead) => lead.status === "new"
+      ).length,
+
+      contacted: leads.filter(
+        (lead) => lead.status === "contacted"
+      ).length,
+
+      registered: leads.filter(
+        (lead) => lead.status === "registered"
+      ).length,
     };
   }, [leads]);
 
-  /* =======================================================
-     FILTERED LEADS
-  ======================================================= */
+  /* =========================================================
+     FILTER
+  ========================================================= */
 
   const filteredLeads = useMemo(() => {
-    const query = search.trim().toLowerCase();
+    const query = search
+      .trim()
+      .toLowerCase();
 
     return leads.filter((lead) => {
-      const matchesStatus =
-        statusFilter === "all" ||
-        lead.status === statusFilter;
+      if (
+        filter !== "all" &&
+        lead.status !== filter
+      ) {
+        return false;
+      }
 
-      if (!matchesStatus) return false;
+      if (!query) {
+        return true;
+      }
 
-      if (!query) return true;
+      const searchable = [
+        lead.full_name,
+        lead.email,
+        lead.whatsapp_number,
+        lead.status,
+      ]
+        .join(" ")
+        .toLowerCase();
 
-      return (
-        lead.full_name.toLowerCase().includes(query) ||
-        lead.email.toLowerCase().includes(query) ||
-        lead.whatsapp_number
-          .toLowerCase()
-          .includes(query)
-      );
+      return searchable.includes(query);
     });
-  }, [leads, search, statusFilter]);
+  }, [leads, search, filter]);
 
-  /* =======================================================
+  /* =========================================================
      UPDATE STATUS
-  ======================================================= */
+  ========================================================= */
 
-  async function updateStatus(
-    leadId: string,
-    status: LeadStatus,
+  async function updateLeadStatus(
+    lead: Lead,
+    status: LeadStatus
   ) {
-    setOpenMenuId(null);
+    setUpdatingId(lead.id);
+    setError("");
 
-    const { error } = await supabase
+    const {
+      data,
+      error: updateError,
+    } = await supabase
       .from("leads")
       .update({
         status,
-        updated_at: new Date().toISOString(),
       })
-      .eq("id", leadId);
+      .eq("id", lead.id)
+      .select(
+        `
+          id,
+          full_name,
+          email,
+          whatsapp_number,
+          status,
+          created_at
+        `
+      )
+      .single();
 
-    if (error) {
-      console.error("Failed to update lead:", error);
+    if (updateError) {
+      console.error(
+        "Lead status update error:",
+        updateError
+      );
+
+      setError(
+        "We couldn't update this lead."
+      );
+
+      setUpdatingId(null);
+      setMenuLeadId(null);
+
       return;
     }
+
+    const updatedLead = data as Lead;
 
     setLeads((current) =>
-      current.map((lead) =>
-        lead.id === leadId
-          ? {
-              ...lead,
-              status,
-              updated_at: new Date().toISOString(),
-            }
-          : lead,
-      ),
+      current.map((item) =>
+        item.id === lead.id
+          ? updatedLead
+          : item
+      )
     );
-
-    setSelectedLead((current) =>
-      current?.id === leadId
-        ? {
-            ...current,
-            status,
-            updated_at: new Date().toISOString(),
-          }
-        : current,
-    );
-  }
-
-  /* =======================================================
-     ADD LEAD
-  ======================================================= */
-
-  async function handleAddLead(event: FormEvent) {
-    event.preventDefault();
 
     if (
-      !form.full_name.trim() ||
-      !form.email.trim() ||
-      !form.whatsapp_number.trim()
+      selectedLead?.id === lead.id
     ) {
+      setSelectedLead(updatedLead);
+    }
+
+    setMenuLeadId(null);
+    setUpdatingId(null);
+  }
+
+  /* =========================================================
+     ADD LEAD
+  ========================================================= */
+
+  async function handleAddLead(
+    event: React.FormEvent<HTMLFormElement>
+  ) {
+    event.preventDefault();
+
+    const name =
+      newLead.full_name.trim();
+
+    const email =
+      newLead.email.trim();
+
+    const phone =
+      newLead.whatsapp_number.trim();
+
+    if (!name || !email || !phone) {
+      setError(
+        "Please enter the lead's name, email and WhatsApp number."
+      );
+
       return;
     }
 
-    setSaving(true);
+    setAddingLead(true);
+    setError("");
 
-    const now = new Date().toISOString();
-
-    const { data, error } = await supabase
+    const {
+      data,
+      error: insertError,
+    } = await supabase
       .from("leads")
       .insert({
-        full_name: form.full_name.trim(),
-        email: form.email.trim(),
-        whatsapp_number: form.whatsapp_number.trim(),
-        notes: form.notes.trim() || null,
+        full_name: name,
+        email,
+        whatsapp_number: phone,
         status: "new",
-        first_contact_at: now,
       })
       .select(
         `
           id,
           full_name,
-          whatsapp_number,
           email,
+          whatsapp_number,
           status,
-          first_contact_at,
-          last_contact_at,
-          next_follow_up_at,
-          notes,
-          created_at,
-          updated_at
-        `,
+          created_at
+        `
       )
       .single();
 
-    setSaving(false);
+    if (insertError) {
+      console.error(
+        "Lead creation error:",
+        insertError
+      );
 
-    if (error) {
-      console.error("Failed to create lead:", error);
+      setError(
+        insertError.message ||
+          "We couldn't add this lead."
+      );
+
+      setAddingLead(false);
+
       return;
     }
 
+    const createdLead = data as Lead;
+
     setLeads((current) => [
-      data as Lead,
+      createdLead,
       ...current,
     ]);
 
-    setForm({
+    setNewLead({
       full_name: "",
       email: "",
       whatsapp_number: "",
-      notes: "",
     });
 
-    setShowAddModal(false);
+    setShowAddLead(false);
+    setAddingLead(false);
   }
 
-  /* =======================================================
-     UPDATE SELECTED LEAD
-  ======================================================= */
+  /* =========================================================
+     CONTACT ACTIONS
+  ========================================================= */
 
-  function handleSelectedStatus(status: LeadStatus) {
-    if (!selectedLead) return;
+  function openWhatsApp(lead: Lead) {
+    if (!lead.whatsapp_number) {
+      return;
+    }
 
-    updateStatus(selectedLead.id, status);
+    const cleanPhone =
+      lead.whatsapp_number.replace(
+        /[^0-9+]/g,
+        ""
+      );
+
+    const message = `Hello ${lead.full_name}, this is Sauti Tamu Piano Center. We wanted to follow up with you regarding your interest in our piano and guitar lessons.`;
+
+    window.open(
+      `https://wa.me/${cleanPhone.replace(
+        "+",
+        ""
+      )}?text=${encodeURIComponent(
+        message
+      )}`,
+      "_blank"
+    );
   }
 
-  /* =======================================================
+  function callLead(lead: Lead) {
+    if (!lead.whatsapp_number) {
+      return;
+    }
+
+    window.location.href = `tel:${lead.whatsapp_number}`;
+  }
+
+  function emailLead(lead: Lead) {
+    if (!lead.email) {
+      return;
+    }
+
+    window.location.href = `mailto:${lead.email}`;
+  }
+
+  /* =========================================================
      RENDER
-  ======================================================= */
+  ========================================================= */
 
   return (
-    <main className="st-content overflow-x-hidden">
-      {/* ===================================================
-          HEADER
-      =================================================== */}
+    <main className="st-content">
 
-      <div className="mb-7 flex flex-col justify-between gap-5 md:flex-row md:items-end">
-        <div className="min-w-0">
-          <p className="st-eyebrow">CRM</p>
+      {/* =====================================================
+          HEADER
+      ===================================================== */}
+
+      <div className="mb-7 flex flex-col gap-5 md:flex-row md:items-end md:justify-between">
+
+        <div>
+          <p className="st-eyebrow">
+            CRM
+          </p>
 
           <h1 className="st-page-title mt-2">
             Leads
           </h1>
 
           <p className="st-page-description">
-            Manage enquiries, follow-ups and people moving
-            toward registration.
+            Manage enquiries, follow-ups and people
+            moving toward registration.
           </p>
         </div>
 
-        <div className="flex shrink-0 gap-2">
+        <div className="flex w-full gap-2 md:w-auto">
+
           <button
             type="button"
-            onClick={() => loadLeads(true)}
-            disabled={refreshing}
-            className="st-button st-button-secondary"
+            onClick={() =>
+              loadLeads(true)
+            }
+            className="st-button st-button-secondary flex-1 md:flex-none"
           >
             <RefreshCw
               size={15}
-              className={refreshing ? "animate-spin" : ""}
+              className={
+                refreshing
+                  ? "animate-spin"
+                  : ""
+              }
             />
             Refresh
           </button>
 
           <button
             type="button"
-            onClick={() => setShowAddModal(true)}
-            className="st-button st-button-primary"
+            onClick={() =>
+              setShowAddLead(true)
+            }
+            className="st-button st-button-primary flex-1 md:flex-none"
           >
             <Plus size={15} />
             Add lead
           </button>
+
         </div>
       </div>
 
-      {/* ===================================================
-          STATISTICS
-      =================================================== */}
+      {/* =====================================================
+          STATS
+      ===================================================== */}
 
       <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+
         <StatCard
-          label="TOTAL LEADS"
+          label="Total leads"
           value={stats.total}
           description="All leads in your CRM"
-          icon={<Users size={19} />}
+          icon={<Users size={18} />}
         />
 
         <StatCard
-          label="NEW"
+          label="New"
           value={stats.newLeads}
           description="Have not been contacted"
-          icon={<UserPlus size={19} />}
+          icon={<UserPlus size={18} />}
         />
 
         <StatCard
-          label="CONTACTED"
+          label="Contacted"
           value={stats.contacted}
           description="Currently being followed up"
-          icon={<MessageCircle size={19} />}
+          icon={<MessageCircle size={18} />}
         />
 
         <StatCard
-          label="REGISTERED"
+          label="Registered"
           value={stats.registered}
           description="Converted into learners"
-          icon={<Check size={20} />}
+          icon={<Check size={18} />}
           accent
         />
+
       </section>
 
-      {/* ===================================================
+      {/* =====================================================
           SEARCH + FILTER
-      =================================================== */}
+      ===================================================== */}
 
-      <section className="st-card mt-6 p-4 sm:p-5">
-        {/* SEARCH */}
+      <section className="st-card mt-5 p-4">
 
         <div className="relative">
+
           <Search
             size={18}
             className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--st-gray)]"
@@ -737,366 +620,730 @@ export default function LeadsPage() {
             type="search"
             value={search}
             onChange={(event) =>
-              setSearch(event.target.value)
+              setSearch(
+                event.target.value
+              )
             }
             placeholder="Search name, email, WhatsApp"
-            className="w-full rounded-2xl border border-[var(--st-border)] bg-white py-4 pl-11 pr-4 text-[12px] text-[var(--st-charcoal-dark)] outline-none placeholder:text-[var(--st-gray)] focus:border-[var(--st-red)] focus:ring-2 focus:ring-[var(--st-red)]/10"
+            className="w-full rounded-2xl border border-[var(--st-border)] bg-white py-4 pl-12 pr-4 text-[13px] outline-none transition focus:border-[var(--st-red)] focus:ring-2 focus:ring-[var(--st-red)]/10"
           />
+
         </div>
 
-        {/* SEGMENTED FILTER */}
+        {/* ===================================================
+            FILTER PILLS
+            Designed as compact pills rather than the previous
+            large horizontal tab strip.
+        =================================================== */}
 
-        <div className="mt-4 rounded-2xl bg-[var(--st-bg-soft)] p-1.5">
-          <div className="grid grid-cols-4 gap-1">
-            {(
-              [
-                ["all", "All"],
-                ["new", "New"],
-                ["contacted", "Contacted"],
-                ["registered", "Registered"],
-              ] as [FilterStatus, string][]
-            ).map(([key, label]) => {
-              const active = statusFilter === key;
+        <div className="mt-4 flex flex-wrap gap-2">
 
-              return (
-                <button
-                  key={key}
-                  type="button"
-                  onClick={() => setStatusFilter(key)}
-                  className={`flex min-h-[42px] items-center justify-center rounded-xl px-1 text-[9px] font-bold transition-all duration-200 sm:text-[10px] ${
+          {[
+            {
+              key: "all",
+              label: "All",
+              count: stats.total,
+            },
+            {
+              key: "new",
+              label: "New",
+              count: stats.newLeads,
+            },
+            {
+              key: "contacted",
+              label: "Contacted",
+              count: stats.contacted,
+            },
+            {
+              key: "registered",
+              label: "Registered",
+              count: stats.registered,
+            },
+          ].map((item) => {
+            const active =
+              filter === item.key;
+
+            return (
+              <button
+                key={item.key}
+                type="button"
+                onClick={() =>
+                  setFilter(
+                    item.key as
+                      | "all"
+                      | LeadStatus
+                  )
+                }
+                className={`inline-flex items-center gap-2 rounded-full border px-4 py-2.5 text-[10px] font-bold transition-all ${
+                  active
+                    ? "border-[var(--st-red)] bg-[var(--st-red)] text-white shadow-sm"
+                    : "border-[var(--st-border)] bg-white text-[var(--st-gray)] hover:border-[var(--st-red)] hover:text-[var(--st-red)]"
+                }`}
+              >
+                {item.label}
+
+                <span
+                  className={`inline-flex min-w-[20px] items-center justify-center rounded-full px-1.5 py-0.5 text-[8px] ${
                     active
-                      ? "bg-[var(--st-red)] text-white shadow-sm"
-                      : "bg-transparent text-[var(--st-gray)] hover:bg-white hover:text-[var(--st-charcoal-dark)]"
+                      ? "bg-white/20 text-white"
+                      : "bg-[var(--st-bg-soft)] text-[var(--st-gray)]"
                   }`}
                 >
-                  {label}
-                </button>
-              );
-            })}
-          </div>
+                  {item.count}
+                </span>
+              </button>
+            );
+          })}
+
         </div>
+
       </section>
 
-      {/* ===================================================
-          PIPELINE HEADER
-      =================================================== */}
+      {/* =====================================================
+          ERROR
+      ===================================================== */}
 
-      <div className="mt-7 mb-4 flex items-end justify-between gap-4">
-        <div>
-          <p className="st-eyebrow">LEAD PIPELINE</p>
-
-          <p className="mt-1 mb-0 text-[11px] text-[var(--st-gray)]">
-            {filteredLeads.length}{" "}
-            {filteredLeads.length === 1 ? "lead" : "leads"} shown
+      {error && (
+        <div className="mt-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3">
+          <p className="m-0 text-[10px] leading-relaxed text-red-700">
+            {error}
           </p>
         </div>
-
-        {search || statusFilter !== "all" ? (
-          <button
-            type="button"
-            onClick={() => {
-              setSearch("");
-              setStatusFilter("all");
-            }}
-            className="text-[10px] font-bold text-[var(--st-red)]"
-          >
-            Clear filters
-          </button>
-        ) : null}
-      </div>
-
-      {/* ===================================================
-          LEADS
-      =================================================== */}
-
-      {loading ? (
-        <section className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-          {[1, 2, 3, 4].map((item) => (
-            <div
-              key={item}
-              className="st-card h-[360px] animate-pulse bg-white"
-            />
-          ))}
-        </section>
-      ) : filteredLeads.length === 0 ? (
-        <section className="st-card flex min-h-[360px] flex-col items-center justify-center px-6 text-center">
-          <div className="flex h-14 w-14 items-center justify-center rounded-full bg-[var(--st-bg-soft)] text-[var(--st-red)]">
-            <Users size={22} />
-          </div>
-
-          <h2 className="mt-5 mb-0 text-[15px] font-bold text-[var(--st-charcoal-dark)]">
-            No leads found
-          </h2>
-
-          <p className="mt-2 mb-0 max-w-[300px] text-[11px] leading-relaxed text-[var(--st-gray)]">
-            {search || statusFilter !== "all"
-              ? "Try another search or filter."
-              : "Your leads will appear here when they are added."}
-          </p>
-
-          {!search && statusFilter === "all" ? (
-            <button
-              type="button"
-              onClick={() => setShowAddModal(true)}
-              className="st-button st-button-primary mt-5"
-            >
-              <Plus size={15} />
-              Add your first lead
-            </button>
-          ) : null}
-        </section>
-      ) : (
-        <section className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-          {filteredLeads.map((lead) => (
-            <LeadCard
-              key={lead.id}
-              lead={lead}
-              onView={() => setSelectedLead(lead)}
-              onStatusChange={(status) =>
-                updateStatus(lead.id, status)
-              }
-              onMenu={() =>
-                setOpenMenuId((current) =>
-                  current === lead.id ? null : lead.id,
-                )
-              }
-              menuOpen={openMenuId === lead.id}
-            />
-          ))}
-        </section>
       )}
 
-      {/* ===================================================
-          FOOTER
-      =================================================== */}
+      {/* =====================================================
+          PIPELINE HEADER
+      ===================================================== */}
 
-      <div className="mt-7 flex flex-col gap-2 border-t border-[var(--st-border)] pt-5 sm:flex-row sm:items-center sm:justify-between">
+      <section className="mt-7">
+
+        <div className="mb-4">
+
+          <p className="st-eyebrow">
+            LEAD PIPELINE
+          </p>
+
+          <p className="mt-1 mb-0 text-[10px] text-[var(--st-gray)]">
+            {filteredLeads.length}{" "}
+            {filteredLeads.length === 1
+              ? "lead"
+              : "leads"}{" "}
+            shown
+          </p>
+
+        </div>
+
+        {/* ===================================================
+            LOADING
+        =================================================== */}
+
+        {loading ? (
+          <div className="st-card flex min-h-[280px] items-center justify-center gap-2 text-[10px] text-[var(--st-gray)]">
+            <RefreshCw
+              size={16}
+              className="animate-spin"
+            />
+            Loading leads...
+          </div>
+        ) : filteredLeads.length === 0 ? (
+          /* =================================================
+             EMPTY
+          ================================================= */
+
+          <div className="st-card flex min-h-[300px] flex-col items-center justify-center px-5 text-center">
+
+            <div className="flex h-14 w-14 items-center justify-center rounded-full bg-[var(--st-bg-soft)] text-[var(--st-red)]">
+              <Users size={22} />
+            </div>
+
+            <p className="mt-5 mb-0 text-[14px] font-bold text-[var(--st-charcoal-dark)]">
+              No leads found
+            </p>
+
+            <p className="mt-2 mb-0 max-w-[280px] text-[10px] leading-relaxed text-[var(--st-gray)]">
+              Try another search or filter,
+              or add a new lead.
+            </p>
+
+          </div>
+        ) : (
+          /* =================================================
+             LEAD CARDS
+          ================================================= */
+
+          <div className="grid grid-cols-1 gap-4">
+
+            {filteredLeads.map((lead) => (
+              <div
+                key={lead.id}
+                className="st-card overflow-hidden"
+              >
+
+                {/* CARD HEADER */}
+
+                <div className="p-5">
+
+                  <div className="flex items-start gap-3">
+
+                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[var(--st-bg-soft)] text-[10px] font-bold text-[var(--st-red)]">
+                      {initials(
+                        lead.full_name
+                      )}
+                    </div>
+
+                    <div className="min-w-0 flex-1">
+
+                      <p className="m-0 truncate text-[14px] font-bold text-[var(--st-charcoal-dark)]">
+                        {lead.full_name}
+                      </p>
+
+                      <p className="mt-1 mb-0 text-[10px] text-[var(--st-gray)]">
+                        Added{" "}
+                        {formatDate(
+                          lead.created_at
+                        )}
+                      </p>
+
+                    </div>
+
+                    {/* MORE MENU */}
+
+                    <div className="relative">
+
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setMenuLeadId(
+                            menuLeadId ===
+                              lead.id
+                              ? null
+                              : lead.id
+                          )
+                        }
+                        className="st-icon-button"
+                        aria-label={`Lead options for ${lead.full_name}`}
+                      >
+                        <MoreHorizontal
+                          size={16}
+                        />
+                      </button>
+
+                      {menuLeadId ===
+                        lead.id && (
+                        <div className="absolute right-0 top-12 z-30 w-48 overflow-hidden rounded-2xl border border-[var(--st-border)] bg-white p-1.5 shadow-xl">
+
+                          {(
+                            [
+                              "new",
+                              "contacted",
+                              "registered",
+                            ] as LeadStatus[]
+                          ).map(
+                            (status) => (
+                              <button
+                                key={
+                                  status
+                                }
+                                type="button"
+                                onClick={() =>
+                                  updateLeadStatus(
+                                    lead,
+                                    status
+                                  )
+                                }
+                                disabled={
+                                  updatingId ===
+                                  lead.id
+                                }
+                                className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-[10px] font-semibold text-[var(--st-charcoal-dark)] hover:bg-[var(--st-bg-soft)] disabled:opacity-50"
+                              >
+                                <span
+                                  className={`h-2 w-2 rounded-full ${
+                                    status ===
+                                    "new"
+                                      ? "bg-[var(--st-red)]"
+                                      : status ===
+                                        "contacted"
+                                      ? "bg-amber-500"
+                                      : "bg-green-600"
+                                  }`}
+                                />
+
+                                Mark{" "}
+                                {prettyStatus(
+                                  status
+                                ).toLowerCase()}
+                              </button>
+                            )
+                          )}
+
+                        </div>
+                      )}
+
+                    </div>
+
+                  </div>
+
+                  {/* STATUS */}
+
+                  <div className="mt-5">
+
+                    <span
+                      className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[9px] font-bold uppercase tracking-[0.04em] ${statusClasses(
+                        lead.status
+                      )}`}
+                    >
+                      {lead.status ===
+                        "registered" && (
+                        <CheckCircle2
+                          size={11}
+                        />
+                      )}
+
+                      {prettyStatus(
+                        lead.status
+                      )}
+                    </span>
+
+                  </div>
+
+                </div>
+
+                {/* CONTACT DETAILS */}
+
+                <div className="border-t border-[var(--st-border)] px-5 py-4">
+
+                  <div className="space-y-2">
+
+                    <div className="flex min-w-0 items-center gap-3 rounded-full bg-[var(--st-bg-soft)] px-4 py-3">
+
+                      <Mail
+                        size={15}
+                        className="shrink-0 text-[var(--st-red)]"
+                      />
+
+                      <span className="min-w-0 truncate text-[11px] text-[var(--st-charcoal-dark)]">
+                        {lead.email}
+                      </span>
+
+                    </div>
+
+                    <div className="flex min-w-0 items-center gap-3 rounded-full bg-[var(--st-bg-soft)] px-4 py-3">
+
+                      <Phone
+                        size={15}
+                        className="shrink-0 text-[var(--st-red)]"
+                      />
+
+                      <span className="truncate text-[11px] text-[var(--st-charcoal-dark)]">
+                        {
+                          lead.whatsapp_number
+                        }
+                      </span>
+
+                    </div>
+
+                  </div>
+
+                </div>
+
+                {/* NEXT FOLLOW-UP */}
+
+                <div className="border-t border-[var(--st-border)] px-5 py-4">
+
+                  <div className="flex items-center justify-between gap-4">
+
+                    <div>
+
+                      <p className="m-0 text-[9px] font-bold uppercase tracking-[0.1em] text-[var(--st-gray)]">
+                        NEXT FOLLOW-UP
+                      </p>
+
+                      <p className="mt-1 mb-0 text-[11px] font-semibold text-[var(--st-charcoal-dark)]">
+                        No follow-up
+                        scheduled
+                      </p>
+
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setSelectedLead(
+                          lead
+                        )
+                      }
+                      className="shrink-0 text-[12px] font-semibold text-[var(--st-red)] transition hover:opacity-70"
+                    >
+                      View lead{" "}
+                      <ArrowRight
+                        size={14}
+                        className="ml-1 inline"
+                      />
+                    </button>
+
+                  </div>
+
+                </div>
+
+                {/* CONTACT ACTIONS */}
+
+                <div className="border-t border-[var(--st-border)] bg-[var(--st-bg-soft)] px-4 py-3">
+
+                  <div className="grid grid-cols-3 gap-2">
+
+                    <button
+                      type="button"
+                      onClick={() =>
+                        openWhatsApp(
+                          lead
+                        )
+                      }
+                      className="flex items-center justify-center gap-2 rounded-full bg-white px-3 py-3 text-[11px] font-medium text-[var(--st-charcoal-dark)] transition hover:text-[var(--st-red)]"
+                    >
+                      <MessageCircle
+                        size={15}
+                        className="text-[var(--st-red)]"
+                      />
+                      WhatsApp
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() =>
+                        callLead(lead)
+                      }
+                      className="flex items-center justify-center gap-2 rounded-full bg-white px-3 py-3 text-[11px] font-medium text-[var(--st-charcoal-dark)] transition hover:text-[var(--st-red)]"
+                    >
+                      <Phone
+                        size={15}
+                        className="text-[var(--st-red)]"
+                      />
+                      Call
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() =>
+                        emailLead(lead)
+                      }
+                      className="flex items-center justify-center gap-2 rounded-full bg-white px-3 py-3 text-[11px] font-medium text-[var(--st-charcoal-dark)] transition hover:text-[var(--st-red)]"
+                    >
+                      <Mail
+                        size={15}
+                        className="text-[var(--st-red)]"
+                      />
+                      Email
+                    </button>
+
+                  </div>
+
+                </div>
+
+              </div>
+            ))}
+
+          </div>
+        )}
+
+      </section>
+
+      {/* =====================================================
+          FOOTER
+      ===================================================== */}
+
+      <div className="mt-7 border-t border-[var(--st-border)] pt-5">
+
         <p className="m-0 text-[9px] text-[var(--st-gray)]">
           Sauti Tamu Piano Center · Lead Management
         </p>
 
-        <p className="m-0 text-[9px] text-[var(--st-gray)]">
-          {stats.followUpsDue} follow-up
-          {stats.followUpsDue === 1 ? "" : "s"} due
-        </p>
       </div>
 
-      {/* ===================================================
+      {/* =====================================================
           LEAD DETAILS MODAL
-      =================================================== */}
+      ===================================================== */}
 
       {selectedLead && (
         <div
-          className="fixed inset-0 z-[100] flex items-end justify-center bg-black/35 sm:items-center sm:p-5"
-          onClick={() => setSelectedLead(null)}
+          className="fixed inset-0 z-[100] flex items-end justify-center bg-black/40 sm:items-center sm:p-5"
+          onClick={() =>
+            setSelectedLead(null)
+          }
         >
+
           <div
-            className="max-h-[92vh] w-full overflow-y-auto rounded-t-[28px] bg-white sm:max-w-[620px] sm:rounded-[28px]"
-            onClick={(event) => event.stopPropagation()}
+            className="max-h-[92vh] w-full max-w-[560px] overflow-y-auto rounded-t-3xl bg-white shadow-2xl sm:rounded-3xl"
+            onClick={(event) =>
+              event.stopPropagation()
+            }
           >
-            {/* MODAL HEADER */}
 
-            <div className="sticky top-0 z-10 flex items-start justify-between border-b border-[var(--st-border)] bg-white px-6 py-5">
-              <div className="min-w-0">
-                <p className="st-eyebrow">
-                  LEAD DETAILS
-                </p>
+            {/* HEADER */}
 
-                <h2 className="mt-2 truncate text-[22px] font-bold text-[var(--st-charcoal-dark)]">
-                  {selectedLead.full_name}
-                </h2>
+            <div className="sticky top-0 z-10 border-b border-[var(--st-border)] bg-white px-5 py-5">
+
+              <div className="flex items-start justify-between gap-4">
+
+                <div>
+
+                  <p className="st-eyebrow">
+                    LEAD DETAILS
+                  </p>
+
+                  <h2 className="mt-2 text-[24px] font-bold text-[var(--st-charcoal-dark)]">
+                    {selectedLead.full_name}
+                  </h2>
+
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    setSelectedLead(null)
+                  }
+                  className="st-icon-button"
+                  aria-label="Close lead details"
+                >
+                  <X size={17} />
+                </button>
+
               </div>
 
-              <button
-                type="button"
-                onClick={() => setSelectedLead(null)}
-                className="st-icon-button shrink-0"
-                aria-label="Close lead details"
-              >
-                <X size={18} />
-              </button>
             </div>
 
-            <div className="space-y-5 p-6">
+            <div className="p-5">
+
               {/* STATUS + DATE */}
 
               <div className="flex items-center justify-between gap-4">
-                <StatusBadge status={selectedLead.status} />
+
+                <span
+                  className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[9px] font-bold uppercase ${statusClasses(
+                    selectedLead.status
+                  )}`}
+                >
+                  {selectedLead.status ===
+                    "registered" && (
+                    <CheckCircle2
+                      size={11}
+                    />
+                  )}
+
+                  {prettyStatus(
+                    selectedLead.status
+                  )}
+                </span>
 
                 <span className="text-[10px] text-[var(--st-gray)]">
-                  Added {formatDate(selectedLead.created_at)}
+                  Added{" "}
+                  {formatLongDate(
+                    selectedLead.created_at
+                  )}
                 </span>
+
               </div>
 
-              {/* EMAIL */}
+              {/* CONTACT INFORMATION */}
 
-              <a
-                href={`mailto:${selectedLead.email}`}
-                className="flex items-center gap-4 rounded-2xl bg-[var(--st-bg-soft)] p-4"
-              >
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white text-[var(--st-red)]">
-                  <Mail size={17} />
+              <div className="mt-5 space-y-3">
+
+                <div className="flex items-center gap-3 rounded-2xl bg-[var(--st-bg-soft)] px-4 py-4">
+
+                  <Mail
+                    size={17}
+                    className="shrink-0 text-[var(--st-red)]"
+                  />
+
+                  <div className="min-w-0">
+
+                    <p className="m-0 text-[9px] font-bold uppercase tracking-[0.08em] text-[var(--st-gray)]">
+                      Email
+                    </p>
+
+                    <p className="mt-1 mb-0 break-all text-[12px] font-semibold text-[var(--st-charcoal-dark)]">
+                      {selectedLead.email}
+                    </p>
+
+                  </div>
+
                 </div>
 
-                <div className="min-w-0">
-                  <p className="m-0 text-[9px] font-semibold uppercase tracking-[0.08em] text-[var(--st-gray)]">
-                    Email
-                  </p>
+                <div className="flex items-center gap-3 rounded-2xl bg-[var(--st-bg-soft)] px-4 py-4">
 
-                  <p className="mt-1 mb-0 truncate text-[11px] font-semibold text-[var(--st-charcoal-dark)]">
-                    {selectedLead.email}
-                  </p>
-                </div>
-              </a>
-
-              {/* PHONE */}
-
-              <a
-                href={`tel:${selectedLead.whatsapp_number}`}
-                className="flex items-center gap-4 rounded-2xl bg-[var(--st-bg-soft)] p-4"
-              >
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white text-[var(--st-red)]">
-                  <Phone size={17} />
-                </div>
-
-                <div className="min-w-0">
-                  <p className="m-0 text-[9px] font-semibold uppercase tracking-[0.08em] text-[var(--st-gray)]">
-                    WhatsApp / Phone
-                  </p>
-
-                  <p className="mt-1 mb-0 text-[11px] font-semibold text-[var(--st-charcoal-dark)]">
-                    {selectedLead.whatsapp_number}
-                  </p>
-                </div>
-              </a>
-
-              {/* FOLLOW UP */}
-
-              <div className="rounded-2xl border border-[var(--st-border)] p-4">
-                <div className="flex items-center gap-3">
-                  <Clock3
-                    size={18}
-                    className="text-[var(--st-red)]"
+                  <Phone
+                    size={17}
+                    className="shrink-0 text-[var(--st-red)]"
                   />
 
                   <div>
-                    <p className="m-0 text-[9px] font-semibold uppercase tracking-[0.08em] text-[var(--st-gray)]">
-                      Next follow-up
+
+                    <p className="m-0 text-[9px] font-bold uppercase tracking-[0.08em] text-[var(--st-gray)]">
+                      WhatsApp / Phone
                     </p>
 
-                    <p className="mt-1 mb-0 text-[11px] font-semibold text-[var(--st-charcoal-dark)]">
-                      {formatFollowUp(
-                        selectedLead.next_follow_up_at,
-                      )}
+                    <p className="mt-1 mb-0 text-[12px] font-semibold text-[var(--st-charcoal-dark)]">
+                      {
+                        selectedLead.whatsapp_number
+                      }
                     </p>
+
                   </div>
+
                 </div>
+
               </div>
 
-              {/* NOTES */}
+              {/* FOLLOW-UP */}
 
-              {selectedLead.notes ? (
-                <div className="rounded-2xl bg-[var(--st-bg-soft)] p-4">
-                  <p className="m-0 text-[9px] font-semibold uppercase tracking-[0.08em] text-[var(--st-gray)]">
-                    Notes
-                  </p>
+              <div className="mt-3 rounded-2xl border border-[var(--st-border)] px-4 py-4">
 
-                  <p className="mt-2 mb-0 text-[11px] leading-relaxed text-[var(--st-charcoal-dark)]">
-                    {selectedLead.notes}
-                  </p>
-                </div>
-              ) : null}
-
-              {/* CONTACT ACTIONS */}
-
-              <div className="grid grid-cols-3 gap-2">
-                <a
-                  href={`https://wa.me/${selectedLead.whatsapp_number.replace(
-                    /\D/g,
-                    "",
-                  )}`}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="flex min-h-[48px] items-center justify-center gap-2 rounded-full bg-[var(--st-red)] px-2 text-[10px] font-bold text-white"
-                >
-                  <MessageCircle size={16} />
-                  WhatsApp
-                </a>
-
-                <a
-                  href={`tel:${selectedLead.whatsapp_number}`}
-                  className="flex min-h-[48px] items-center justify-center gap-2 rounded-full bg-[var(--st-bg-soft)] px-2 text-[10px] font-bold text-[var(--st-charcoal-dark)]"
-                >
-                  <Phone size={16} />
-                  Call
-                </a>
-
-                <a
-                  href={`mailto:${selectedLead.email}`}
-                  className="flex min-h-[48px] items-center justify-center gap-2 rounded-full bg-[var(--st-bg-soft)] px-2 text-[10px] font-bold text-[var(--st-charcoal-dark)]"
-                >
-                  <Mail size={16} />
-                  Email
-                </a>
-              </div>
-
-              {/* UPDATE STATUS */}
-
-              <div className="border-t border-[var(--st-border)] pt-5">
-                <p className="m-0 text-[10px] font-bold uppercase tracking-[0.08em] text-[var(--st-gray)]">
-                  Update status
+                <p className="m-0 text-[9px] font-bold uppercase tracking-[0.08em] text-[var(--st-gray)]">
+                  NEXT FOLLOW-UP
                 </p>
 
-                <div className="mt-3 grid grid-cols-3 gap-2">
+                <p className="mt-2 mb-0 text-[12px] font-semibold text-[var(--st-charcoal-dark)]">
+                  No follow-up scheduled
+                </p>
+
+              </div>
+
+              {/* ACTIONS */}
+
+              <div className="mt-5 grid grid-cols-1 gap-2 sm:grid-cols-3">
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    openWhatsApp(
+                      selectedLead
+                    )
+                  }
+                  className="st-button st-button-primary w-full"
+                >
+                  <MessageCircle
+                    size={15}
+                  />
+                  WhatsApp
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    callLead(
+                      selectedLead
+                    )
+                  }
+                  className="st-button st-button-secondary w-full"
+                >
+                  <Phone size={15} />
+                  Call
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    emailLead(
+                      selectedLead
+                    )
+                  }
+                  className="st-button st-button-secondary w-full"
+                >
+                  <Mail size={15} />
+                  Email
+                </button>
+
+              </div>
+
+              {/* STATUS */}
+
+              <div className="mt-7 border-t border-[var(--st-border)] pt-5">
+
+                <p className="mb-3 text-[9px] font-bold uppercase tracking-[0.1em] text-[var(--st-gray)]">
+                  UPDATE STATUS
+                </p>
+
+                <div className="grid grid-cols-3 gap-2">
+
                   {(
                     [
-                      ["new", "New"],
-                      ["contacted", "Contacted"],
-                      ["registered", "Registered"],
-                    ] as [LeadStatus, string][]
-                  ).map(([status, label]) => {
-                    const active =
-                      selectedLead.status === status;
+                      "new",
+                      "contacted",
+                      "registered",
+                    ] as LeadStatus[]
+                  ).map((status) => (
+                    <button
+                      key={status}
+                      type="button"
+                      disabled={
+                        updatingId ===
+                        selectedLead.id
+                      }
+                      onClick={() =>
+                        updateLeadStatus(
+                          selectedLead,
+                          status
+                        )
+                      }
+                      className={`rounded-xl border px-2 py-3 text-[10px] font-bold transition ${
+                        selectedLead.status ===
+                        status
+                          ? "border-[var(--st-red)] bg-[var(--st-bg-soft)] text-[var(--st-red)]"
+                          : "border-[var(--st-border)] bg-white text-[var(--st-gray)] hover:border-[var(--st-red)]"
+                      } disabled:opacity-50`}
+                    >
+                      {prettyStatus(
+                        status
+                      )}
+                    </button>
+                  ))}
 
-                    return (
-                      <button
-                        key={status}
-                        type="button"
-                        onClick={() =>
-                          handleSelectedStatus(status)
-                        }
-                        className={`min-h-[46px] rounded-full border text-[10px] font-bold transition-all ${
-                          active
-                            ? "border-[var(--st-red)] bg-[var(--st-bg-soft)] text-[var(--st-red)]"
-                            : "border-[var(--st-border)] bg-white text-[var(--st-charcoal-dark)] hover:border-[var(--st-red)]"
-                        }`}
-                      >
-                        {label}
-                      </button>
-                    );
-                  })}
                 </div>
+
               </div>
+
+              {/* CLOSE */}
+
+              <button
+                type="button"
+                onClick={() =>
+                  setSelectedLead(null)
+                }
+                className="st-button st-button-secondary mt-5 w-full"
+              >
+                Done
+              </button>
+
             </div>
+
           </div>
+
         </div>
       )}
 
-      {/* ===================================================
+      {/* =====================================================
           ADD LEAD MODAL
-      =================================================== */}
+      ===================================================== */}
 
-      {showAddModal && (
+      {showAddLead && (
         <div
-          className="fixed inset-0 z-[100] flex items-end justify-center bg-black/35 sm:items-center sm:p-5"
-          onClick={() => setShowAddModal(false)}
+          className="fixed inset-0 z-[110] flex items-end justify-center bg-black/40 sm:items-center sm:p-5"
+          onClick={() =>
+            setShowAddLead(false)
+          }
         >
+
           <div
-            className="w-full rounded-t-[28px] bg-white sm:max-w-[560px] sm:rounded-[28px]"
-            onClick={(event) => event.stopPropagation()}
+            className="w-full max-w-[520px] rounded-t-3xl bg-white shadow-2xl sm:rounded-3xl"
+            onClick={(event) =>
+              event.stopPropagation()
+            }
           >
-            <div className="flex items-start justify-between border-b border-[var(--st-border)] px-6 py-5">
+
+            <div className="flex items-center justify-between border-b border-[var(--st-border)] px-5 py-5">
+
               <div>
+
                 <p className="st-eyebrow">
                   CRM
                 </p>
@@ -1105,130 +1352,127 @@ export default function LeadsPage() {
                   Add lead
                 </h2>
 
-                <p className="mt-1 mb-0 text-[10px] text-[var(--st-gray)]">
-                  Add someone who has shown interest in lessons.
-                </p>
               </div>
 
               <button
                 type="button"
-                onClick={() => setShowAddModal(false)}
+                onClick={() =>
+                  setShowAddLead(false)
+                }
                 className="st-icon-button"
-                aria-label="Close add lead"
               >
-                <X size={18} />
+                <X size={17} />
               </button>
+
             </div>
 
             <form
               onSubmit={handleAddLead}
-              className="space-y-4 p-6"
+              className="p-5"
             >
-              {/* NAME */}
 
-              <div>
-                <label className="mb-2 block text-[10px] font-bold text-[var(--st-charcoal-dark)]">
-                  Full name
-                </label>
+              <div className="space-y-4">
 
-                <input
-                  type="text"
-                  required
-                  value={form.full_name}
-                  onChange={(event) =>
-                    setForm((current) => ({
-                      ...current,
-                      full_name: event.target.value,
-                    }))
-                  }
-                  placeholder="e.g. Brian Mwangi"
-                  className="w-full rounded-2xl border border-[var(--st-border)] px-4 py-3.5 text-[11px] outline-none focus:border-[var(--st-red)]"
-                />
+                <div>
+
+                  <label className="mb-2 block text-[10px] font-bold uppercase tracking-[0.08em] text-[var(--st-gray)]">
+                    Full name
+                  </label>
+
+                  <input
+                    value={
+                      newLead.full_name
+                    }
+                    onChange={(event) =>
+                      setNewLead(
+                        (current) => ({
+                          ...current,
+                          full_name:
+                            event.target
+                              .value,
+                        })
+                      )
+                    }
+                    placeholder="e.g. Brian Mwangi"
+                    className="w-full rounded-xl border border-[var(--st-border)] px-4 py-3.5 text-[12px] outline-none focus:border-[var(--st-red)] focus:ring-2 focus:ring-[var(--st-red)]/10"
+                  />
+
+                </div>
+
+                <div>
+
+                  <label className="mb-2 block text-[10px] font-bold uppercase tracking-[0.08em] text-[var(--st-gray)]">
+                    Email
+                  </label>
+
+                  <input
+                    type="email"
+                    value={
+                      newLead.email
+                    }
+                    onChange={(event) =>
+                      setNewLead(
+                        (current) => ({
+                          ...current,
+                          email:
+                            event.target
+                              .value,
+                        })
+                      )
+                    }
+                    placeholder="name@example.com"
+                    className="w-full rounded-xl border border-[var(--st-border)] px-4 py-3.5 text-[12px] outline-none focus:border-[var(--st-red)] focus:ring-2 focus:ring-[var(--st-red)]/10"
+                  />
+
+                </div>
+
+                <div>
+
+                  <label className="mb-2 block text-[10px] font-bold uppercase tracking-[0.08em] text-[var(--st-gray)]">
+                    WhatsApp / Phone
+                  </label>
+
+                  <input
+                    type="tel"
+                    value={
+                      newLead.whatsapp_number
+                    }
+                    onChange={(event) =>
+                      setNewLead(
+                        (current) => ({
+                          ...current,
+                          whatsapp_number:
+                            event.target
+                              .value,
+                        })
+                      )
+                    }
+                    placeholder="+254..."
+                    className="w-full rounded-xl border border-[var(--st-border)] px-4 py-3.5 text-[12px] outline-none focus:border-[var(--st-red)] focus:ring-2 focus:ring-[var(--st-red)]/10"
+                  />
+
+                </div>
+
               </div>
 
-              {/* EMAIL */}
+              <div className="mt-6 grid grid-cols-2 gap-2">
 
-              <div>
-                <label className="mb-2 block text-[10px] font-bold text-[var(--st-charcoal-dark)]">
-                  Email
-                </label>
-
-                <input
-                  type="email"
-                  required
-                  value={form.email}
-                  onChange={(event) =>
-                    setForm((current) => ({
-                      ...current,
-                      email: event.target.value,
-                    }))
-                  }
-                  placeholder="name@example.com"
-                  className="w-full rounded-2xl border border-[var(--st-border)] px-4 py-3.5 text-[11px] outline-none focus:border-[var(--st-red)]"
-                />
-              </div>
-
-              {/* PHONE */}
-
-              <div>
-                <label className="mb-2 block text-[10px] font-bold text-[var(--st-charcoal-dark)]">
-                  WhatsApp / Phone
-                </label>
-
-                <input
-                  type="tel"
-                  required
-                  value={form.whatsapp_number}
-                  onChange={(event) =>
-                    setForm((current) => ({
-                      ...current,
-                      whatsapp_number:
-                        event.target.value,
-                    }))
-                  }
-                  placeholder="+254..."
-                  className="w-full rounded-2xl border border-[var(--st-border)] px-4 py-3.5 text-[11px] outline-none focus:border-[var(--st-red)]"
-                />
-              </div>
-
-              {/* NOTES */}
-
-              <div>
-                <label className="mb-2 block text-[10px] font-bold text-[var(--st-charcoal-dark)]">
-                  Notes
-                </label>
-
-                <textarea
-                  value={form.notes}
-                  onChange={(event) =>
-                    setForm((current) => ({
-                      ...current,
-                      notes: event.target.value,
-                    }))
-                  }
-                  rows={4}
-                  placeholder="Anything useful about this lead..."
-                  className="w-full resize-none rounded-2xl border border-[var(--st-border)] px-4 py-3.5 text-[11px] outline-none focus:border-[var(--st-red)]"
-                />
-              </div>
-
-              {/* ACTIONS */}
-
-              <div className="flex gap-2 pt-2">
                 <button
                   type="button"
-                  onClick={() => setShowAddModal(false)}
-                  className="st-button st-button-secondary flex-1"
+                  onClick={() =>
+                    setShowAddLead(false)
+                  }
+                  className="st-button st-button-secondary w-full"
                 >
                   Cancel
                 </button>
 
                 <button
                   type="submit"
-                  disabled={saving}
-                  className="st-button st-button-primary flex-1"
+                  disabled={addingLead}
+                  className="st-button st-button-primary w-full disabled:opacity-60"
                 >
-                  {saving ? (
+                  {addingLead ? (
                     <>
                       <RefreshCw
                         size={15}
@@ -1243,11 +1487,16 @@ export default function LeadsPage() {
                     </>
                   )}
                 </button>
+
               </div>
+
             </form>
+
           </div>
+
         </div>
       )}
+
     </main>
   );
 }
