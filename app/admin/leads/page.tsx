@@ -1,22 +1,24 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
 import {
   Check,
   CheckCircle2,
+  ChevronRight,
   Clock3,
   Mail,
   MessageCircle,
   MoreHorizontal,
   Phone,
   Plus,
+  RefreshCw,
   Search,
   UserPlus,
   Users,
   X,
 } from "lucide-react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 
-import { supabase } from "@/lib/supabase";
+import { createClient } from "@/lib/supabase/client";
 
 type LeadStatus = "new" | "contacted" | "registered";
 
@@ -36,49 +38,84 @@ type Lead = {
 
 type FilterStatus = "all" | LeadStatus;
 
-function formatDate(dateString: string) {
-  return new Intl.DateTimeFormat("en-KE", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  }).format(new Date(dateString));
-}
+const supabase = createClient();
 
-function formatFollowUp(dateString: string | null) {
-  if (!dateString) return "No follow-up scheduled";
-
-  const date = new Date(dateString);
-
-  return new Intl.DateTimeFormat("en-KE", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  }).format(date);
-}
+/* =========================================================
+   HELPERS
+========================================================= */
 
 function getInitials(name: string) {
   return name
     .trim()
     .split(/\s+/)
-    .map((word) => word[0])
+    .map((part) => part[0])
     .join("")
     .slice(0, 2)
     .toUpperCase();
 }
 
-function getStatusLabel(status: LeadStatus) {
+function formatDate(value: string | null) {
+  if (!value) return "—";
+
+  return new Intl.DateTimeFormat("en-GB", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    timeZone: "Africa/Nairobi",
+  }).format(new Date(value));
+}
+
+function formatRelativeDate(value: string) {
+  const date = new Date(value);
+
+  return new Intl.DateTimeFormat("en-GB", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    timeZone: "Africa/Nairobi",
+  }).format(date);
+}
+
+function formatFollowUp(value: string | null) {
+  if (!value) return "No follow-up scheduled";
+
+  const date = new Date(value);
+  const now = new Date();
+
+  const today = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Africa/Nairobi",
+  }).format(now);
+
+  const followUpDay = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Africa/Nairobi",
+  }).format(date);
+
+  if (followUpDay === today) {
+    return `Today · ${new Intl.DateTimeFormat("en-GB", {
+      hour: "numeric",
+      minute: "2-digit",
+      timeZone: "Africa/Nairobi",
+    }).format(date)}`;
+  }
+
+  return formatDate(value);
+}
+
+function isFollowUpDue(value: string | null) {
+  if (!value) return false;
+
+  return new Date(value).getTime() <= Date.now();
+}
+
+function statusLabel(status: LeadStatus) {
+  if (status === "new") return "New";
   if (status === "contacted") return "Contacted";
-  if (status === "registered") return "Registered";
-  return "New";
+  return "Registered";
 }
 
-function getWhatsAppUrl(phone: string) {
-  const cleaned = phone.replace(/[^\d]/g, "");
-
-  return `https://wa.me/${cleaned}`;
-}
+/* =========================================================
+   STAT CARD
+========================================================= */
 
 function StatCard({
   label,
@@ -94,15 +131,19 @@ function StatCard({
   accent?: boolean;
 }) {
   return (
-    <div className="st-card st-card-hover p-5">
+    <div
+      className={`st-card st-card-hover overflow-hidden p-5 ${
+        accent ? "border border-[var(--st-border-red)]" : ""
+      }`}
+    >
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0">
-          <p className="m-0 text-[11px] font-semibold text-[var(--st-gray)]">
+          <p className="m-0 text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--st-gray)]">
             {label}
           </p>
 
           <p
-            className={`mt-3 mb-0 text-[32px] font-bold leading-none tracking-[-0.04em] ${
+            className={`mt-3 mb-0 text-[34px] font-bold leading-none tracking-[-0.04em] ${
               accent
                 ? "text-[var(--st-red)]"
                 : "text-[var(--st-charcoal-dark)]"
@@ -111,7 +152,7 @@ function StatCard({
             {value}
           </p>
 
-          <p className="mt-3 mb-0 text-[10px] text-[var(--st-gray)]">
+          <p className="mt-3 mb-0 text-[10px] leading-relaxed text-[var(--st-gray)]">
             {description}
           </p>
         </div>
@@ -124,22 +165,222 @@ function StatCard({
   );
 }
 
+/* =========================================================
+   STATUS BADGE
+========================================================= */
+
 function StatusBadge({ status }: { status: LeadStatus }) {
   const classes =
     status === "registered"
-      ? "bg-green-50 text-green-700"
+      ? "st-badge st-badge-green"
       : status === "contacted"
-        ? "bg-yellow-50 text-yellow-700"
-        : "bg-[var(--st-bg-soft)] text-[var(--st-red)]";
+        ? "st-badge st-badge-yellow"
+        : "st-badge st-badge-red";
 
   return (
-    <span
-      className={`inline-flex items-center rounded-full px-3 py-1.5 text-[9px] font-bold uppercase tracking-[0.05em] ${classes}`}
-    >
-      {getStatusLabel(status)}
+    <span className={classes}>
+      {status === "registered" && <CheckCircle2 size={11} />}
+      {statusLabel(status)}
     </span>
   );
 }
+
+/* =========================================================
+   LEAD CARD
+========================================================= */
+
+function LeadCard({
+  lead,
+  onView,
+  onStatusChange,
+  onMenu,
+  menuOpen,
+}: {
+  lead: Lead;
+  onView: () => void;
+  onStatusChange: (status: LeadStatus) => void;
+  onMenu: () => void;
+  menuOpen: boolean;
+}) {
+  const whatsappUrl = `https://wa.me/${lead.whatsapp_number.replace(
+    /\D/g,
+    "",
+  )}`;
+
+  const telUrl = `tel:${lead.whatsapp_number}`;
+
+  const mailUrl = `mailto:${lead.email}`;
+
+  return (
+    <article className="st-card relative overflow-visible">
+      {/* HEADER */}
+
+      <div className="flex items-start justify-between gap-4 p-5">
+        <button
+          type="button"
+          onClick={onView}
+          className="flex min-w-0 items-center gap-3 text-left"
+        >
+          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[var(--st-bg-soft)] text-[11px] font-bold text-[var(--st-red)]">
+            {getInitials(lead.full_name)}
+          </div>
+
+          <div className="min-w-0">
+            <p className="m-0 truncate text-[13px] font-bold text-[var(--st-charcoal-dark)]">
+              {lead.full_name}
+            </p>
+
+            <p className="mt-1 mb-0 text-[10px] text-[var(--st-gray)]">
+              Added {formatRelativeDate(lead.created_at)}
+            </p>
+          </div>
+        </button>
+
+        <div className="relative shrink-0">
+          <button
+            type="button"
+            onClick={onMenu}
+            className="st-icon-button"
+            aria-label={`More options for ${lead.full_name}`}
+          >
+            <MoreHorizontal size={17} />
+          </button>
+
+          {menuOpen && (
+            <div className="absolute right-0 top-11 z-30 w-48 overflow-hidden rounded-2xl border border-[var(--st-border)] bg-white shadow-xl">
+              <button
+                type="button"
+                onClick={() => onStatusChange("new")}
+                className="block w-full px-4 py-3 text-left text-[11px] text-[var(--st-charcoal-dark)] hover:bg-[var(--st-bg-soft)]"
+              >
+                Mark as new
+              </button>
+
+              <button
+                type="button"
+                onClick={() => onStatusChange("contacted")}
+                className="block w-full px-4 py-3 text-left text-[11px] text-[var(--st-charcoal-dark)] hover:bg-[var(--st-bg-soft)]"
+              >
+                Mark contacted
+              </button>
+
+              <button
+                type="button"
+                onClick={() => onStatusChange("registered")}
+                className="block w-full px-4 py-3 text-left text-[11px] text-[var(--st-charcoal-dark)] hover:bg-[var(--st-bg-soft)]"
+              >
+                Mark registered
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* STATUS */}
+
+      <div className="px-5 pb-4">
+        <StatusBadge status={lead.status} />
+      </div>
+
+      {/* CONTACT DETAILS */}
+
+      <div className="space-y-2 border-t border-[var(--st-border)] px-5 py-4">
+        <a
+          href={mailUrl}
+          className="flex min-w-0 items-center gap-3 rounded-full bg-[var(--st-bg-soft)] px-4 py-3 transition-colors hover:bg-white"
+        >
+          <Mail
+            size={16}
+            className="shrink-0 text-[var(--st-red)]"
+          />
+
+          <span className="min-w-0 truncate text-[11px] text-[var(--st-charcoal-dark)]">
+            {lead.email}
+          </span>
+        </a>
+
+        <a
+          href={telUrl}
+          className="flex min-w-0 items-center gap-3 rounded-full bg-[var(--st-bg-soft)] px-4 py-3 transition-colors hover:bg-white"
+        >
+          <Phone
+            size={16}
+            className="shrink-0 text-[var(--st-red)]"
+          />
+
+          <span className="min-w-0 truncate text-[11px] text-[var(--st-charcoal-dark)]">
+            {lead.whatsapp_number}
+          </span>
+        </a>
+      </div>
+
+      {/* FOLLOW UP */}
+
+      <div className="border-t border-[var(--st-border)] px-5 py-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0">
+            <p className="m-0 text-[9px] font-semibold uppercase tracking-[0.08em] text-[var(--st-gray)]">
+              Next follow-up
+            </p>
+
+            <p
+              className={`mt-1 mb-0 text-[11px] font-semibold ${
+                isFollowUpDue(lead.next_follow_up_at)
+                  ? "text-[var(--st-red)]"
+                  : "text-[var(--st-charcoal-dark)]"
+              }`}
+            >
+              {formatFollowUp(lead.next_follow_up_at)}
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={onView}
+            className="flex shrink-0 items-center gap-1 text-left text-[11px] font-bold text-[var(--st-red)]"
+          >
+            View lead
+            <ChevronRight size={14} />
+          </button>
+        </div>
+      </div>
+
+      {/* CONTACT ACTIONS */}
+
+      <div className="grid grid-cols-3 gap-2 border-t border-[var(--st-border)] bg-[var(--st-bg-soft)] p-3">
+        <a
+          href={whatsappUrl}
+          target="_blank"
+          rel="noreferrer"
+          className="flex min-h-[42px] items-center justify-center gap-2 rounded-full bg-white px-2 text-[10px] font-semibold text-[var(--st-charcoal-dark)] transition-colors hover:text-[var(--st-red)]"
+        >
+          <MessageCircle size={15} />
+          <span>WhatsApp</span>
+        </a>
+
+        <a
+          href={telUrl}
+          className="flex min-h-[42px] items-center justify-center gap-2 rounded-full bg-white px-2 text-[10px] font-semibold text-[var(--st-charcoal-dark)] transition-colors hover:text-[var(--st-red)]"
+        >
+          <Phone size={15} />
+          <span>Call</span>
+        </a>
+
+        <a
+          href={mailUrl}
+          className="flex min-h-[42px] items-center justify-center gap-2 rounded-full bg-white px-2 text-[10px] font-semibold text-[var(--st-charcoal-dark)] transition-colors hover:text-[var(--st-red)]"
+        >
+          <Mail size={15} />
+          <span>Email</span>
+        </a>
+      </div>
+    </article>
+  );
+}
+
+/* =========================================================
+   PAGE
+========================================================= */
 
 export default function LeadsPage() {
   const [leads, setLeads] = useState<Lead[]>([]);
@@ -153,39 +394,33 @@ export default function LeadsPage() {
   const [selectedLead, setSelectedLead] =
     useState<Lead | null>(null);
 
-  const [menuLeadId, setMenuLeadId] =
+  const [openMenuId, setOpenMenuId] =
     useState<string | null>(null);
 
-  const [showAddLead, setShowAddLead] =
+  const [showAddModal, setShowAddModal] =
     useState(false);
 
-  const [savingLead, setSavingLead] =
-    useState(false);
+  const [saving, setSaving] = useState(false);
 
-  const [updatingStatus, setUpdatingStatus] =
-    useState(false);
+  const [form, setForm] = useState({
+    full_name: "",
+    email: "",
+    whatsapp_number: "",
+    notes: "",
+  });
 
-  const [error, setError] = useState("");
+  /* =======================================================
+     LOAD LEADS
+  ======================================================= */
 
-  const [newLeadName, setNewLeadName] =
-    useState("");
-
-  const [newLeadEmail, setNewLeadEmail] =
-    useState("");
-
-  const [newLeadWhatsapp, setNewLeadWhatsapp] =
-    useState("");
-
-  async function loadLeads(showRefresh = false) {
-    if (showRefresh) {
+  async function loadLeads(showRefreshState = false) {
+    if (showRefreshState) {
       setRefreshing(true);
     } else {
       setLoading(true);
     }
 
-    setError("");
-
-    const { data, error: leadsError } = await supabase
+    const { data, error } = await supabase
       .from("leads")
       .select(
         `
@@ -200,18 +435,13 @@ export default function LeadsPage() {
           notes,
           created_at,
           updated_at
-        `
+        `,
       )
-      .order("created_at", {
-        ascending: false,
-      });
+      .order("created_at", { ascending: false });
 
-    if (leadsError) {
-      console.error("Failed to load leads:", leadsError);
-
-      setError(
-        "We couldn't load your leads. Please try again."
-      );
+    if (error) {
+      console.error("Failed to load leads:", error);
+      setLeads([]);
     } else {
       setLeads((data ?? []) as Lead[]);
     }
@@ -224,20 +454,41 @@ export default function LeadsPage() {
     loadLeads();
   }, []);
 
-  const counts = useMemo(() => {
+  /* =======================================================
+     STATS
+  ======================================================= */
+
+  const stats = useMemo(() => {
+    const total = leads.length;
+
+    const newLeads = leads.filter(
+      (lead) => lead.status === "new",
+    ).length;
+
+    const contacted = leads.filter(
+      (lead) => lead.status === "contacted",
+    ).length;
+
+    const registered = leads.filter(
+      (lead) => lead.status === "registered",
+    ).length;
+
+    const followUpsDue = leads.filter((lead) =>
+      isFollowUpDue(lead.next_follow_up_at),
+    ).length;
+
     return {
-      total: leads.length,
-      new: leads.filter(
-        (lead) => lead.status === "new"
-      ).length,
-      contacted: leads.filter(
-        (lead) => lead.status === "contacted"
-      ).length,
-      registered: leads.filter(
-        (lead) => lead.status === "registered"
-      ).length,
+      total,
+      newLeads,
+      contacted,
+      registered,
+      followUpsDue,
     };
   }, [leads]);
+
+  /* =======================================================
+     FILTERED LEADS
+  ======================================================= */
 
   const filteredLeads = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -252,12 +503,8 @@ export default function LeadsPage() {
       if (!query) return true;
 
       return (
-        lead.full_name
-          .toLowerCase()
-          .includes(query) ||
-        lead.email
-          .toLowerCase()
-          .includes(query) ||
+        lead.full_name.toLowerCase().includes(query) ||
+        lead.email.toLowerCase().includes(query) ||
         lead.whatsapp_number
           .toLowerCase()
           .includes(query)
@@ -265,102 +512,102 @@ export default function LeadsPage() {
     });
   }, [leads, search, statusFilter]);
 
-  async function updateLeadStatus(
-    lead: Lead,
-    status: LeadStatus
+  /* =======================================================
+     UPDATE STATUS
+  ======================================================= */
+
+  async function updateStatus(
+    leadId: string,
+    status: LeadStatus,
   ) {
-    setUpdatingStatus(true);
-    setError("");
+    setOpenMenuId(null);
 
-    const { data, error: updateError } =
-      await supabase
-        .from("leads")
-        .update({
-          status,
-          updated_at: new Date().toISOString(),
-          last_contact_at:
-            status === "contacted"
-              ? new Date().toISOString()
-              : lead.last_contact_at,
-        })
-        .eq("id", lead.id)
-        .select()
-        .single();
+    const { error } = await supabase
+      .from("leads")
+      .update({
+        status,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", leadId);
 
-    if (updateError) {
-      console.error(
-        "Failed to update lead:",
-        updateError
-      );
-
-      setError(
-        "We couldn't update this lead. Please try again."
-      );
-
-      setUpdatingStatus(false);
+    if (error) {
+      console.error("Failed to update lead:", error);
       return;
     }
-
-    const updatedLead = data as Lead;
 
     setLeads((current) =>
-      current.map((item) =>
-        item.id === lead.id
-          ? updatedLead
-          : item
-      )
+      current.map((lead) =>
+        lead.id === leadId
+          ? {
+              ...lead,
+              status,
+              updated_at: new Date().toISOString(),
+            }
+          : lead,
+      ),
     );
 
-    setSelectedLead(updatedLead);
-    setMenuLeadId(null);
-    setUpdatingStatus(false);
+    setSelectedLead((current) =>
+      current?.id === leadId
+        ? {
+            ...current,
+            status,
+            updated_at: new Date().toISOString(),
+          }
+        : current,
+    );
   }
 
-  async function handleAddLead() {
-    if (!newLeadName.trim()) {
-      setError("Please enter the lead's name.");
+  /* =======================================================
+     ADD LEAD
+  ======================================================= */
+
+  async function handleAddLead(event: FormEvent) {
+    event.preventDefault();
+
+    if (
+      !form.full_name.trim() ||
+      !form.email.trim() ||
+      !form.whatsapp_number.trim()
+    ) {
       return;
     }
 
-    if (!newLeadEmail.trim()) {
-      setError("Please enter the lead's email.");
-      return;
-    }
+    setSaving(true);
 
-    if (!newLeadWhatsapp.trim()) {
-      setError(
-        "Please enter the lead's WhatsApp number."
-      );
-      return;
-    }
+    const now = new Date().toISOString();
 
-    setSavingLead(true);
-    setError("");
+    const { data, error } = await supabase
+      .from("leads")
+      .insert({
+        full_name: form.full_name.trim(),
+        email: form.email.trim(),
+        whatsapp_number: form.whatsapp_number.trim(),
+        notes: form.notes.trim() || null,
+        status: "new",
+        first_contact_at: now,
+      })
+      .select(
+        `
+          id,
+          full_name,
+          whatsapp_number,
+          email,
+          status,
+          first_contact_at,
+          last_contact_at,
+          next_follow_up_at,
+          notes,
+          created_at,
+          updated_at
+        `,
+      )
+      .single();
 
-    const { data, error: insertError } =
-      await supabase
-        .from("leads")
-        .insert({
-          full_name: newLeadName.trim(),
-          email: newLeadEmail.trim(),
-          whatsapp_number:
-            newLeadWhatsapp.trim(),
-          status: "new",
-        })
-        .select()
-        .single();
+    setSaving(false);
 
-    if (insertError) {
-      console.error(
-        "Failed to create lead:",
-        insertError
-      );
-
-      setError(
-        "We couldn't create the lead. Please try again."
-      );
-
-      setSavingLead(false);
+    if (error) {
+      console.error("Failed to create lead:", error);
       return;
     }
 
@@ -369,34 +616,39 @@ export default function LeadsPage() {
       ...current,
     ]);
 
-    setNewLeadName("");
-    setNewLeadEmail("");
-    setNewLeadWhatsapp("");
-    setShowAddLead(false);
-    setSavingLead(false);
+    setForm({
+      full_name: "",
+      email: "",
+      whatsapp_number: "",
+      notes: "",
+    });
+
+    setShowAddModal(false);
   }
 
-  function openLead(lead: Lead) {
-    setSelectedLead(lead);
-    setMenuLeadId(null);
+  /* =======================================================
+     UPDATE SELECTED LEAD
+  ======================================================= */
+
+  function handleSelectedStatus(status: LeadStatus) {
+    if (!selectedLead) return;
+
+    updateStatus(selectedLead.id, status);
   }
 
-  function closeLead() {
-    setSelectedLead(null);
-    setError("");
-  }
+  /* =======================================================
+     RENDER
+  ======================================================= */
 
   return (
-    <main className="st-content">
-      {/* =====================================================
-          PAGE HEADER
-      ===================================================== */}
+    <main className="st-content overflow-x-hidden">
+      {/* ===================================================
+          HEADER
+      =================================================== */}
 
       <div className="mb-7 flex flex-col justify-between gap-5 md:flex-row md:items-end">
-        <div>
-          <p className="st-eyebrow">
-            CRM
-          </p>
+        <div className="min-w-0">
+          <p className="st-eyebrow">CRM</p>
 
           <h1 className="st-page-title mt-2">
             Leads
@@ -408,23 +660,23 @@ export default function LeadsPage() {
           </p>
         </div>
 
-        <div className="flex gap-2">
+        <div className="flex shrink-0 gap-2">
           <button
             type="button"
             onClick={() => loadLeads(true)}
             disabled={refreshing}
-            className="st-button st-button-secondary disabled:opacity-60"
+            className="st-button st-button-secondary"
           >
-            <Users size={15} />
-            {refreshing ? "Refreshing..." : "Refresh"}
+            <RefreshCw
+              size={15}
+              className={refreshing ? "animate-spin" : ""}
+            />
+            Refresh
           </button>
 
           <button
             type="button"
-            onClick={() => {
-              setError("");
-              setShowAddLead(true);
-            }}
+            onClick={() => setShowAddModal(true)}
             className="st-button st-button-primary"
           >
             <Plus size={15} />
@@ -433,58 +685,48 @@ export default function LeadsPage() {
         </div>
       </div>
 
-      {/* =====================================================
-          ERROR
-      ===================================================== */}
-
-      {error && !selectedLead && (
-        <div className="mb-5 rounded-2xl border border-red-200 bg-red-50 px-4 py-3">
-          <p className="m-0 text-[10px] leading-relaxed text-red-700">
-            {error}
-          </p>
-        </div>
-      )}
-
-      {/* =====================================================
+      {/* ===================================================
           STATISTICS
-      ===================================================== */}
+      =================================================== */}
 
       <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard
           label="TOTAL LEADS"
-          value={counts.total}
+          value={stats.total}
           description="All leads in your CRM"
           icon={<Users size={19} />}
         />
 
         <StatCard
           label="NEW"
-          value={counts.new}
+          value={stats.newLeads}
           description="Have not been contacted"
           icon={<UserPlus size={19} />}
-          accent
         />
 
         <StatCard
           label="CONTACTED"
-          value={counts.contacted}
+          value={stats.contacted}
           description="Currently being followed up"
           icon={<MessageCircle size={19} />}
         />
 
         <StatCard
           label="REGISTERED"
-          value={counts.registered}
+          value={stats.registered}
           description="Converted into learners"
-          icon={<Check size={19} />}
+          icon={<Check size={20} />}
+          accent
         />
       </section>
 
-      {/* =====================================================
+      {/* ===================================================
           SEARCH + FILTER
-      ===================================================== */}
+      =================================================== */}
 
-      <section className="st-card mt-6 p-5">
+      <section className="st-card mt-6 p-4 sm:p-5">
+        {/* SEARCH */}
+
         <div className="relative">
           <Search
             size={18}
@@ -502,285 +744,131 @@ export default function LeadsPage() {
           />
         </div>
 
-        {/* No horizontal scrolling on mobile */}
-        <div className="mt-4 grid grid-cols-4 gap-2">
-          {(
-            [
-              ["all", "All"],
-              ["new", "New"],
-              ["contacted", "Contacted"],
-              ["registered", "Registered"],
-            ] as [FilterStatus, string][]
-          ).map(([key, label]) => {
-            const active =
-              statusFilter === key;
+        {/* SEGMENTED FILTER */}
 
-            return (
-              <button
-                key={key}
-                type="button"
-                onClick={() =>
-                  setStatusFilter(key)
-                }
-                className={`min-w-0 rounded-full px-2 py-3 text-[10px] font-bold transition-all ${
-                  active
-                    ? "bg-[var(--st-red)] text-white"
-                    : "bg-[var(--st-bg-soft)] text-[var(--st-charcoal)] hover:bg-[var(--st-border)]"
-                }`}
-              >
-                {label}
-              </button>
-            );
-          })}
+        <div className="mt-4 rounded-2xl bg-[var(--st-bg-soft)] p-1.5">
+          <div className="grid grid-cols-4 gap-1">
+            {(
+              [
+                ["all", "All"],
+                ["new", "New"],
+                ["contacted", "Contacted"],
+                ["registered", "Registered"],
+              ] as [FilterStatus, string][]
+            ).map(([key, label]) => {
+              const active = statusFilter === key;
+
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => setStatusFilter(key)}
+                  className={`flex min-h-[42px] items-center justify-center rounded-xl px-1 text-[9px] font-bold transition-all duration-200 sm:text-[10px] ${
+                    active
+                      ? "bg-[var(--st-red)] text-white shadow-sm"
+                      : "bg-transparent text-[var(--st-gray)] hover:bg-white hover:text-[var(--st-charcoal-dark)]"
+                  }`}
+                >
+                  {label}
+                </button>
+              );
+            })}
+          </div>
         </div>
       </section>
 
-      {/* =====================================================
-          LEAD PIPELINE
-      ===================================================== */}
+      {/* ===================================================
+          PIPELINE HEADER
+      =================================================== */}
 
-      <section className="mt-7">
-        <div className="mb-3">
-          <p className="st-eyebrow">
-            LEAD PIPELINE
-          </p>
+      <div className="mt-7 mb-4 flex items-end justify-between gap-4">
+        <div>
+          <p className="st-eyebrow">LEAD PIPELINE</p>
 
-          <p className="mt-1 mb-0 text-[10px] text-[var(--st-gray)]">
+          <p className="mt-1 mb-0 text-[11px] text-[var(--st-gray)]">
             {filteredLeads.length}{" "}
-            {filteredLeads.length === 1
-              ? "lead"
-              : "leads"}{" "}
-            shown
+            {filteredLeads.length === 1 ? "lead" : "leads"} shown
           </p>
         </div>
 
-        {loading ? (
-          <div className="st-card p-10 text-center">
-            <p className="m-0 text-[11px] text-[var(--st-gray)]">
-              Loading leads...
-            </p>
+        {search || statusFilter !== "all" ? (
+          <button
+            type="button"
+            onClick={() => {
+              setSearch("");
+              setStatusFilter("all");
+            }}
+            className="text-[10px] font-bold text-[var(--st-red)]"
+          >
+            Clear filters
+          </button>
+        ) : null}
+      </div>
+
+      {/* ===================================================
+          LEADS
+      =================================================== */}
+
+      {loading ? (
+        <section className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+          {[1, 2, 3, 4].map((item) => (
+            <div
+              key={item}
+              className="st-card h-[360px] animate-pulse bg-white"
+            />
+          ))}
+        </section>
+      ) : filteredLeads.length === 0 ? (
+        <section className="st-card flex min-h-[360px] flex-col items-center justify-center px-6 text-center">
+          <div className="flex h-14 w-14 items-center justify-center rounded-full bg-[var(--st-bg-soft)] text-[var(--st-red)]">
+            <Users size={22} />
           </div>
-        ) : filteredLeads.length === 0 ? (
-          <div className="st-card p-10 text-center">
-            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-[var(--st-bg-soft)] text-[var(--st-red)]">
-              <Users size={22} />
-            </div>
 
-            <h2 className="mt-5 text-[15px] font-bold text-[var(--st-charcoal-dark)]">
-              No leads found
-            </h2>
+          <h2 className="mt-5 mb-0 text-[15px] font-bold text-[var(--st-charcoal-dark)]">
+            No leads found
+          </h2>
 
-            <p className="mx-auto mt-2 max-w-[300px] text-[10px] leading-relaxed text-[var(--st-gray)]">
-              Try another search or filter, or add a new
-              lead to your CRM.
-            </p>
-          </div>
-        ) : (
-          <div className="space-y-4">
-            {filteredLeads.map((lead) => (
-              <div
-                key={lead.id}
-                className="st-card overflow-hidden"
-              >
-                {/* LEAD HEADER */}
+          <p className="mt-2 mb-0 max-w-[300px] text-[11px] leading-relaxed text-[var(--st-gray)]">
+            {search || statusFilter !== "all"
+              ? "Try another search or filter."
+              : "Your leads will appear here when they are added."}
+          </p>
 
-                <div className="flex items-start justify-between gap-4 p-5">
-                  <button
-                    type="button"
-                    onClick={() =>
-                      openLead(lead)
-                    }
-                    className="flex min-w-0 items-center gap-3 text-left"
-                  >
-                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[var(--st-bg-soft)] text-[11px] font-bold text-[var(--st-red)]">
-                      {getInitials(
-                        lead.full_name
-                      )}
-                    </div>
+          {!search && statusFilter === "all" ? (
+            <button
+              type="button"
+              onClick={() => setShowAddModal(true)}
+              className="st-button st-button-primary mt-5"
+            >
+              <Plus size={15} />
+              Add your first lead
+            </button>
+          ) : null}
+        </section>
+      ) : (
+        <section className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+          {filteredLeads.map((lead) => (
+            <LeadCard
+              key={lead.id}
+              lead={lead}
+              onView={() => setSelectedLead(lead)}
+              onStatusChange={(status) =>
+                updateStatus(lead.id, status)
+              }
+              onMenu={() =>
+                setOpenMenuId((current) =>
+                  current === lead.id ? null : lead.id,
+                )
+              }
+              menuOpen={openMenuId === lead.id}
+            />
+          ))}
+        </section>
+      )}
 
-                    <div className="min-w-0">
-                      <p className="m-0 truncate text-[13px] font-bold text-[var(--st-charcoal-dark)]">
-                        {lead.full_name}
-                      </p>
-
-                      <p className="mt-1 mb-0 text-[9px] text-[var(--st-gray)]">
-                        Added{" "}
-                        {formatDate(
-                          lead.created_at
-                        )}
-                      </p>
-                    </div>
-                  </button>
-
-                  <div className="relative shrink-0">
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setMenuLeadId(
-                          menuLeadId === lead.id
-                            ? null
-                            : lead.id
-                        )
-                      }
-                      className="st-icon-button"
-                      aria-label={`Lead actions for ${lead.full_name}`}
-                    >
-                      <MoreHorizontal size={17} />
-                    </button>
-
-                    {menuLeadId === lead.id && (
-                      <div className="absolute right-0 top-11 z-30 w-48 overflow-hidden rounded-2xl border border-[var(--st-border)] bg-white shadow-xl">
-                        <button
-                          type="button"
-                          onClick={() =>
-                            updateLeadStatus(
-                              lead,
-                              "new"
-                            )
-                          }
-                          className="block w-full px-4 py-3 text-left text-[11px] text-[var(--st-charcoal-dark)] hover:bg-[var(--st-bg-soft)]"
-                        >
-                          Mark as new
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() =>
-                            updateLeadStatus(
-                              lead,
-                              "contacted"
-                            )
-                          }
-                          className="block w-full px-4 py-3 text-left text-[11px] text-[var(--st-charcoal-dark)] hover:bg-[var(--st-bg-soft)]"
-                        >
-                          Mark contacted
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() =>
-                            updateLeadStatus(
-                              lead,
-                              "registered"
-                            )
-                          }
-                          className="block w-full px-4 py-3 text-left text-[11px] text-[var(--st-charcoal-dark)] hover:bg-[var(--st-bg-soft)]"
-                        >
-                          Mark registered
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* STATUS */}
-
-                <div className="px-5 pb-4">
-                  <StatusBadge
-                    status={lead.status}
-                  />
-                </div>
-
-                {/* CONTACT INFORMATION */}
-
-                <div className="space-y-2 border-t border-[var(--st-border)] px-5 py-4">
-                  <a
-                    href={`mailto:${lead.email}`}
-                    className="flex min-w-0 items-center gap-3 rounded-full bg-[var(--st-bg-soft)] px-4 py-3"
-                  >
-                    <Mail
-                      size={15}
-                      className="shrink-0 text-[var(--st-red)]"
-                    />
-
-                    <span className="min-w-0 truncate text-[10px] text-[var(--st-charcoal)]">
-                      {lead.email}
-                    </span>
-                  </a>
-
-                  <a
-                    href={`tel:${lead.whatsapp_number}`}
-                    className="flex min-w-0 items-center gap-3 rounded-full bg-[var(--st-bg-soft)] px-4 py-3"
-                  >
-                    <Phone
-                      size={15}
-                      className="shrink-0 text-[var(--st-red)]"
-                    />
-
-                    <span className="text-[10px] text-[var(--st-charcoal)]">
-                      {lead.whatsapp_number}
-                    </span>
-                  </a>
-                </div>
-
-                {/* FOLLOW-UP */}
-
-                <div className="border-t border-[var(--st-border)] px-5 py-4">
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                    <div>
-                      <p className="m-0 text-[9px] font-bold uppercase tracking-[0.1em] text-[var(--st-gray)]">
-                        NEXT FOLLOW-UP
-                      </p>
-
-                      <p className="mt-1 mb-0 text-[10px] font-semibold text-[var(--st-charcoal-dark)]">
-                        {formatFollowUp(
-                          lead.next_follow_up_at
-                        )}
-                      </p>
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={() =>
-                        openLead(lead)
-                      }
-                      className="self-start text-[11px] font-bold text-[var(--st-red)] sm:self-auto"
-                    >
-                      View lead →
-                    </button>
-                  </div>
-                </div>
-
-                {/* QUICK CONTACT */}
-
-                <div className="grid grid-cols-3 gap-2 border-t border-[var(--st-border)] bg-[var(--st-bg-soft)] p-3">
-                  <a
-                    href={getWhatsAppUrl(
-                      lead.whatsapp_number
-                    )}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="flex items-center justify-center gap-2 rounded-full bg-white px-2 py-3 text-[10px] font-semibold text-[var(--st-charcoal)] transition-colors hover:bg-[var(--st-red)] hover:text-white"
-                  >
-                    <MessageCircle size={14} />
-                    <span>WhatsApp</span>
-                  </a>
-
-                  <a
-                    href={`tel:${lead.whatsapp_number}`}
-                    className="flex items-center justify-center gap-2 rounded-full bg-white px-2 py-3 text-[10px] font-semibold text-[var(--st-charcoal)] transition-colors hover:bg-[var(--st-red)] hover:text-white"
-                  >
-                    <Phone size={14} />
-                    <span>Call</span>
-                  </a>
-
-                  <a
-                    href={`mailto:${lead.email}`}
-                    className="flex items-center justify-center gap-2 rounded-full bg-white px-2 py-3 text-[10px] font-semibold text-[var(--st-charcoal)] transition-colors hover:bg-[var(--st-red)] hover:text-white"
-                  >
-                    <Mail size={14} />
-                    <span>Email</span>
-                  </a>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </section>
-
-      {/* =====================================================
+      {/* ===================================================
           FOOTER
-      ===================================================== */}
+      =================================================== */}
 
       <div className="mt-7 flex flex-col gap-2 border-t border-[var(--st-border)] pt-5 sm:flex-row sm:items-center sm:justify-between">
         <p className="m-0 text-[9px] text-[var(--st-gray)]">
@@ -788,53 +876,55 @@ export default function LeadsPage() {
         </p>
 
         <p className="m-0 text-[9px] text-[var(--st-gray)]">
-          Admin workspace
+          {stats.followUpsDue} follow-up
+          {stats.followUpsDue === 1 ? "" : "s"} due
         </p>
       </div>
 
-      {/* =====================================================
+      {/* ===================================================
           LEAD DETAILS MODAL
-      ===================================================== */}
+      =================================================== */}
 
       {selectedLead && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 sm:items-center sm:p-5">
-          <div className="max-h-[92vh] w-full overflow-y-auto rounded-t-[28px] bg-white sm:max-w-[620px] sm:rounded-[28px]">
+        <div
+          className="fixed inset-0 z-[100] flex items-end justify-center bg-black/35 sm:items-center sm:p-5"
+          onClick={() => setSelectedLead(null)}
+        >
+          <div
+            className="max-h-[92vh] w-full overflow-y-auto rounded-t-[28px] bg-white sm:max-w-[620px] sm:rounded-[28px]"
+            onClick={(event) => event.stopPropagation()}
+          >
             {/* MODAL HEADER */}
 
-            <div className="flex items-start justify-between border-b border-[var(--st-border)] px-5 py-5">
+            <div className="sticky top-0 z-10 flex items-start justify-between border-b border-[var(--st-border)] bg-white px-6 py-5">
               <div className="min-w-0">
                 <p className="st-eyebrow">
                   LEAD DETAILS
                 </p>
 
-                <h2 className="mt-2 truncate text-[24px] font-bold tracking-[-0.04em] text-[var(--st-charcoal-dark)]">
+                <h2 className="mt-2 truncate text-[22px] font-bold text-[var(--st-charcoal-dark)]">
                   {selectedLead.full_name}
                 </h2>
               </div>
 
               <button
                 type="button"
-                onClick={closeLead}
+                onClick={() => setSelectedLead(null)}
                 className="st-icon-button shrink-0"
                 aria-label="Close lead details"
               >
-                <X size={19} />
+                <X size={18} />
               </button>
             </div>
 
-            <div className="p-5 sm:p-7">
+            <div className="space-y-5 p-6">
               {/* STATUS + DATE */}
 
               <div className="flex items-center justify-between gap-4">
-                <StatusBadge
-                  status={selectedLead.status}
-                />
+                <StatusBadge status={selectedLead.status} />
 
-                <span className="text-[9px] text-[var(--st-gray)]">
-                  Added{" "}
-                  {formatDate(
-                    selectedLead.created_at
-                  )}
+                <span className="text-[10px] text-[var(--st-gray)]">
+                  Added {formatDate(selectedLead.created_at)}
                 </span>
               </div>
 
@@ -842,15 +932,15 @@ export default function LeadsPage() {
 
               <a
                 href={`mailto:${selectedLead.email}`}
-                className="mt-5 flex items-center gap-4 rounded-2xl bg-[var(--st-bg-soft)] p-4"
+                className="flex items-center gap-4 rounded-2xl bg-[var(--st-bg-soft)] p-4"
               >
                 <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white text-[var(--st-red)]">
                   <Mail size={17} />
                 </div>
 
                 <div className="min-w-0">
-                  <p className="m-0 text-[9px] font-bold uppercase tracking-[0.08em] text-[var(--st-gray)]">
-                    EMAIL
+                  <p className="m-0 text-[9px] font-semibold uppercase tracking-[0.08em] text-[var(--st-gray)]">
+                    Email
                   </p>
 
                   <p className="mt-1 mb-0 truncate text-[11px] font-semibold text-[var(--st-charcoal-dark)]">
@@ -863,15 +953,15 @@ export default function LeadsPage() {
 
               <a
                 href={`tel:${selectedLead.whatsapp_number}`}
-                className="mt-3 flex items-center gap-4 rounded-2xl bg-[var(--st-bg-soft)] p-4"
+                className="flex items-center gap-4 rounded-2xl bg-[var(--st-bg-soft)] p-4"
               >
                 <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white text-[var(--st-red)]">
                   <Phone size={17} />
                 </div>
 
-                <div>
-                  <p className="m-0 text-[9px] font-bold uppercase tracking-[0.08em] text-[var(--st-gray)]">
-                    WHATSAPP / PHONE
+                <div className="min-w-0">
+                  <p className="m-0 text-[9px] font-semibold uppercase tracking-[0.08em] text-[var(--st-gray)]">
+                    WhatsApp / Phone
                   </p>
 
                   <p className="mt-1 mb-0 text-[11px] font-semibold text-[var(--st-charcoal-dark)]">
@@ -880,63 +970,81 @@ export default function LeadsPage() {
                 </div>
               </a>
 
-              {/* FOLLOW-UP */}
+              {/* FOLLOW UP */}
 
-              <div className="mt-3 flex items-center gap-4 rounded-2xl border border-[var(--st-border)] p-4">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[var(--st-bg-soft)] text-[var(--st-red)]">
-                  <Clock3 size={17} />
-                </div>
+              <div className="rounded-2xl border border-[var(--st-border)] p-4">
+                <div className="flex items-center gap-3">
+                  <Clock3
+                    size={18}
+                    className="text-[var(--st-red)]"
+                  />
 
-                <div>
-                  <p className="m-0 text-[9px] font-bold uppercase tracking-[0.08em] text-[var(--st-gray)]">
-                    NEXT FOLLOW-UP
-                  </p>
+                  <div>
+                    <p className="m-0 text-[9px] font-semibold uppercase tracking-[0.08em] text-[var(--st-gray)]">
+                      Next follow-up
+                    </p>
 
-                  <p className="mt-1 mb-0 text-[11px] font-semibold text-[var(--st-charcoal-dark)]">
-                    {formatFollowUp(
-                      selectedLead.next_follow_up_at
-                    )}
-                  </p>
+                    <p className="mt-1 mb-0 text-[11px] font-semibold text-[var(--st-charcoal-dark)]">
+                      {formatFollowUp(
+                        selectedLead.next_follow_up_at,
+                      )}
+                    </p>
+                  </div>
                 </div>
               </div>
 
-              {/* CONTACT BUTTONS */}
+              {/* NOTES */}
 
-              <div className="mt-5 grid grid-cols-3 gap-2">
+              {selectedLead.notes ? (
+                <div className="rounded-2xl bg-[var(--st-bg-soft)] p-4">
+                  <p className="m-0 text-[9px] font-semibold uppercase tracking-[0.08em] text-[var(--st-gray)]">
+                    Notes
+                  </p>
+
+                  <p className="mt-2 mb-0 text-[11px] leading-relaxed text-[var(--st-charcoal-dark)]">
+                    {selectedLead.notes}
+                  </p>
+                </div>
+              ) : null}
+
+              {/* CONTACT ACTIONS */}
+
+              <div className="grid grid-cols-3 gap-2">
                 <a
-                  href={getWhatsAppUrl(
-                    selectedLead.whatsapp_number
-                  )}
+                  href={`https://wa.me/${selectedLead.whatsapp_number.replace(
+                    /\D/g,
+                    "",
+                  )}`}
                   target="_blank"
                   rel="noreferrer"
-                  className="flex items-center justify-center gap-2 rounded-full bg-[var(--st-red)] px-2 py-3.5 text-[10px] font-bold text-white"
+                  className="flex min-h-[48px] items-center justify-center gap-2 rounded-full bg-[var(--st-red)] px-2 text-[10px] font-bold text-white"
                 >
-                  <MessageCircle size={14} />
+                  <MessageCircle size={16} />
                   WhatsApp
                 </a>
 
                 <a
                   href={`tel:${selectedLead.whatsapp_number}`}
-                  className="flex items-center justify-center gap-2 rounded-full bg-[var(--st-bg-soft)] px-2 py-3.5 text-[10px] font-bold text-[var(--st-charcoal)]"
+                  className="flex min-h-[48px] items-center justify-center gap-2 rounded-full bg-[var(--st-bg-soft)] px-2 text-[10px] font-bold text-[var(--st-charcoal-dark)]"
                 >
-                  <Phone size={14} />
+                  <Phone size={16} />
                   Call
                 </a>
 
                 <a
                   href={`mailto:${selectedLead.email}`}
-                  className="flex items-center justify-center gap-2 rounded-full bg-[var(--st-bg-soft)] px-2 py-3.5 text-[10px] font-bold text-[var(--st-charcoal)]"
+                  className="flex min-h-[48px] items-center justify-center gap-2 rounded-full bg-[var(--st-bg-soft)] px-2 text-[10px] font-bold text-[var(--st-charcoal-dark)]"
                 >
-                  <Mail size={14} />
+                  <Mail size={16} />
                   Email
                 </a>
               </div>
 
-              {/* STATUS */}
+              {/* UPDATE STATUS */}
 
-              <div className="mt-7 border-t border-[var(--st-border)] pt-6">
-                <p className="m-0 text-[9px] font-bold uppercase tracking-[0.12em] text-[var(--st-gray)]">
-                  UPDATE STATUS
+              <div className="border-t border-[var(--st-border)] pt-5">
+                <p className="m-0 text-[10px] font-bold uppercase tracking-[0.08em] text-[var(--st-gray)]">
+                  Update status
                 </p>
 
                 <div className="mt-3 grid grid-cols-3 gap-2">
@@ -948,24 +1056,19 @@ export default function LeadsPage() {
                     ] as [LeadStatus, string][]
                   ).map(([status, label]) => {
                     const active =
-                      selectedLead.status ===
-                      status;
+                      selectedLead.status === status;
 
                     return (
                       <button
                         key={status}
                         type="button"
-                        disabled={updatingStatus}
                         onClick={() =>
-                          updateLeadStatus(
-                            selectedLead,
-                            status
-                          )
+                          handleSelectedStatus(status)
                         }
-                        className={`rounded-full border px-2 py-3 text-[10px] font-bold transition-all disabled:opacity-60 ${
+                        className={`min-h-[46px] rounded-full border text-[10px] font-bold transition-all ${
                           active
                             ? "border-[var(--st-red)] bg-[var(--st-bg-soft)] text-[var(--st-red)]"
-                            : "border-[var(--st-border)] bg-white text-[var(--st-charcoal)]"
+                            : "border-[var(--st-border)] bg-white text-[var(--st-charcoal-dark)] hover:border-[var(--st-red)]"
                         }`}
                       >
                         {label}
@@ -974,141 +1077,174 @@ export default function LeadsPage() {
                   })}
                 </div>
               </div>
-
-              {/* NOTES */}
-
-              {selectedLead.notes && (
-                <div className="mt-6 rounded-2xl bg-[var(--st-bg-soft)] p-4">
-                  <p className="m-0 text-[9px] font-bold uppercase tracking-[0.1em] text-[var(--st-gray)]">
-                    NOTES
-                  </p>
-
-                  <p className="mt-2 mb-0 text-[11px] leading-relaxed text-[var(--st-charcoal)]">
-                    {selectedLead.notes}
-                  </p>
-                </div>
-              )}
-
-              {/* ERROR */}
-
-              {error && (
-                <div className="mt-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3">
-                  <p className="m-0 text-[10px] leading-relaxed text-red-700">
-                    {error}
-                  </p>
-                </div>
-              )}
             </div>
           </div>
         </div>
       )}
 
-      {/* =====================================================
+      {/* ===================================================
           ADD LEAD MODAL
-      ===================================================== */}
+      =================================================== */}
 
-      {showAddLead && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 sm:items-center sm:p-5">
-          <div className="w-full rounded-t-[28px] bg-white sm:max-w-[520px] sm:rounded-[28px]">
-            <div className="flex items-start justify-between border-b border-[var(--st-border)] px-5 py-5">
+      {showAddModal && (
+        <div
+          className="fixed inset-0 z-[100] flex items-end justify-center bg-black/35 sm:items-center sm:p-5"
+          onClick={() => setShowAddModal(false)}
+        >
+          <div
+            className="w-full rounded-t-[28px] bg-white sm:max-w-[560px] sm:rounded-[28px]"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-start justify-between border-b border-[var(--st-border)] px-6 py-5">
               <div>
                 <p className="st-eyebrow">
-                  NEW LEAD
+                  CRM
                 </p>
 
-                <h2 className="mt-2 text-[23px] font-bold tracking-[-0.04em] text-[var(--st-charcoal-dark)]">
-                  Add a lead
+                <h2 className="mt-2 text-[22px] font-bold text-[var(--st-charcoal-dark)]">
+                  Add lead
                 </h2>
+
+                <p className="mt-1 mb-0 text-[10px] text-[var(--st-gray)]">
+                  Add someone who has shown interest in lessons.
+                </p>
               </div>
 
               <button
                 type="button"
-                onClick={() =>
-                  setShowAddLead(false)
-                }
+                onClick={() => setShowAddModal(false)}
                 className="st-icon-button"
                 aria-label="Close add lead"
               >
-                <X size={19} />
+                <X size={18} />
               </button>
             </div>
 
-            <div className="space-y-5 p-5 sm:p-7">
+            <form
+              onSubmit={handleAddLead}
+              className="space-y-4 p-6"
+            >
+              {/* NAME */}
+
               <div>
-                <label className="mb-2 block text-[10px] font-bold uppercase tracking-[0.08em] text-[var(--st-charcoal)]">
+                <label className="mb-2 block text-[10px] font-bold text-[var(--st-charcoal-dark)]">
                   Full name
                 </label>
 
                 <input
                   type="text"
-                  value={newLeadName}
+                  required
+                  value={form.full_name}
                   onChange={(event) =>
-                    setNewLeadName(
-                      event.target.value
-                    )
+                    setForm((current) => ({
+                      ...current,
+                      full_name: event.target.value,
+                    }))
                   }
-                  placeholder="Lead's full name"
-                  className="w-full rounded-xl border border-[var(--st-border)] bg-white px-4 py-3.5 text-[12px] outline-none focus:border-[var(--st-red)] focus:ring-2 focus:ring-[var(--st-red)]/10"
+                  placeholder="e.g. Brian Mwangi"
+                  className="w-full rounded-2xl border border-[var(--st-border)] px-4 py-3.5 text-[11px] outline-none focus:border-[var(--st-red)]"
                 />
               </div>
 
+              {/* EMAIL */}
+
               <div>
-                <label className="mb-2 block text-[10px] font-bold uppercase tracking-[0.08em] text-[var(--st-charcoal)]">
-                  Email address
+                <label className="mb-2 block text-[10px] font-bold text-[var(--st-charcoal-dark)]">
+                  Email
                 </label>
 
                 <input
                   type="email"
-                  value={newLeadEmail}
+                  required
+                  value={form.email}
                   onChange={(event) =>
-                    setNewLeadEmail(
-                      event.target.value
-                    )
+                    setForm((current) => ({
+                      ...current,
+                      email: event.target.value,
+                    }))
                   }
-                  placeholder="you@example.com"
-                  className="w-full rounded-xl border border-[var(--st-border)] bg-white px-4 py-3.5 text-[12px] outline-none focus:border-[var(--st-red)] focus:ring-2 focus:ring-[var(--st-red)]/10"
+                  placeholder="name@example.com"
+                  className="w-full rounded-2xl border border-[var(--st-border)] px-4 py-3.5 text-[11px] outline-none focus:border-[var(--st-red)]"
                 />
               </div>
 
+              {/* PHONE */}
+
               <div>
-                <label className="mb-2 block text-[10px] font-bold uppercase tracking-[0.08em] text-[var(--st-charcoal)]">
-                  WhatsApp number
+                <label className="mb-2 block text-[10px] font-bold text-[var(--st-charcoal-dark)]">
+                  WhatsApp / Phone
                 </label>
 
                 <input
                   type="tel"
-                  value={newLeadWhatsapp}
+                  required
+                  value={form.whatsapp_number}
                   onChange={(event) =>
-                    setNewLeadWhatsapp(
-                      event.target.value
-                    )
+                    setForm((current) => ({
+                      ...current,
+                      whatsapp_number:
+                        event.target.value,
+                    }))
                   }
-                  placeholder="+254 712 345 678"
-                  className="w-full rounded-xl border border-[var(--st-border)] bg-white px-4 py-3.5 text-[12px] outline-none focus:border-[var(--st-red)] focus:ring-2 focus:ring-[var(--st-red)]/10"
+                  placeholder="+254..."
+                  className="w-full rounded-2xl border border-[var(--st-border)] px-4 py-3.5 text-[11px] outline-none focus:border-[var(--st-red)]"
                 />
               </div>
 
-              {error && (
-                <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3">
-                  <p className="m-0 text-[10px] leading-relaxed text-red-700">
-                    {error}
-                  </p>
-                </div>
-              )}
+              {/* NOTES */}
 
-              <button
-                type="button"
-                disabled={savingLead}
-                onClick={handleAddLead}
-                className="st-button st-button-primary w-full disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                <UserPlus size={15} />
+              <div>
+                <label className="mb-2 block text-[10px] font-bold text-[var(--st-charcoal-dark)]">
+                  Notes
+                </label>
 
-                {savingLead
-                  ? "Adding lead..."
-                  : "Add lead"}
-              </button>
-            </div>
+                <textarea
+                  value={form.notes}
+                  onChange={(event) =>
+                    setForm((current) => ({
+                      ...current,
+                      notes: event.target.value,
+                    }))
+                  }
+                  rows={4}
+                  placeholder="Anything useful about this lead..."
+                  className="w-full resize-none rounded-2xl border border-[var(--st-border)] px-4 py-3.5 text-[11px] outline-none focus:border-[var(--st-red)]"
+                />
+              </div>
+
+              {/* ACTIONS */}
+
+              <div className="flex gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowAddModal(false)}
+                  className="st-button st-button-secondary flex-1"
+                >
+                  Cancel
+                </button>
+
+                <button
+                  type="submit"
+                  disabled={saving}
+                  className="st-button st-button-primary flex-1"
+                >
+                  {saving ? (
+                    <>
+                      <RefreshCw
+                        size={15}
+                        className="animate-spin"
+                      />
+                      Saving...
+                    </>
+                  ) : (
+                    <>
+                      <Plus size={15} />
+                      Add lead
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
