@@ -46,6 +46,11 @@ const navigation = [
         icon: Users,
       },
       {
+        label: "Students",
+        href: "/admin/students",
+        icon: Users,
+      },
+      {
         label: "Follow-ups",
         href: "/admin/followups",
         icon: Clock3,
