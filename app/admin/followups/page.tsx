@@ -3,16 +3,16 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   AlertCircle,
+  ArrowRight,
   CalendarDays,
   Check,
   CheckCircle2,
   Clock3,
-  Mail,
   MessageCircle,
   Phone,
   RefreshCw,
   Search,
-  UserRound,
+  Users,
   X,
 } from "lucide-react";
 
@@ -25,41 +25,8 @@ type FollowUpStatus =
   | "cancelled";
 
 type MessageChannel =
-  | "whatsapp"
-  | "email";
-
-type LeadStatus =
-  | "new"
-  | "booked"
-  | "attended"
-  | "follow_up"
-  | "interested"
-  | "registered"
-  | "not_now"
-  | "not_interested"
-  | "no_show";
-
-type Lead = {
-  id: string;
-  full_name: string;
-  whatsapp_number: string;
-  email: string;
-  status: LeadStatus;
-  next_follow_up_at: string | null;
-};
-
-type Booking = {
-  id: string;
-  lead_id: string;
-  instrument: "piano" | "guitar";
-  status:
-    | "confirmed"
-    | "completed"
-    | "no_show"
-    | "cancelled"
-    | "rescheduled";
-  attended_at: string | null;
-};
+  | "email"
+  | "whatsapp";
 
 type FollowUpTask = {
   id: string;
@@ -73,12 +40,20 @@ type FollowUpTask = {
   sent_at: string | null;
   completed_at: string | null;
   created_at: string;
+  updated_at: string;
+};
+
+type Lead = {
+  id: string;
+  full_name: string;
+  whatsapp_number: string;
+  email: string;
+  status: string;
 };
 
 type FollowUpRecord = {
   task: FollowUpTask;
   lead: Lead | null;
-  booking: Booking | null;
 };
 
 type Filter =
@@ -99,7 +74,7 @@ function getTodayKey() {
   }).format(new Date());
 }
 
-function formatDateTime(value: string) {
+function formatDateTime(dateString: string) {
   return new Intl.DateTimeFormat("en-KE", {
     timeZone: NAIROBI_TIME_ZONE,
     day: "numeric",
@@ -107,77 +82,28 @@ function formatDateTime(value: string) {
     year: "numeric",
     hour: "numeric",
     minute: "2-digit",
-  }).format(new Date(value));
+  }).format(new Date(dateString));
 }
 
-function formatDate(value: string) {
+function formatLongDate(dateString: string) {
   return new Intl.DateTimeFormat("en-KE", {
     timeZone: NAIROBI_TIME_ZONE,
+    weekday: "long",
     day: "numeric",
-    month: "short",
+    month: "long",
     year: "numeric",
-  }).format(new Date(value));
+  }).format(new Date(dateString));
 }
 
-function isToday(value: string) {
-  const taskDate = new Intl.DateTimeFormat("en-CA", {
-    timeZone: NAIROBI_TIME_ZONE,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(new Date(value));
-
-  return taskDate === getTodayKey();
+function taskTypeLabel(taskType: string) {
+  return taskType
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (letter) =>
+      letter.toUpperCase()
+    );
 }
 
-function isOverdue(task: FollowUpTask) {
-  return (
-    task.status === "pending" &&
-    new Date(task.due_at).getTime() <
-      Date.now()
-  );
-}
-
-function isUpcoming(task: FollowUpTask) {
-  return (
-    task.status === "pending" &&
-    new Date(task.due_at).getTime() >=
-      Date.now() &&
-    !isToday(task.due_at)
-  );
-}
-
-function taskTypeLabel(type: string) {
-  const labels: Record<string, string> = {
-    booking_confirmation:
-      "Booking confirmation",
-    reminder_24h:
-      "24-hour reminder",
-    reminder_2h:
-      "2-hour reminder",
-    post_trial:
-      "Post-trial follow-up",
-    no_show:
-      "No-show follow-up",
-    follow_up:
-      "Lead follow-up",
-    conversion:
-      "Conversion follow-up",
-  };
-
-  return (
-    labels[type] ??
-    type
-      .replace(/_/g, " ")
-      .replace(/\b\w/g, (letter) =>
-        letter.toUpperCase()
-      )
-  );
-}
-
-function statusLabel(
-  status: FollowUpStatus
-) {
+function statusLabel(status: FollowUpStatus) {
   switch (status) {
     case "pending":
       return "Pending";
@@ -192,9 +118,7 @@ function statusLabel(
   }
 }
 
-function statusClasses(
-  status: FollowUpStatus
-) {
+function statusClasses(status: FollowUpStatus) {
   switch (status) {
     case "pending":
       return "bg-amber-50 text-amber-700";
@@ -213,56 +137,93 @@ function statusClasses(
   }
 }
 
-function channelLabel(
-  channel: MessageChannel | null
-) {
-  if (channel === "whatsapp") {
-    return "WhatsApp";
-  }
+function isToday(dateString: string) {
+  const date = new Date(dateString);
 
-  if (channel === "email") {
-    return "Email";
-  }
+  const key = new Intl.DateTimeFormat("en-CA", {
+    timeZone: NAIROBI_TIME_ZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(date);
 
-  return "Manual";
+  return key === getTodayKey();
 }
 
-function initials(name: string) {
-  return name
-    .trim()
-    .split(/\s+/)
-    .map((word) => word[0])
-    .join("")
-    .slice(0, 2)
-    .toUpperCase();
+function isOverdue(task: FollowUpTask) {
+  return (
+    task.status === "pending" &&
+    new Date(task.due_at).getTime() <
+      Date.now()
+  );
 }
 
-function leadStatusLabel(status: LeadStatus) {
-  switch (status) {
-    case "new":
-      return "New";
-    case "booked":
-      return "Booked";
-    case "attended":
-      return "Attended";
-    case "follow_up":
-      return "Follow-up";
-    case "interested":
-      return "Interested";
-    case "registered":
-      return "Registered";
-    case "not_now":
-      return "Not now";
-    case "not_interested":
-      return "Not interested";
-    case "no_show":
-      return "No-show";
-    default:
-      return status;
+function isUpcoming(task: FollowUpTask) {
+  return (
+    task.status === "pending" &&
+    new Date(task.due_at).getTime() >=
+      Date.now()
+  );
+}
+
+function getRelativeLabel(task: FollowUpTask) {
+  if (task.status === "completed") {
+    return "Completed";
   }
+
+  if (task.status === "cancelled") {
+    return "Cancelled";
+  }
+
+  const due = new Date(task.due_at).getTime();
+  const now = Date.now();
+
+  const difference = due - now;
+
+  const minutes = Math.round(
+    Math.abs(difference) / (1000 * 60)
+  );
+
+  if (difference < 0) {
+    if (minutes < 60) {
+      return `Overdue by ${minutes} min`;
+    }
+
+    const hours = Math.round(minutes / 60);
+
+    if (hours < 24) {
+      return `Overdue by ${hours} ${
+        hours === 1 ? "hour" : "hours"
+      }`;
+    }
+
+    const days = Math.round(hours / 24);
+
+    return `Overdue by ${days} ${
+      days === 1 ? "day" : "days"
+    }`;
+  }
+
+  if (minutes < 60) {
+    return `Due in ${minutes} min`;
+  }
+
+  const hours = Math.round(minutes / 60);
+
+  if (hours < 24) {
+    return `Due in ${hours} ${
+      hours === 1 ? "hour" : "hours"
+    }`;
+  }
+
+  const days = Math.round(hours / 24);
+
+  return `Due in ${days} ${
+    days === 1 ? "day" : "days"
+  }`;
 }
 
-export default function AdminFollowUpsPage() {
+export default function AdminFollowupsPage() {
   const [records, setRecords] =
     useState<FollowUpRecord[]>([]);
 
@@ -281,19 +242,13 @@ export default function AdminFollowUpsPage() {
   const [filter, setFilter] =
     useState<Filter>("all");
 
-  const [selectedRecord, setSelectedRecord] =
+  const [selectedTask, setSelectedTask] =
     useState<FollowUpRecord | null>(null);
 
   const [updatingId, setUpdatingId] =
     useState<string | null>(null);
 
-  /*
-   * =========================================================
-   * LOAD FOLLOW-UPS
-   * =========================================================
-   */
-
-  async function loadFollowUps(
+  async function loadFollowups(
     silent = false
   ) {
     if (silent) {
@@ -321,7 +276,8 @@ export default function AdminFollowUpsPage() {
           message_template,
           sent_at,
           completed_at,
-          created_at
+          created_at,
+          updated_at
         `
       )
       .order("due_at", {
@@ -330,7 +286,7 @@ export default function AdminFollowUpsPage() {
 
     if (taskError) {
       console.error(
-        "Follow-up load error:",
+        "Follow-ups load error:",
         taskError
       );
 
@@ -364,80 +320,31 @@ export default function AdminFollowUpsPage() {
       )
     );
 
-    const bookingIds = Array.from(
-      new Set(
-        tasks
-          .map(
-            (task) =>
-              task.booking_id
-          )
-          .filter(
-            (
-              id
-            ): id is string =>
-              Boolean(id)
-          )
+    const {
+      data: leadData,
+      error: leadError,
+    } = await supabase
+      .from("leads")
+      .select(
+        `
+          id,
+          full_name,
+          whatsapp_number,
+          email,
+          status
+        `
       )
-    );
+      .in("id", leadIds);
 
-    const [
-      leadsResult,
-      bookingsResult,
-    ] = await Promise.all([
-      supabase
-        .from("leads")
-        .select(
-          `
-            id,
-            full_name,
-            whatsapp_number,
-            email,
-            status,
-            next_follow_up_at
-          `
-        )
-        .in("id", leadIds),
-
-      bookingIds.length > 0
-        ? supabase
-            .from("bookings")
-            .select(
-              `
-                id,
-                lead_id,
-                instrument,
-                status,
-                attended_at
-              `
-            )
-            .in("id", bookingIds)
-        : Promise.resolve({
-            data: [],
-            error: null,
-          }),
-    ]);
-
-    if (leadsResult.error) {
+    if (leadError) {
       console.error(
         "Leads load error:",
-        leadsResult.error
-      );
-    }
-
-    if (bookingsResult.error) {
-      console.error(
-        "Bookings load error:",
-        bookingsResult.error
+        leadError
       );
     }
 
     const leads =
-      (leadsResult.data ??
-        []) as Lead[];
-
-    const bookings =
-      (bookingsResult.data ??
-        []) as Booking[];
+      (leadData ?? []) as Lead[];
 
     const leadMap =
       new Map<string, Lead>();
@@ -449,48 +356,24 @@ export default function AdminFollowUpsPage() {
       );
     });
 
-    const bookingMap =
-      new Map<string, Booking>();
-
-    bookings.forEach((booking) => {
-      bookingMap.set(
-        booking.id,
-        booking
-      );
-    });
-
-    const loadedRecords =
+    const loaded =
       tasks.map((task) => ({
         task,
         lead:
           leadMap.get(
             task.lead_id
           ) ?? null,
-        booking:
-          task.booking_id
-            ? bookingMap.get(
-                task.booking_id
-              ) ?? null
-            : null,
       }));
 
-    setRecords(
-      loadedRecords
-    );
+    setRecords(loaded);
 
     setLoading(false);
     setRefreshing(false);
   }
 
   useEffect(() => {
-    loadFollowUps();
+    loadFollowups();
   }, []);
-
-  /*
-   * =========================================================
-   * STATS
-   * =========================================================
-   */
 
   const stats = useMemo(() => {
     const pending =
@@ -513,9 +396,7 @@ export default function AdminFollowUpsPage() {
     const overdue =
       records.filter(
         (record) =>
-          isOverdue(
-            record.task
-          )
+          isOverdue(record.task)
       ).length;
 
     const completed =
@@ -525,79 +406,60 @@ export default function AdminFollowUpsPage() {
           "completed"
       ).length;
 
-    const noShows =
-      records.filter(
-        (record) =>
-          record.booking?.status ===
-            "no_show" &&
-          record.task.status ===
-            "pending"
-      ).length;
-
     return {
       pending,
       today,
       overdue,
       completed,
-      noShows,
     };
   }, [records]);
-
-  /*
-   * =========================================================
-   * FILTER
-   * =========================================================
-   */
 
   const filteredRecords =
     useMemo(() => {
       const query =
-        search
-          .trim()
-          .toLowerCase();
+        search.trim().toLowerCase();
 
       return records.filter(
         (record) => {
           const task =
             record.task;
 
-          if (
-            filter ===
-              "today" &&
-            !(
-              task.status ===
-                "pending" &&
-              isToday(
-                task.due_at
-              )
-            )
-          ) {
-            return false;
+          const lead =
+            record.lead;
+
+          if (filter === "today") {
+            if (
+              task.status !==
+                "pending" ||
+              !isToday(task.due_at)
+            ) {
+              return false;
+            }
           }
 
-          if (
-            filter ===
-              "overdue" &&
-            !isOverdue(task)
-          ) {
-            return false;
+          if (filter === "overdue") {
+            if (
+              !isOverdue(task)
+            ) {
+              return false;
+            }
           }
 
-          if (
-            filter ===
-              "upcoming" &&
-            !isUpcoming(task)
-          ) {
-            return false;
+          if (filter === "upcoming") {
+            if (
+              !isUpcoming(task)
+            ) {
+              return false;
+            }
           }
 
-          if (
-            filter ===
-              "completed" &&
-            task.status !==
+          if (filter === "completed") {
+            if (
+              task.status !==
               "completed"
-          ) {
-            return false;
+            ) {
+              return false;
+            }
           }
 
           if (!query) {
@@ -605,16 +467,13 @@ export default function AdminFollowUpsPage() {
           }
 
           const searchable = [
-            record.lead
-              ?.full_name ?? "",
-            record.lead
-              ?.email ?? "",
-            record.lead
-              ?.whatsapp_number ?? "",
+            lead?.full_name ?? "",
+            lead?.whatsapp_number ?? "",
+            lead?.email ?? "",
             task.task_type,
-            record.booking
-              ?.instrument ?? "",
             task.channel ?? "",
+            task.message_template ??
+              "",
           ]
             .join(" ")
             .toLowerCase();
@@ -630,12 +489,6 @@ export default function AdminFollowUpsPage() {
       filter,
     ]);
 
-  /*
-   * =========================================================
-   * COMPLETE TASK
-   * =========================================================
-   */
-
   async function completeTask(
     record: FollowUpRecord
   ) {
@@ -645,18 +498,16 @@ export default function AdminFollowUpsPage() {
 
     setError("");
 
-    const now =
-      new Date().toISOString();
-
     const {
       error: updateError,
     } = await supabase
       .from("follow_up_tasks")
       .update({
-        status:
-          "completed",
-        completed_at: now,
-        updated_at: now,
+        status: "completed",
+        completed_at:
+          new Date().toISOString(),
+        updated_at:
+          new Date().toISOString(),
       })
       .eq(
         "id",
@@ -665,7 +516,7 @@ export default function AdminFollowUpsPage() {
 
     if (updateError) {
       console.error(
-        "Complete task error:",
+        "Complete follow-up error:",
         updateError
       );
 
@@ -678,76 +529,14 @@ export default function AdminFollowUpsPage() {
       return;
     }
 
-    /*
-     * Keep the lead's next follow-up
-     * date in sync when this task
-     * is completed.
-     */
-
-    if (
-      record.lead &&
-      record.lead
-        .next_follow_up_at
-    ) {
-      const {
-        data: nextTask,
-      } = await supabase
-        .from(
-          "follow_up_tasks"
-        )
-        .select(
-          "due_at"
-        )
-        .eq(
-          "lead_id",
-          record.lead.id
-        )
-        .eq(
-          "status",
-          "pending"
-        )
-        .order(
-          "due_at",
-          {
-            ascending:
-              true,
-          }
-        )
-        .limit(1)
-        .maybeSingle();
-
-      await supabase
-        .from("leads")
-        .update({
-          next_follow_up_at:
-            nextTask?.due_at ??
-            null,
-          updated_at: now,
-        })
-        .eq(
-          "id",
-          record.lead.id
-        );
-    }
-
-    setSelectedRecord(
-      null
-    );
+    setSelectedTask(null);
 
     setUpdatingId(null);
 
-    await loadFollowUps(
-      true
-    );
+    await loadFollowups(true);
   }
 
-  /*
-   * =========================================================
-   * MARK SENT
-   * =========================================================
-   */
-
-  async function markSent(
+  async function cancelTask(
     record: FollowUpRecord
   ) {
     setUpdatingId(
@@ -756,17 +545,14 @@ export default function AdminFollowUpsPage() {
 
     setError("");
 
-    const now =
-      new Date().toISOString();
-
     const {
       error: updateError,
     } = await supabase
       .from("follow_up_tasks")
       .update({
-        status: "sent",
-        sent_at: now,
-        updated_at: now,
+        status: "cancelled",
+        updated_at:
+          new Date().toISOString(),
       })
       .eq(
         "id",
@@ -775,12 +561,12 @@ export default function AdminFollowUpsPage() {
 
     if (updateError) {
       console.error(
-        "Mark sent error:",
+        "Cancel follow-up error:",
         updateError
       );
 
       setError(
-        "We couldn't update this follow-up."
+        "We couldn't cancel this follow-up."
       );
 
       setUpdatingId(null);
@@ -788,46 +574,29 @@ export default function AdminFollowUpsPage() {
       return;
     }
 
-    setSelectedRecord(
-      null
-    );
+    setSelectedTask(null);
 
     setUpdatingId(null);
 
-    await loadFollowUps(
-      true
-    );
+    await loadFollowups(true);
   }
-
-  /*
-   * =========================================================
-   * WHATSAPP
-   * =========================================================
-   */
 
   function openWhatsApp(
     record: FollowUpRecord
   ) {
-    if (
-      !record.lead
-        ?.whatsapp_number
-    ) {
+    if (!record.lead?.whatsapp_number) {
       return;
     }
 
-    const phone =
-      record.lead.whatsapp_number.replace(
-        /[^0-9]/g,
-        ""
-      );
-
     const message =
-      record.task
-        .message_template ||
-      `Hello ${record.lead.full_name}, this is Sauti Tamu Piano Center. We are following up with you regarding your trial lesson.`;
+      record.task.message_template ??
+      `Hello ${record.lead.full_name}, this is Sauti Tamu Piano Center.`;
 
     window.open(
-      `https://wa.me/${phone}?text=${encodeURIComponent(
+      `https://wa.me/${record.lead.whatsapp_number.replace(
+        /[^0-9]/g,
+        ""
+      )}?text=${encodeURIComponent(
         message
       )}`,
       "_blank"
@@ -837,35 +606,13 @@ export default function AdminFollowUpsPage() {
   function callLead(
     record: FollowUpRecord
   ) {
-    if (
-      !record.lead
-        ?.whatsapp_number
-    ) {
+    if (!record.lead?.whatsapp_number) {
       return;
     }
 
     window.location.href =
       `tel:${record.lead.whatsapp_number}`;
   }
-
-  function emailLead(
-    record: FollowUpRecord
-  ) {
-    if (
-      !record.lead?.email
-    ) {
-      return;
-    }
-
-    window.location.href =
-      `mailto:${record.lead.email}`;
-  }
-
-  /*
-   * =========================================================
-   * RENDER
-   * =========================================================
-   */
 
   return (
     <main className="st-content">
@@ -875,9 +622,8 @@ export default function AdminFollowUpsPage() {
       <div className="mb-7 flex flex-col gap-5 md:flex-row md:items-end md:justify-between">
 
         <div>
-
           <p className="st-eyebrow">
-            FOLLOW-UP
+            RELATIONSHIPS
           </p>
 
           <h1 className="st-page-title mt-2">
@@ -885,16 +631,15 @@ export default function AdminFollowUpsPage() {
           </h1>
 
           <p className="st-page-description">
-            Stay on top of trial lesson leads,
-            reminders and conversion opportunities.
+            Stay on top of every lead conversation,
+            booking and follow-up.
           </p>
-
         </div>
 
         <button
           type="button"
           onClick={() =>
-            loadFollowUps(true)
+            loadFollowups(true)
           }
           className="st-button st-button-secondary w-fit"
         >
@@ -916,115 +661,88 @@ export default function AdminFollowUpsPage() {
       <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
 
         <div className="st-card p-5">
-
-          <p className="m-0 text-[10px] font-bold uppercase tracking-[0.08em] text-[var(--st-gray)]">
-            Due today
-          </p>
-
-          <div className="mt-3 flex items-end justify-between">
-
-            <p className="m-0 text-[30px] font-bold leading-none text-[var(--st-charcoal-dark)]">
-              {stats.today}
-            </p>
-
-            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[var(--st-bg-soft)] text-[var(--st-red)]">
-              <CalendarDays size={18} />
-            </div>
-
-          </div>
-
-        </div>
-
-        <div className="st-card p-5">
-
-          <p className="m-0 text-[10px] font-bold uppercase tracking-[0.08em] text-[var(--st-gray)]">
-            Overdue
-          </p>
-
-          <div className="mt-3 flex items-end justify-between">
-
-            <p className="m-0 text-[30px] font-bold leading-none text-red-600">
-              {stats.overdue}
-            </p>
-
-            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-red-50 text-red-600">
-              <AlertCircle size={18} />
-            </div>
-
-          </div>
-
-        </div>
-
-        <div className="st-card p-5">
-
           <p className="m-0 text-[10px] font-bold uppercase tracking-[0.08em] text-[var(--st-gray)]">
             Pending
           </p>
 
-          <div className="mt-3 flex items-end justify-between">
+          <p className="mt-3 mb-0 text-[30px] font-bold leading-none text-[var(--st-charcoal-dark)]">
+            {stats.pending}
+          </p>
 
-            <p className="m-0 text-[30px] font-bold leading-none text-[var(--st-charcoal-dark)]">
-              {stats.pending}
-            </p>
-
-            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-amber-50 text-amber-700">
-              <Clock3 size={18} />
-            </div>
-
-          </div>
-
+          <p className="mt-2 mb-0 text-[9px] text-[var(--st-gray)]">
+            All open tasks
+          </p>
         </div>
 
         <div className="st-card p-5">
+          <p className="m-0 text-[10px] font-bold uppercase tracking-[0.08em] text-[var(--st-gray)]">
+            Today
+          </p>
 
+          <p className="mt-3 mb-0 text-[30px] font-bold leading-none text-[var(--st-charcoal-dark)]">
+            {stats.today}
+          </p>
+
+          <p className="mt-2 mb-0 text-[9px] text-[var(--st-gray)]">
+            Due today
+          </p>
+        </div>
+
+        <div className="st-card p-5">
+          <p className="m-0 text-[10px] font-bold uppercase tracking-[0.08em] text-[var(--st-gray)]">
+            Overdue
+          </p>
+
+          <p className="mt-3 mb-0 text-[30px] font-bold leading-none text-[var(--st-red)]">
+            {stats.overdue}
+          </p>
+
+          <p className="mt-2 mb-0 text-[9px] text-[var(--st-gray)]">
+            Need attention
+          </p>
+        </div>
+
+        <div className="st-card p-5">
           <p className="m-0 text-[10px] font-bold uppercase tracking-[0.08em] text-[var(--st-gray)]">
             Completed
           </p>
 
-          <div className="mt-3 flex items-end justify-between">
+          <p className="mt-3 mb-0 text-[30px] font-bold leading-none text-green-700">
+            {stats.completed}
+          </p>
 
-            <p className="m-0 text-[30px] font-bold leading-none text-green-700">
-              {stats.completed}
-            </p>
-
-            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-green-50 text-green-700">
-              <CheckCircle2 size={18} />
-            </div>
-
-          </div>
-
+          <p className="mt-2 mb-0 text-[9px] text-[var(--st-gray)]">
+            Completed tasks
+          </p>
         </div>
 
       </section>
 
-      {/* NO-SHOW ALERT */}
+      {/* OVERDUE ALERT */}
 
-      {stats.noShows > 0 && (
-        <section className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 p-4">
+      {stats.overdue > 0 && (
+        <section className="mt-5 rounded-2xl border border-red-200 bg-red-50 p-4">
 
           <div className="flex items-start gap-3">
 
             <AlertCircle
-              size={17}
-              className="mt-0.5 shrink-0 text-amber-700"
+              size={18}
+              className="mt-0.5 shrink-0 text-red-600"
             />
 
             <div>
-
-              <p className="m-0 text-[11px] font-bold text-amber-800">
-                {stats.noShows} no-show{" "}
-                {stats.noShows === 1
-                  ? "lead needs"
-                  : "leads need"}{" "}
-                attention
+              <p className="m-0 text-[11px] font-bold text-red-800">
+                {stats.overdue} follow-up
+                {stats.overdue === 1
+                  ? ""
+                  : "s"} overdue
               </p>
 
-              <p className="mt-1 mb-0 text-[10px] leading-relaxed text-amber-700">
-                Contact them as soon as possible
-                and offer an easy way to reschedule
-                their trial lesson.
+              <p className="mt-1 mb-0 text-[10px] leading-relaxed text-red-700">
+                These leads need attention.
+                Contact them and mark the
+                follow-up complete.
               </p>
-
             </div>
 
           </div>
@@ -1032,7 +750,7 @@ export default function AdminFollowUpsPage() {
         </section>
       )}
 
-      {/* SEARCH + FILTERS */}
+      {/* SEARCH */}
 
       <section className="st-card mt-6 p-4">
 
@@ -1081,7 +799,6 @@ export default function AdminFollowUpsPage() {
               label: "Completed",
             },
           ].map((item) => (
-
             <button
               key={item.key}
               type="button"
@@ -1098,7 +815,6 @@ export default function AdminFollowUpsPage() {
             >
               {item.label}
             </button>
-
           ))}
 
         </div>
@@ -1110,7 +826,7 @@ export default function AdminFollowUpsPage() {
       {error && (
         <div className="mt-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3">
 
-          <p className="m-0 text-[10px] leading-relaxed text-red-700">
+          <p className="m-0 text-[10px] text-red-700">
             {error}
           </p>
 
@@ -1124,9 +840,7 @@ export default function AdminFollowUpsPage() {
         <div className="mb-4">
 
           <p className="st-eyebrow">
-            {filter === "all"
-              ? "ALL FOLLOW-UPS"
-              : `${filter.toUpperCase()} FOLLOW-UPS`}
+            FOLLOW-UP QUEUE
           </p>
 
           <p className="mt-1 mb-0 text-[10px] text-[var(--st-gray)]">
@@ -1139,7 +853,6 @@ export default function AdminFollowUpsPage() {
         </div>
 
         {loading ? (
-
           <div className="st-card flex min-h-[260px] items-center justify-center gap-2 text-[10px] text-[var(--st-gray)]">
 
             <RefreshCw
@@ -1150,13 +863,11 @@ export default function AdminFollowUpsPage() {
             Loading follow-ups...
 
           </div>
-
         ) : filteredRecords.length === 0 ? (
-
           <div className="st-card flex min-h-[300px] flex-col items-center justify-center px-5 text-center">
 
             <div className="flex h-14 w-14 items-center justify-center rounded-full bg-[var(--st-bg-soft)] text-[var(--st-red)]">
-              <CheckCircle2 size={22} />
+              <Clock3 size={22} />
             </div>
 
             <p className="mt-5 mb-0 text-[14px] font-bold text-[var(--st-charcoal-dark)]">
@@ -1164,36 +875,30 @@ export default function AdminFollowUpsPage() {
             </p>
 
             <p className="mt-2 mb-0 max-w-[320px] text-[10px] leading-relaxed text-[var(--st-gray)]">
-              There are no tasks matching the
-              current filter.
+              Follow-up tasks will appear here
+              automatically when leads and bookings
+              generate follow-up actions.
             </p>
 
           </div>
-
         ) : (
-
-          <div className="grid grid-cols-1 gap-3">
+          <div className="space-y-3">
 
             {filteredRecords.map(
               (record) => {
-
                 const task =
                   record.task;
+
+                const lead =
+                  record.lead;
 
                 const overdue =
                   isOverdue(task);
 
                 return (
-
-                  <button
+                  <div
                     key={task.id}
-                    type="button"
-                    onClick={() =>
-                      setSelectedRecord(
-                        record
-                      )
-                    }
-                    className={`st-card group w-full p-5 text-left transition-all hover:border-[var(--st-red)] ${
+                    className={`st-card p-5 ${
                       overdue
                         ? "border-red-200"
                         : ""
@@ -1202,19 +907,25 @@ export default function AdminFollowUpsPage() {
 
                     <div className="flex items-start gap-4">
 
-                      {/* AVATAR */}
+                      {/* ICON */}
 
-                      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[var(--st-bg-soft)] text-[10px] font-bold text-[var(--st-red)]">
-                        {record.lead
-                          ? initials(
-                              record
-                                .lead
-                                .full_name
-                            )
-                          : "?"}
+                      <div
+                        className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full ${
+                          overdue
+                            ? "bg-red-50 text-red-600"
+                            : "bg-[var(--st-bg-soft)] text-[var(--st-red)]"
+                        }`}
+                      >
+                        {overdue ? (
+                          <AlertCircle
+                            size={18}
+                          />
+                        ) : (
+                          <Clock3
+                            size={18}
+                          />
+                        )}
                       </div>
-
-                      {/* CONTENT */}
 
                       <div className="min-w-0 flex-1">
 
@@ -1222,29 +933,14 @@ export default function AdminFollowUpsPage() {
 
                           <div className="min-w-0">
 
-                            <p className="truncate text-[13px] font-bold text-[var(--st-charcoal-dark)]">
-                              {record.lead
-                                ?.full_name ??
+                            <p className="text-[13px] font-bold text-[var(--st-charcoal-dark)]">
+                              {lead?.full_name ??
                                 "Unknown lead"}
                             </p>
 
-                            <p className="mt-1 text-[10px] text-[var(--st-gray)]">
+                            <p className="mt-1 text-[9px] text-[var(--st-gray)]">
                               {taskTypeLabel(
                                 task.task_type
-                              )}
-
-                              {record.booking && (
-                                <>
-                                  {" "}
-                                  ·{" "}
-                                  <span className="capitalize">
-                                    {
-                                      record
-                                        .booking
-                                        .instrument
-                                    }
-                                  </span>
-                                </>
                               )}
                             </p>
 
@@ -1270,15 +966,29 @@ export default function AdminFollowUpsPage() {
                               Due
                             </p>
 
+                            <p className="mt-1 text-[10px] font-semibold text-[var(--st-charcoal-dark)]">
+                              {formatDateTime(
+                                task.due_at
+                              )}
+                            </p>
+
+                          </div>
+
+                          <div>
+
+                            <p className="m-0 text-[8px] font-bold uppercase tracking-[0.08em] text-[var(--st-gray)]">
+                              Timing
+                            </p>
+
                             <p
-                              className={`mt-1 text-[10px] font-semibold ${
+                              className={`mt-1 text-[10px] font-bold ${
                                 overdue
                                   ? "text-red-600"
                                   : "text-[var(--st-charcoal-dark)]"
                               }`}
                             >
-                              {formatDateTime(
-                                task.due_at
+                              {getRelativeLabel(
+                                task
                               )}
                             </p>
 
@@ -1290,64 +1000,106 @@ export default function AdminFollowUpsPage() {
                               Channel
                             </p>
 
-                            <p className="mt-1 text-[10px] font-semibold text-[var(--st-charcoal-dark)]">
-                              {channelLabel(
-                                task.channel
-                              )}
-                            </p>
-
-                          </div>
-
-                          <div>
-
-                            <p className="m-0 text-[8px] font-bold uppercase tracking-[0.08em] text-[var(--st-gray)]">
-                              Lead status
-                            </p>
-
-                            <p className="mt-1 text-[10px] font-semibold text-[var(--st-charcoal-dark)]">
-                              {record.lead
-                                ? leadStatusLabel(
-                                    record
-                                      .lead
-                                      .status
-                                  )
-                                : "Unknown"}
+                            <p className="mt-1 text-[10px] font-semibold capitalize text-[var(--st-charcoal-dark)]">
+                              {task.channel ??
+                                "Manual"}
                             </p>
 
                           </div>
 
                         </div>
 
-                        <div className="mt-4 flex items-center justify-between gap-3">
+                        {task.message_template && (
+                          <div className="mt-4 rounded-xl bg-[var(--st-bg-soft)] p-3">
 
-                          <div className="flex items-center gap-3">
-
-                            {record.lead
-                              ?.whatsapp_number && (
-                              <span className="flex items-center gap-1.5 text-[9px] text-[var(--st-gray)]">
-                                <Phone
-                                  size={11}
-                                  className="text-[var(--st-red)]"
-                                />
-                                {
-                                  record
-                                    .lead
-                                    .whatsapp_number
-                                }
-                              </span>
-                            )}
+                            <p className="m-0 text-[9px] leading-relaxed text-[var(--st-gray)]">
+                              {task.message_template}
+                            </p>
 
                           </div>
+                        )}
 
-                          <span className="flex shrink-0 items-center gap-1 text-[9px] font-bold text-[var(--st-red)]">
+                        <div className="mt-4 flex flex-wrap gap-2">
 
+                          {lead?.whatsapp_number && (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                openWhatsApp(
+                                  record
+                                )
+                              }
+                              className="st-button st-button-secondary !px-3 !py-2 text-[9px]"
+                            >
+                              <MessageCircle
+                                size={13}
+                              />
+                              WhatsApp
+                            </button>
+                          )}
+
+                          {lead?.whatsapp_number && (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                callLead(
+                                  record
+                                )
+                              }
+                              className="st-button st-button-secondary !px-3 !py-2 text-[9px]"
+                            >
+                              <Phone
+                                size={13}
+                              />
+                              Call
+                            </button>
+                          )}
+
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setSelectedTask(
+                                record
+                              )
+                            }
+                            className="st-button st-button-secondary !px-3 !py-2 text-[9px]"
+                          >
                             View
+                            <ArrowRight
+                              size={13}
+                            />
+                          </button>
 
-                            <span className="transition-transform group-hover:translate-x-1">
-                              →
-                            </span>
+                          {task.status ===
+                            "pending" && (
+                            <button
+                              type="button"
+                              disabled={
+                                updatingId ===
+                                task.id
+                              }
+                              onClick={() =>
+                                completeTask(
+                                  record
+                                )
+                              }
+                              className="st-button st-button-primary !px-3 !py-2 text-[9px] disabled:opacity-50"
+                            >
+                              {updatingId ===
+                              task.id ? (
+                                <RefreshCw
+                                  size={13}
+                                  className="animate-spin"
+                                />
+                              ) : (
+                                <Check
+                                  size={13}
+                                />
+                              )}
 
-                          </span>
+                              Complete
+                            </button>
+                          )}
 
                         </div>
 
@@ -1355,374 +1107,226 @@ export default function AdminFollowUpsPage() {
 
                     </div>
 
-                  </button>
-
+                  </div>
                 );
               }
             )}
 
           </div>
-
         )}
 
       </section>
 
-      {/* =====================================================
-          DETAIL DRAWER
-      ===================================================== */}
+      {/* DETAIL MODAL */}
 
-      {selectedRecord && (
-        <div className="fixed inset-0 z-[100] flex items-end justify-center bg-black/40 sm:items-center sm:p-5">
+      {selectedTask && (
+        <div className="fixed inset-0 z-[100] flex items-end justify-center bg-black/50 sm:items-center sm:p-5">
 
-          <div className="max-h-[94vh] w-full max-w-[560px] overflow-y-auto rounded-t-3xl bg-white shadow-2xl sm:rounded-3xl">
+          <div className="max-h-[92vh] w-full max-w-[500px] overflow-y-auto rounded-t-3xl bg-white p-5 shadow-2xl sm:rounded-3xl">
 
-            {/* HEADER */}
+            <div className="flex items-start justify-between gap-4">
 
-            <div className="sticky top-0 z-10 border-b border-[var(--st-border)] bg-white px-5 py-4">
+              <div>
 
-              <div className="flex items-center justify-between gap-4">
+                <p className="st-eyebrow">
+                  FOLLOW-UP
+                </p>
 
-                <div className="flex min-w-0 items-center gap-3">
+                <h2 className="mt-1 text-[20px] font-bold text-[var(--st-charcoal-dark)]">
+                  {taskTypeLabel(
+                    selectedTask.task
+                      .task_type
+                  )}
+                </h2>
 
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[var(--st-bg-soft)] text-[10px] font-bold text-[var(--st-red)]">
-                    {selectedRecord.lead
-                      ? initials(
-                          selectedRecord
-                            .lead
-                            .full_name
+              </div>
+
+              <button
+                type="button"
+                onClick={() =>
+                  setSelectedTask(
+                    null
+                  )
+                }
+                className="st-icon-button"
+              >
+                <X size={17} />
+              </button>
+
+            </div>
+
+            <div className="mt-6 rounded-2xl bg-[var(--st-bg-soft)] p-5">
+
+              <div className="flex items-center gap-3">
+
+                <div className="flex h-11 w-11 items-center justify-center rounded-full bg-white text-[10px] font-bold text-[var(--st-red)]">
+                  {selectedTask.lead
+                    ? selectedTask.lead.full_name
+                        .split(" ")
+                        .map(
+                          (word) =>
+                            word[0]
                         )
-                      : "?"}
-                  </div>
-
-                  <div className="min-w-0">
-
-                    <p className="truncate text-[14px] font-bold text-[var(--st-charcoal-dark)]">
-                      {selectedRecord
-                        .lead
-                        ?.full_name ??
-                        "Unknown lead"}
-                    </p>
-
-                    <p className="mt-1 text-[9px] text-[var(--st-gray)]">
-                      Follow-up task
-                    </p>
-
-                  </div>
-
+                        .join("")
+                        .slice(
+                          0,
+                          2
+                        )
+                        .toUpperCase()
+                    : "?"}
                 </div>
 
-                <button
-                  type="button"
-                  onClick={() =>
-                    setSelectedRecord(
-                      null
-                    )
-                  }
-                  className="st-icon-button"
-                  aria-label="Close"
-                >
-                  <X size={17} />
-                </button>
+                <div>
+
+                  <p className="m-0 text-[13px] font-bold text-[var(--st-charcoal-dark)]">
+                    {selectedTask.lead
+                      ?.full_name ??
+                      "Unknown lead"}
+                  </p>
+
+                  <p className="mt-1 text-[9px] text-[var(--st-gray)]">
+                    {selectedTask.lead
+                      ?.whatsapp_number ??
+                      "No phone number"}
+                  </p>
+
+                </div>
 
               </div>
 
             </div>
 
-            <div className="p-5">
+            <div className="mt-5 space-y-4">
 
-              {/* TASK OVERVIEW */}
-
-              <div className="rounded-2xl bg-[var(--st-bg-soft)] p-5">
-
-                <p className="m-0 text-[9px] font-bold uppercase tracking-[0.12em] text-[var(--st-gray)]">
-                  FOLLOW-UP
+              <div>
+                <p className="m-0 text-[8px] font-bold uppercase tracking-[0.08em] text-[var(--st-gray)]">
+                  Due date
                 </p>
 
-                <h2 className="mt-2 text-[21px] font-bold text-[var(--st-charcoal-dark)]">
-                  {taskTypeLabel(
-                    selectedRecord
-                      .task
-                      .task_type
+                <p className="mt-1 text-[11px] font-semibold text-[var(--st-charcoal-dark)]">
+                  {formatLongDate(
+                    selectedTask.task.due_at
                   )}
-                </h2>
+                </p>
 
-                <div className="mt-4 flex flex-wrap gap-2">
-
-                  <span
-                    className={`rounded-full px-3 py-1.5 text-[8px] font-bold ${statusClasses(
-                      selectedRecord
-                        .task
-                        .status
-                    )}`}
-                  >
-                    {statusLabel(
-                      selectedRecord
-                        .task
-                        .status
-                    )}
-                  </span>
-
-                  <span className="rounded-full bg-white px-3 py-1.5 text-[8px] font-bold text-[var(--st-gray)]">
-                    {channelLabel(
-                      selectedRecord
-                        .task
-                        .channel
-                    )}
-                  </span>
-
-                </div>
-
-                <div className="mt-5 grid grid-cols-2 gap-3">
-
-                  <div className="rounded-xl bg-white p-3">
-
-                    <p className="m-0 text-[8px] font-bold uppercase tracking-[0.06em] text-[var(--st-gray)]">
-                      Due
-                    </p>
-
-                    <p className="mt-1 text-[10px] font-semibold text-[var(--st-charcoal-dark)]">
-                      {formatDateTime(
-                        selectedRecord
-                          .task
-                          .due_at
-                      )}
-                    </p>
-
-                  </div>
-
-                  <div className="rounded-xl bg-white p-3">
-
-                    <p className="m-0 text-[8px] font-bold uppercase tracking-[0.06em] text-[var(--st-gray)]">
-                      Lead status
-                    </p>
-
-                    <p className="mt-1 text-[10px] font-semibold text-[var(--st-charcoal-dark)]">
-                      {selectedRecord.lead
-                        ? leadStatusLabel(
-                            selectedRecord
-                              .lead
-                              .status
-                          )
-                        : "Unknown"}
-                    </p>
-
-                  </div>
-
-                </div>
-
+                <p className="mt-1 text-[10px] text-[var(--st-gray)]">
+                  {formatDateTime(
+                    selectedTask.task.due_at
+                  )}
+                </p>
               </div>
 
-              {/* MESSAGE */}
+              <div>
+                <p className="m-0 text-[8px] font-bold uppercase tracking-[0.08em] text-[var(--st-gray)]">
+                  Status
+                </p>
 
-              {selectedRecord.task
+                <span
+                  className={`mt-2 inline-flex rounded-full px-3 py-1.5 text-[8px] font-bold ${statusClasses(
+                    selectedTask.task
+                      .status
+                  )}`}
+                >
+                  {statusLabel(
+                    selectedTask.task
+                      .status
+                  )}
+                </span>
+              </div>
+
+              {selectedTask.task
                 .message_template && (
-                <div className="mt-6">
-
-                  <p className="mb-3 text-[9px] font-bold uppercase tracking-[0.1em] text-[var(--st-gray)]">
-                    MESSAGE
+                <div>
+                  <p className="m-0 text-[8px] font-bold uppercase tracking-[0.08em] text-[var(--st-gray)]">
+                    Message
                   </p>
 
-                  <div className="rounded-xl border border-[var(--st-border)] bg-white p-4">
+                  <div className="mt-2 rounded-xl border border-[var(--st-border)] p-4">
 
-                    <p className="m-0 whitespace-pre-wrap text-[11px] leading-relaxed text-[var(--st-charcoal-dark)]">
+                    <p className="m-0 text-[10px] leading-relaxed text-[var(--st-charcoal-dark)]">
                       {
-                        selectedRecord
-                          .task
+                        selectedTask.task
                           .message_template
                       }
                     </p>
 
                   </div>
-
                 </div>
               )}
 
-              {/* CONTACT */}
+            </div>
 
-              {selectedRecord.lead && (
-                <div className="mt-6">
+            <div className="mt-6 grid grid-cols-2 gap-2">
 
-                  <p className="mb-3 text-[9px] font-bold uppercase tracking-[0.1em] text-[var(--st-gray)]">
-                    CONTACT
-                  </p>
-
-                  <div className="space-y-3">
-
-                    <div className="flex items-center gap-3">
-
-                      <MessageCircle
-                        size={15}
-                        className="text-[var(--st-red)]"
-                      />
-
-                      <div>
-
-                        <p className="m-0 text-[9px] text-[var(--st-gray)]">
-                          WhatsApp
-                        </p>
-
-                        <p className="mt-1 text-[11px] font-semibold text-[var(--st-charcoal-dark)]">
-                          {
-                            selectedRecord
-                              .lead
-                              .whatsapp_number
-                          }
-                        </p>
-
-                      </div>
-
-                    </div>
-
-                    <div className="flex items-center gap-3">
-
-                      <Mail
-                        size={15}
-                        className="text-[var(--st-red)]"
-                      />
-
-                      <div>
-
-                        <p className="m-0 text-[9px] text-[var(--st-gray)]">
-                          Email
-                        </p>
-
-                        <p className="mt-1 break-all text-[11px] font-semibold text-[var(--st-charcoal-dark)]">
-                          {
-                            selectedRecord
-                              .lead
-                              .email
-                          }
-                        </p>
-
-                      </div>
-
-                    </div>
-
-                  </div>
-
-                </div>
-              )}
-
-              {/* ACTIONS */}
-
-              <div className="mt-7 grid grid-cols-2 gap-2">
-
+              {selectedTask.lead
+                ?.whatsapp_number && (
                 <button
                   type="button"
                   onClick={() =>
                     openWhatsApp(
-                      selectedRecord
+                      selectedTask
                     )
                   }
-                  disabled={
-                    !selectedRecord
-                      .lead
-                      ?.whatsapp_number
-                  }
-                  className="st-button st-button-primary w-full disabled:opacity-40"
+                  className="st-button st-button-secondary w-full"
                 >
                   <MessageCircle
-                    size={15}
+                    size={14}
                   />
                   WhatsApp
                 </button>
+              )}
 
+              {selectedTask.task
+                .status ===
+                "pending" && (
                 <button
                   type="button"
+                  disabled={
+                    updatingId ===
+                    selectedTask.task
+                      .id
+                  }
                   onClick={() =>
-                    callLead(
-                      selectedRecord
+                    completeTask(
+                      selectedTask
                     )
                   }
-                  disabled={
-                    !selectedRecord
-                      .lead
-                      ?.whatsapp_number
-                  }
-                  className="st-button st-button-secondary w-full disabled:opacity-40"
+                  className="st-button st-button-primary w-full disabled:opacity-50"
                 >
-                  <Phone size={15} />
-                  Call
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() =>
-                    emailLead(
-                      selectedRecord
-                    )
-                  }
-                  disabled={
-                    !selectedRecord
-                      .lead?.email
-                  }
-                  className="st-button st-button-secondary w-full disabled:opacity-40"
-                >
-                  <Mail size={15} />
-                  Email
-                </button>
-
-                {selectedRecord.task
-                  .status !==
-                  "completed" && (
-                  <button
-                    type="button"
-                    onClick={() =>
-                      completeTask(
-                        selectedRecord
-                      )
-                    }
-                    disabled={
-                      updatingId ===
-                      selectedRecord
-                        .task.id
-                    }
-                    className="st-button st-button-secondary w-full disabled:opacity-40"
-                  >
-                    {updatingId ===
-                    selectedRecord
-                      .task.id ? (
-                      <RefreshCw
-                        size={15}
-                        className="animate-spin"
-                      />
-                    ) : (
-                      <Check
-                        size={15}
-                      />
-                    )}
-
-                    Complete
-                  </button>
-                )}
-
-                {selectedRecord.task
-                  .status ===
-                  "pending" && (
-                  <button
-                    type="button"
-                    onClick={() =>
-                      markSent(
-                        selectedRecord
-                      )
-                    }
-                    disabled={
-                      updatingId ===
-                      selectedRecord
-                        .task.id
-                    }
-                    className="st-button st-button-secondary w-full disabled:opacity-40"
-                  >
-                    <CheckCircle2
-                      size={15}
+                  {updatingId ===
+                  selectedTask.task.id ? (
+                    <RefreshCw
+                      size={14}
+                      className="animate-spin"
                     />
-                    Mark sent
-                  </button>
-                )}
-
-              </div>
+                  ) : (
+                    <Check size={14} />
+                  )}
+                  Complete
+                </button>
+              )}
 
             </div>
+
+            {selectedTask.task
+              .status ===
+              "pending" && (
+              <button
+                type="button"
+                disabled={
+                  updatingId ===
+                  selectedTask.task.id
+                }
+                onClick={() =>
+                  cancelTask(
+                    selectedTask
+                  )
+                }
+                className="mt-2 w-full rounded-xl px-4 py-3 text-[9px] font-bold text-gray-500 transition hover:bg-gray-100"
+              >
+                Cancel follow-up
+              </button>
+            )}
 
           </div>
 
