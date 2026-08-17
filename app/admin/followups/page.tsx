@@ -8,15 +8,21 @@ import {
   Check,
   CheckCircle2,
   Clock3,
+  Mail,
   MessageCircle,
   Phone,
   RefreshCw,
   Search,
-  Users,
   X,
 } from "lucide-react";
 
 import { supabase } from "@/lib/supabase";
+
+/*
+ * =========================================================
+ * TYPES
+ * =========================================================
+ */
 
 type FollowUpStatus =
   | "pending"
@@ -51,9 +57,27 @@ type Lead = {
   status: string;
 };
 
+type Booking = {
+  id: string;
+  lead_id: string;
+  slot_id: string;
+  instrument: string;
+  status: string;
+};
+
+type LessonSlot = {
+  id: string;
+  instrument: string;
+  starts_at: string;
+  ends_at: string;
+  is_available: boolean;
+};
+
 type FollowUpRecord = {
   task: FollowUpTask;
   lead: Lead | null;
+  booking: Booking | null;
+  slot: LessonSlot | null;
 };
 
 type Filter =
@@ -64,6 +88,12 @@ type Filter =
   | "completed";
 
 const NAIROBI_TIME_ZONE = "Africa/Nairobi";
+
+/*
+ * =========================================================
+ * DATE / TIME HELPERS
+ * =========================================================
+ */
 
 function getTodayKey() {
   return new Intl.DateTimeFormat("en-CA", {
@@ -95,30 +125,126 @@ function formatLongDate(dateString: string) {
   }).format(new Date(dateString));
 }
 
-function taskTypeLabel(taskType: string) {
-  return taskType
-    .replace(/_/g, " ")
-    .replace(/\b\w/g, (letter) =>
-      letter.toUpperCase()
-    );
+function formatTime(dateString: string) {
+  return new Intl.DateTimeFormat("en-KE", {
+    timeZone: NAIROBI_TIME_ZONE,
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(new Date(dateString));
 }
 
-function statusLabel(status: FollowUpStatus) {
+function formatTimeRange(
+  startsAt: string,
+  endsAt: string
+) {
+  return `${formatTime(startsAt)} – ${formatTime(
+    endsAt
+  )}`;
+}
+
+function isToday(dateString: string) {
+  const key = new Intl.DateTimeFormat("en-CA", {
+    timeZone: NAIROBI_TIME_ZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date(dateString));
+
+  return key === getTodayKey();
+}
+
+function isOverdue(task: FollowUpTask) {
+  return (
+    (task.status === "pending" ||
+      task.status === "sent") &&
+    new Date(task.due_at).getTime() <
+      Date.now()
+  );
+}
+
+function isUpcoming(task: FollowUpTask) {
+  return (
+    (task.status === "pending" ||
+      task.status === "sent") &&
+    new Date(task.due_at).getTime() >=
+      Date.now()
+  );
+}
+
+/*
+ * =========================================================
+ * LABEL HELPERS
+ * =========================================================
+ */
+
+function taskTypeLabel(taskType: string) {
+  switch (taskType) {
+    case "trial_reminder_24h":
+      return "Trial lesson reminder — 24 hours";
+
+    case "trial_reminder_2h":
+      return "Trial lesson reminder — 2 hours";
+
+    case "post_trial_follow_up":
+      return "Post-trial follow-up";
+
+    default:
+      return taskType
+        .replace(/_/g, " ")
+        .replace(/\b\w/g, (letter) =>
+          letter.toUpperCase()
+        );
+  }
+}
+
+function instrumentLabel(
+  instrument: string | null | undefined
+) {
+  if (!instrument) {
+    return "Instrument not set";
+  }
+
+  const normalized =
+    instrument.toLowerCase();
+
+  if (normalized === "piano") {
+    return "Piano";
+  }
+
+  if (normalized === "guitar") {
+    return "Guitar";
+  }
+
+  return (
+    instrument.charAt(0).toUpperCase() +
+    instrument.slice(1)
+  );
+}
+
+function statusLabel(
+  status: FollowUpStatus
+) {
   switch (status) {
     case "pending":
       return "Pending";
+
     case "sent":
       return "Sent";
+
     case "completed":
       return "Completed";
+
     case "cancelled":
       return "Cancelled";
+
     default:
       return status;
   }
 }
 
-function statusClasses(status: FollowUpStatus) {
+function statusClasses(
+  status: FollowUpStatus
+) {
   switch (status) {
     case "pending":
       return "bg-amber-50 text-amber-700";
@@ -137,36 +263,45 @@ function statusClasses(status: FollowUpStatus) {
   }
 }
 
-function isToday(dateString: string) {
-  const date = new Date(dateString);
+function channelLabel(
+  channel: MessageChannel | null
+) {
+  switch (channel) {
+    case "email":
+      return "Email";
 
-  const key = new Intl.DateTimeFormat("en-CA", {
-    timeZone: NAIROBI_TIME_ZONE,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(date);
+    case "whatsapp":
+      return "WhatsApp";
 
-  return key === getTodayKey();
+    default:
+      return "Manual";
+  }
 }
 
-function isOverdue(task: FollowUpTask) {
-  return (
-    task.status === "pending" &&
-    new Date(task.due_at).getTime() <
-      Date.now()
-  );
+function channelClasses(
+  channel: MessageChannel | null
+) {
+  switch (channel) {
+    case "email":
+      return "bg-blue-50 text-blue-700";
+
+    case "whatsapp":
+      return "bg-green-50 text-green-700";
+
+    default:
+      return "bg-gray-100 text-gray-600";
+  }
 }
 
-function isUpcoming(task: FollowUpTask) {
-  return (
-    task.status === "pending" &&
-    new Date(task.due_at).getTime() >=
-      Date.now()
-  );
-}
+/*
+ * =========================================================
+ * RELATIVE TIME
+ * =========================================================
+ */
 
-function getRelativeLabel(task: FollowUpTask) {
+function getRelativeLabel(
+  task: FollowUpTask
+) {
   if (task.status === "completed") {
     return "Completed";
   }
@@ -175,13 +310,16 @@ function getRelativeLabel(task: FollowUpTask) {
     return "Cancelled";
   }
 
-  const due = new Date(task.due_at).getTime();
+  const due =
+    new Date(task.due_at).getTime();
+
   const now = Date.now();
 
   const difference = due - now;
 
   const minutes = Math.round(
-    Math.abs(difference) / (1000 * 60)
+    Math.abs(difference) /
+      (1000 * 60)
   );
 
   if (difference < 0) {
@@ -189,7 +327,9 @@ function getRelativeLabel(task: FollowUpTask) {
       return `Overdue by ${minutes} min`;
     }
 
-    const hours = Math.round(minutes / 60);
+    const hours = Math.round(
+      minutes / 60
+    );
 
     if (hours < 24) {
       return `Overdue by ${hours} ${
@@ -197,7 +337,9 @@ function getRelativeLabel(task: FollowUpTask) {
       }`;
     }
 
-    const days = Math.round(hours / 24);
+    const days = Math.round(
+      hours / 24
+    );
 
     return `Overdue by ${days} ${
       days === 1 ? "day" : "days"
@@ -208,7 +350,9 @@ function getRelativeLabel(task: FollowUpTask) {
     return `Due in ${minutes} min`;
   }
 
-  const hours = Math.round(minutes / 60);
+  const hours = Math.round(
+    minutes / 60
+  );
 
   if (hours < 24) {
     return `Due in ${hours} ${
@@ -216,12 +360,36 @@ function getRelativeLabel(task: FollowUpTask) {
     }`;
   }
 
-  const days = Math.round(hours / 24);
+  const days = Math.round(
+    hours / 24
+  );
 
   return `Due in ${days} ${
     days === 1 ? "day" : "days"
   }`;
 }
+
+/*
+ * =========================================================
+ * INITIALS
+ * =========================================================
+ */
+
+function initials(name: string) {
+  return name
+    .trim()
+    .split(/\s+/)
+    .map((word) => word[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
+}
+
+/*
+ * =========================================================
+ * PAGE
+ * =========================================================
+ */
 
 export default function AdminFollowupsPage() {
   const [records, setRecords] =
@@ -243,10 +411,18 @@ export default function AdminFollowupsPage() {
     useState<Filter>("all");
 
   const [selectedTask, setSelectedTask] =
-    useState<FollowUpRecord | null>(null);
+    useState<FollowUpRecord | null>(
+      null
+    );
 
   const [updatingId, setUpdatingId] =
     useState<string | null>(null);
+
+  /*
+   * =========================================================
+   * LOAD FOLLOW-UPS
+   * =========================================================
+   */
 
   async function loadFollowups(
     silent = false
@@ -258,6 +434,10 @@ export default function AdminFollowupsPage() {
     }
 
     setError("");
+
+    /*
+     * Load follow-up tasks.
+     */
 
     const {
       data: taskData,
@@ -312,6 +492,12 @@ export default function AdminFollowupsPage() {
       return;
     }
 
+    /*
+     * =====================================================
+     * LOAD LEADS
+     * =====================================================
+     */
+
     const leadIds = Array.from(
       new Set(
         tasks.map(
@@ -356,14 +542,157 @@ export default function AdminFollowupsPage() {
       );
     });
 
+    /*
+     * =====================================================
+     * LOAD BOOKINGS
+     * =====================================================
+     */
+
+    const bookingIds = Array.from(
+      new Set(
+        tasks
+          .map(
+            (task) =>
+              task.booking_id
+          )
+          .filter(
+            (
+              id
+            ): id is string =>
+              Boolean(id)
+          )
+      )
+    );
+
+    let bookings: Booking[] = [];
+
+    if (bookingIds.length > 0) {
+      const {
+        data: bookingData,
+        error: bookingError,
+      } = await supabase
+        .from("bookings")
+        .select(
+          `
+            id,
+            lead_id,
+            slot_id,
+            instrument,
+            status
+          `
+        )
+        .in("id", bookingIds);
+
+      if (bookingError) {
+        console.error(
+          "Bookings load error:",
+          bookingError
+        );
+      }
+
+      bookings =
+        (bookingData ??
+          []) as Booking[];
+    }
+
+    const bookingMap =
+      new Map<string, Booking>();
+
+    bookings.forEach((booking) => {
+      bookingMap.set(
+        booking.id,
+        booking
+      );
+    });
+
+    /*
+     * =====================================================
+     * LOAD LESSON SLOTS
+     * =====================================================
+     */
+
+    const slotIds = Array.from(
+      new Set(
+        bookings.map(
+          (booking) =>
+            booking.slot_id
+        )
+      )
+    );
+
+    let slots: LessonSlot[] = [];
+
+    if (slotIds.length > 0) {
+      const {
+        data: slotData,
+        error: slotError,
+      } = await supabase
+        .from("lesson_slots")
+        .select(
+          `
+            id,
+            instrument,
+            starts_at,
+            ends_at,
+            is_available
+          `
+        )
+        .in("id", slotIds);
+
+      if (slotError) {
+        console.error(
+          "Lesson slots load error:",
+          slotError
+        );
+      }
+
+      slots =
+        (slotData ??
+          []) as LessonSlot[];
+    }
+
+    const slotMap =
+      new Map<string, LessonSlot>();
+
+    slots.forEach((slot) => {
+      slotMap.set(
+        slot.id,
+        slot
+      );
+    });
+
+    /*
+     * =====================================================
+     * BUILD FINAL RECORDS
+     * =====================================================
+     */
+
     const loaded =
-      tasks.map((task) => ({
-        task,
-        lead:
-          leadMap.get(
-            task.lead_id
-          ) ?? null,
-      }));
+      tasks.map((task) => {
+        const booking =
+          task.booking_id
+            ? bookingMap.get(
+                task.booking_id
+              ) ?? null
+            : null;
+
+        const slot =
+          booking
+            ? slotMap.get(
+                booking.slot_id
+              ) ?? null
+            : null;
+
+        return {
+          task,
+          lead:
+            leadMap.get(
+              task.lead_id
+            ) ?? null,
+          booking,
+          slot,
+        };
+      });
 
     setRecords(loaded);
 
@@ -374,6 +703,12 @@ export default function AdminFollowupsPage() {
   useEffect(() => {
     loadFollowups();
   }, []);
+
+  /*
+   * =========================================================
+   * STATS
+   * =========================================================
+   */
 
   const stats = useMemo(() => {
     const pending =
@@ -386,17 +721,22 @@ export default function AdminFollowupsPage() {
     const today =
       records.filter(
         (record) =>
-          record.task.status ===
-            "pending" &&
+          (
+            record.task.status ===
+              "pending" ||
+            record.task.status ===
+              "sent"
+          ) &&
           isToday(
             record.task.due_at
           )
       ).length;
 
     const overdue =
-      records.filter(
-        (record) =>
-          isOverdue(record.task)
+      records.filter((record) =>
+        isOverdue(
+          record.task
+        )
       ).length;
 
     const completed =
@@ -414,10 +754,18 @@ export default function AdminFollowupsPage() {
     };
   }, [records]);
 
+  /*
+   * =========================================================
+   * FILTERING
+   * =========================================================
+   */
+
   const filteredRecords =
     useMemo(() => {
       const query =
-        search.trim().toLowerCase();
+        search
+          .trim()
+          .toLowerCase();
 
       return records.filter(
         (record) => {
@@ -427,17 +775,37 @@ export default function AdminFollowupsPage() {
           const lead =
             record.lead;
 
-          if (filter === "today") {
+          const booking =
+            record.booking;
+
+          const slot =
+            record.slot;
+
+          /*
+           * Filter
+           */
+
+          if (
+            filter === "today"
+          ) {
             if (
-              task.status !==
-                "pending" ||
-              !isToday(task.due_at)
+              !(
+                task.status ===
+                  "pending" ||
+                task.status ===
+                  "sent"
+              ) ||
+              !isToday(
+                task.due_at
+              )
             ) {
               return false;
             }
           }
 
-          if (filter === "overdue") {
+          if (
+            filter === "overdue"
+          ) {
             if (
               !isOverdue(task)
             ) {
@@ -445,7 +813,9 @@ export default function AdminFollowupsPage() {
             }
           }
 
-          if (filter === "upcoming") {
+          if (
+            filter === "upcoming"
+          ) {
             if (
               !isUpcoming(task)
             ) {
@@ -453,7 +823,9 @@ export default function AdminFollowupsPage() {
             }
           }
 
-          if (filter === "completed") {
+          if (
+            filter === "completed"
+          ) {
             if (
               task.status !==
               "completed"
@@ -462,18 +834,27 @@ export default function AdminFollowupsPage() {
             }
           }
 
+          /*
+           * Search
+           */
+
           if (!query) {
             return true;
           }
 
           const searchable = [
-            lead?.full_name ?? "",
-            lead?.whatsapp_number ?? "",
+            lead?.full_name ??
+              "",
+            lead?.whatsapp_number ??
+              "",
             lead?.email ?? "",
             task.task_type,
             task.channel ?? "",
             task.message_template ??
               "",
+            booking?.instrument ??
+              "",
+            slot?.starts_at ?? "",
           ]
             .join(" ")
             .toLowerCase();
@@ -489,6 +870,64 @@ export default function AdminFollowupsPage() {
       filter,
     ]);
 
+  /*
+   * =========================================================
+   * MARK SENT
+   * =========================================================
+   */
+
+  async function markSent(
+    record: FollowUpRecord
+  ) {
+    setUpdatingId(
+      record.task.id
+    );
+
+    setError("");
+
+    const now =
+      new Date().toISOString();
+
+    const {
+      error: updateError,
+    } = await supabase
+      .from("follow_up_tasks")
+      .update({
+        status: "sent",
+        sent_at: now,
+        updated_at: now,
+      })
+      .eq(
+        "id",
+        record.task.id
+      );
+
+    if (updateError) {
+      console.error(
+        "Mark sent error:",
+        updateError
+      );
+
+      setError(
+        "We couldn't mark this follow-up as sent."
+      );
+
+      setUpdatingId(null);
+
+      return;
+    }
+
+    setUpdatingId(null);
+
+    await loadFollowups(true);
+  }
+
+  /*
+   * =========================================================
+   * COMPLETE
+   * =========================================================
+   */
+
   async function completeTask(
     record: FollowUpRecord
   ) {
@@ -498,16 +937,17 @@ export default function AdminFollowupsPage() {
 
     setError("");
 
+    const now =
+      new Date().toISOString();
+
     const {
       error: updateError,
     } = await supabase
       .from("follow_up_tasks")
       .update({
         status: "completed",
-        completed_at:
-          new Date().toISOString(),
-        updated_at:
-          new Date().toISOString(),
+        completed_at: now,
+        updated_at: now,
       })
       .eq(
         "id",
@@ -535,6 +975,12 @@ export default function AdminFollowupsPage() {
 
     await loadFollowups(true);
   }
+
+  /*
+   * =========================================================
+   * CANCEL
+   * =========================================================
+   */
 
   async function cancelTask(
     record: FollowUpRecord
@@ -581,32 +1027,72 @@ export default function AdminFollowupsPage() {
     await loadFollowups(true);
   }
 
+  /*
+   * =========================================================
+   * WHATSAPP
+   * =========================================================
+   */
+
   function openWhatsApp(
     record: FollowUpRecord
   ) {
-    if (!record.lead?.whatsapp_number) {
+    if (
+      !record.lead
+        ?.whatsapp_number
+    ) {
       return;
     }
 
-    const message =
-      record.task.message_template ??
+    let message =
+      record.task
+        .message_template ??
       `Hello ${record.lead.full_name}, this is Sauti Tamu Piano Center.`;
 
-    window.open(
-      `https://wa.me/${record.lead.whatsapp_number.replace(
+    /*
+     * Add booking context when useful.
+     */
+
+    if (
+      record.booking &&
+      record.slot
+    ) {
+      message += ` Your ${instrumentLabel(
+        record.booking
+          .instrument
+      )} trial lesson is scheduled for ${formatLongDate(
+        record.slot.starts_at
+      )} at ${formatTime(
+        record.slot.starts_at
+      )}.`;
+    }
+
+    const phone =
+      record.lead.whatsapp_number.replace(
         /[^0-9]/g,
         ""
-      )}?text=${encodeURIComponent(
+      );
+
+    window.open(
+      `https://wa.me/${phone}?text=${encodeURIComponent(
         message
       )}`,
       "_blank"
     );
   }
 
+  /*
+   * =========================================================
+   * CALL
+   * =========================================================
+   */
+
   function callLead(
     record: FollowUpRecord
   ) {
-    if (!record.lead?.whatsapp_number) {
+    if (
+      !record.lead
+        ?.whatsapp_number
+    ) {
       return;
     }
 
@@ -614,10 +1100,18 @@ export default function AdminFollowupsPage() {
       `tel:${record.lead.whatsapp_number}`;
   }
 
+  /*
+   * =========================================================
+   * RENDER
+   * =========================================================
+   */
+
   return (
     <main className="st-content">
 
-      {/* HEADER */}
+      {/* =====================================================
+          HEADER
+      ===================================================== */}
 
       <div className="mb-7 flex flex-col gap-5 md:flex-row md:items-end md:justify-between">
 
@@ -631,8 +1125,8 @@ export default function AdminFollowupsPage() {
           </h1>
 
           <p className="st-page-description">
-            Stay on top of every lead conversation,
-            booking and follow-up.
+            Stay on top of every lead,
+            booking and follow-up action.
           </p>
         </div>
 
@@ -651,16 +1145,20 @@ export default function AdminFollowupsPage() {
                 : ""
             }
           />
+
           Refresh
         </button>
 
       </div>
 
-      {/* STATS */}
+      {/* =====================================================
+          STATS
+      ===================================================== */}
 
       <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
 
         <div className="st-card p-5">
+
           <p className="m-0 text-[10px] font-bold uppercase tracking-[0.08em] text-[var(--st-gray)]">
             Pending
           </p>
@@ -670,11 +1168,13 @@ export default function AdminFollowupsPage() {
           </p>
 
           <p className="mt-2 mb-0 text-[9px] text-[var(--st-gray)]">
-            All open tasks
+            Open tasks
           </p>
+
         </div>
 
         <div className="st-card p-5">
+
           <p className="m-0 text-[10px] font-bold uppercase tracking-[0.08em] text-[var(--st-gray)]">
             Today
           </p>
@@ -686,9 +1186,11 @@ export default function AdminFollowupsPage() {
           <p className="mt-2 mb-0 text-[9px] text-[var(--st-gray)]">
             Due today
           </p>
+
         </div>
 
         <div className="st-card p-5">
+
           <p className="m-0 text-[10px] font-bold uppercase tracking-[0.08em] text-[var(--st-gray)]">
             Overdue
           </p>
@@ -700,9 +1202,11 @@ export default function AdminFollowupsPage() {
           <p className="mt-2 mb-0 text-[9px] text-[var(--st-gray)]">
             Need attention
           </p>
+
         </div>
 
         <div className="st-card p-5">
+
           <p className="m-0 text-[10px] font-bold uppercase tracking-[0.08em] text-[var(--st-gray)]">
             Completed
           </p>
@@ -714,11 +1218,14 @@ export default function AdminFollowupsPage() {
           <p className="mt-2 mb-0 text-[9px] text-[var(--st-gray)]">
             Completed tasks
           </p>
+
         </div>
 
       </section>
 
-      {/* OVERDUE ALERT */}
+      {/* =====================================================
+          OVERDUE ALERT
+      ===================================================== */}
 
       {stats.overdue > 0 && (
         <section className="mt-5 rounded-2xl border border-red-200 bg-red-50 p-4">
@@ -731,6 +1238,7 @@ export default function AdminFollowupsPage() {
             />
 
             <div>
+
               <p className="m-0 text-[11px] font-bold text-red-800">
                 {stats.overdue} follow-up
                 {stats.overdue === 1
@@ -740,9 +1248,10 @@ export default function AdminFollowupsPage() {
 
               <p className="mt-1 mb-0 text-[10px] leading-relaxed text-red-700">
                 These leads need attention.
-                Contact them and mark the
-                follow-up complete.
+                Contact them and update
+                the follow-up status.
               </p>
+
             </div>
 
           </div>
@@ -750,7 +1259,9 @@ export default function AdminFollowupsPage() {
         </section>
       )}
 
-      {/* SEARCH */}
+      {/* =====================================================
+          SEARCH / FILTER
+      ===================================================== */}
 
       <section className="st-card mt-6 p-4">
 
@@ -769,7 +1280,7 @@ export default function AdminFollowupsPage() {
                 event.target.value
               )
             }
-            placeholder="Search lead, phone, email or follow-up"
+            placeholder="Search lead, phone, email, instrument or follow-up"
             className="w-full rounded-xl border border-[var(--st-border)] bg-white py-3.5 pl-11 pr-4 text-[12px] outline-none transition focus:border-[var(--st-red)] focus:ring-2 focus:ring-[var(--st-red)]/10"
           />
 
@@ -821,7 +1332,9 @@ export default function AdminFollowupsPage() {
 
       </section>
 
-      {/* ERROR */}
+      {/* =====================================================
+          ERROR
+      ===================================================== */}
 
       {error && (
         <div className="mt-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3">
@@ -833,7 +1346,9 @@ export default function AdminFollowupsPage() {
         </div>
       )}
 
-      {/* LIST */}
+      {/* =====================================================
+          QUEUE
+      ===================================================== */}
 
       <section className="mt-7">
 
@@ -863,11 +1378,12 @@ export default function AdminFollowupsPage() {
             Loading follow-ups...
 
           </div>
-        ) : filteredRecords.length === 0 ? (
+        ) : filteredRecords.length ===
+          0 ? (
           <div className="st-card flex min-h-[300px] flex-col items-center justify-center px-5 text-center">
 
             <div className="flex h-14 w-14 items-center justify-center rounded-full bg-[var(--st-bg-soft)] text-[var(--st-red)]">
-              <Clock3 size={22} />
+              <CheckCircle2 size={22} />
             </div>
 
             <p className="mt-5 mb-0 text-[14px] font-bold text-[var(--st-charcoal-dark)]">
@@ -875,9 +1391,9 @@ export default function AdminFollowupsPage() {
             </p>
 
             <p className="mt-2 mb-0 max-w-[320px] text-[10px] leading-relaxed text-[var(--st-gray)]">
-              Follow-up tasks will appear here
-              automatically when leads and bookings
-              generate follow-up actions.
+              New follow-up tasks generated
+              from trial bookings will appear
+              here automatically.
             </p>
 
           </div>
@@ -892,13 +1408,19 @@ export default function AdminFollowupsPage() {
                 const lead =
                   record.lead;
 
+                const booking =
+                  record.booking;
+
+                const slot =
+                  record.slot;
+
                 const overdue =
                   isOverdue(task);
 
                 return (
                   <div
                     key={task.id}
-                    className={`st-card p-5 ${
+                    className={`st-card p-5 transition ${
                       overdue
                         ? "border-red-200"
                         : ""
@@ -913,11 +1435,20 @@ export default function AdminFollowupsPage() {
                         className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full ${
                           overdue
                             ? "bg-red-50 text-red-600"
+                            : task.status ===
+                              "completed"
+                            ? "bg-green-50 text-green-700"
                             : "bg-[var(--st-bg-soft)] text-[var(--st-red)]"
                         }`}
                       >
+
                         {overdue ? (
                           <AlertCircle
+                            size={18}
+                          />
+                        ) : task.status ===
+                          "completed" ? (
+                          <CheckCircle2
                             size={18}
                           />
                         ) : (
@@ -925,9 +1456,14 @@ export default function AdminFollowupsPage() {
                             size={18}
                           />
                         )}
+
                       </div>
 
+                      {/* CONTENT */}
+
                       <div className="min-w-0 flex-1">
+
+                        {/* TOP */}
 
                         <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
 
@@ -946,24 +1482,85 @@ export default function AdminFollowupsPage() {
 
                           </div>
 
-                          <span
-                            className={`w-fit shrink-0 rounded-full px-2.5 py-1.5 text-[8px] font-bold ${statusClasses(
-                              task.status
-                            )}`}
-                          >
-                            {statusLabel(
-                              task.status
-                            )}
-                          </span>
+                          <div className="flex flex-wrap gap-2">
+
+                            <span
+                              className={`w-fit shrink-0 rounded-full px-2.5 py-1.5 text-[8px] font-bold ${statusClasses(
+                                task.status
+                              )}`}
+                            >
+                              {statusLabel(
+                                task.status
+                              )}
+                            </span>
+
+                            <span
+                              className={`w-fit shrink-0 rounded-full px-2.5 py-1.5 text-[8px] font-bold ${channelClasses(
+                                task.channel
+                              )}`}
+                            >
+                              {channelLabel(
+                                task.channel
+                              )}
+                            </span>
+
+                          </div>
 
                         </div>
+
+                        {/* LESSON */}
+
+                        {booking && slot && (
+                          <div className="mt-4 rounded-xl border border-[var(--st-border)] bg-white p-4">
+
+                            <div className="flex items-start gap-3">
+
+                              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--st-bg-soft)] text-[var(--st-red)]">
+                                <CalendarDays
+                                  size={15}
+                                />
+                              </div>
+
+                              <div className="min-w-0">
+
+                                <p className="m-0 text-[8px] font-bold uppercase tracking-[0.08em] text-[var(--st-gray)]">
+                                  TRIAL LESSON
+                                </p>
+
+                                <p className="mt-1 text-[12px] font-bold text-[var(--st-charcoal-dark)]">
+                                  {instrumentLabel(
+                                    booking.instrument
+                                  )}
+                                </p>
+
+                                <p className="mt-1 text-[10px] text-[var(--st-gray)]">
+                                  {formatLongDate(
+                                    slot.starts_at
+                                  )}
+                                </p>
+
+                                <p className="mt-1 text-[12px] font-bold text-[var(--st-red)]">
+                                  {formatTimeRange(
+                                    slot.starts_at,
+                                    slot.ends_at
+                                  )}
+                                </p>
+
+                              </div>
+
+                            </div>
+
+                          </div>
+                        )}
+
+                        {/* DETAILS */}
 
                         <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
 
                           <div>
 
                             <p className="m-0 text-[8px] font-bold uppercase tracking-[0.08em] text-[var(--st-gray)]">
-                              Due
+                              Follow-up due
                             </p>
 
                             <p className="mt-1 text-[10px] font-semibold text-[var(--st-charcoal-dark)]">
@@ -997,27 +1594,51 @@ export default function AdminFollowupsPage() {
                           <div>
 
                             <p className="m-0 text-[8px] font-bold uppercase tracking-[0.08em] text-[var(--st-gray)]">
-                              Channel
+                              Contact
                             </p>
 
-                            <p className="mt-1 text-[10px] font-semibold capitalize text-[var(--st-charcoal-dark)]">
-                              {task.channel ??
-                                "Manual"}
+                            <p className="mt-1 truncate text-[10px] font-semibold text-[var(--st-charcoal-dark)]">
+                              {lead?.whatsapp_number ??
+                                lead?.email ??
+                                "No contact"}
                             </p>
 
                           </div>
 
                         </div>
 
+                        {/* MESSAGE */}
+
                         {task.message_template && (
                           <div className="mt-4 rounded-xl bg-[var(--st-bg-soft)] p-3">
 
-                            <p className="m-0 text-[9px] leading-relaxed text-[var(--st-gray)]">
-                              {task.message_template}
-                            </p>
+                            <div className="flex items-start gap-2">
+
+                              {task.channel ===
+                              "email" ? (
+                                <Mail
+                                  size={13}
+                                  className="mt-0.5 shrink-0 text-[var(--st-red)]"
+                                />
+                              ) : (
+                                <MessageCircle
+                                  size={13}
+                                  className="mt-0.5 shrink-0 text-[var(--st-red)]"
+                                />
+                              )}
+
+                              <p className="m-0 text-[9px] leading-relaxed text-[var(--st-gray)]">
+                                {
+                                  task.message_template
+                                }
+                              </p>
+
+                            </div>
 
                           </div>
                         )}
+
+                        {/* ACTIONS */}
 
                         <div className="mt-4 flex flex-wrap gap-2">
 
@@ -1079,6 +1700,39 @@ export default function AdminFollowupsPage() {
                                 task.id
                               }
                               onClick={() =>
+                                markSent(
+                                  record
+                                )
+                              }
+                              className="st-button st-button-secondary !px-3 !py-2 text-[9px] disabled:opacity-50"
+                            >
+                              {updatingId ===
+                              task.id ? (
+                                <RefreshCw
+                                  size={13}
+                                  className="animate-spin"
+                                />
+                              ) : (
+                                <Check
+                                  size={13}
+                                />
+                              )}
+
+                              Mark sent
+                            </button>
+                          )}
+
+                          {(task.status ===
+                            "pending" ||
+                            task.status ===
+                              "sent") && (
+                            <button
+                              type="button"
+                              disabled={
+                                updatingId ===
+                                task.id
+                              }
+                              onClick={() =>
                                 completeTask(
                                   record
                                 )
@@ -1117,12 +1771,16 @@ export default function AdminFollowupsPage() {
 
       </section>
 
-      {/* DETAIL MODAL */}
+      {/* =====================================================
+          DETAIL MODAL
+      ===================================================== */}
 
       {selectedTask && (
         <div className="fixed inset-0 z-[100] flex items-end justify-center bg-black/50 sm:items-center sm:p-5">
 
-          <div className="max-h-[92vh] w-full max-w-[500px] overflow-y-auto rounded-t-3xl bg-white p-5 shadow-2xl sm:rounded-3xl">
+          <div className="max-h-[92vh] w-full max-w-[520px] overflow-y-auto rounded-t-3xl bg-white p-5 shadow-2xl sm:rounded-3xl">
+
+            {/* HEADER */}
 
             <div className="flex items-start justify-between gap-4">
 
@@ -1155,30 +1813,25 @@ export default function AdminFollowupsPage() {
 
             </div>
 
+            {/* LEAD */}
+
             <div className="mt-6 rounded-2xl bg-[var(--st-bg-soft)] p-5">
 
               <div className="flex items-center gap-3">
 
-                <div className="flex h-11 w-11 items-center justify-center rounded-full bg-white text-[10px] font-bold text-[var(--st-red)]">
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-white text-[10px] font-bold text-[var(--st-red)]">
                   {selectedTask.lead
-                    ? selectedTask.lead.full_name
-                        .split(" ")
-                        .map(
-                          (word) =>
-                            word[0]
-                        )
-                        .join("")
-                        .slice(
-                          0,
-                          2
-                        )
-                        .toUpperCase()
+                    ? initials(
+                        selectedTask
+                          .lead
+                          .full_name
+                      )
                     : "?"}
                 </div>
 
-                <div>
+                <div className="min-w-0">
 
-                  <p className="m-0 text-[13px] font-bold text-[var(--st-charcoal-dark)]">
+                  <p className="truncate text-[13px] font-bold text-[var(--st-charcoal-dark)]">
                     {selectedTask.lead
                       ?.full_name ??
                       "Unknown lead"}
@@ -1190,33 +1843,138 @@ export default function AdminFollowupsPage() {
                       "No phone number"}
                   </p>
 
+                  {selectedTask.lead
+                    ?.email && (
+                    <p className="mt-1 truncate text-[9px] text-[var(--st-gray)]">
+                      {
+                        selectedTask.lead
+                          .email
+                      }
+                    </p>
+                  )}
+
                 </div>
 
               </div>
 
             </div>
 
+            {/* LESSON */}
+
+            {selectedTask.booking &&
+              selectedTask.slot && (
+                <div className="mt-5 rounded-2xl border border-[var(--st-border)] p-5">
+
+                  <div className="flex items-start gap-3">
+
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[var(--st-bg-soft)] text-[var(--st-red)]">
+                      <CalendarDays
+                        size={17}
+                      />
+                    </div>
+
+                    <div>
+
+                      <p className="m-0 text-[8px] font-bold uppercase tracking-[0.08em] text-[var(--st-gray)]">
+                        TRIAL LESSON
+                      </p>
+
+                      <p className="mt-1 text-[14px] font-bold text-[var(--st-charcoal-dark)]">
+                        {instrumentLabel(
+                          selectedTask
+                            .booking
+                            .instrument
+                        )}
+                      </p>
+
+                      <p className="mt-1 text-[10px] text-[var(--st-gray)]">
+                        {formatLongDate(
+                          selectedTask
+                            .slot
+                            .starts_at
+                        )}
+                      </p>
+
+                      <p className="mt-1 text-[15px] font-bold text-[var(--st-red)]">
+                        {formatTimeRange(
+                          selectedTask
+                            .slot
+                            .starts_at,
+                          selectedTask
+                            .slot
+                            .ends_at
+                        )}
+                      </p>
+
+                    </div>
+
+                  </div>
+
+                </div>
+              )}
+
+            {/* FOLLOW-UP DETAILS */}
+
             <div className="mt-5 space-y-4">
 
               <div>
+
                 <p className="m-0 text-[8px] font-bold uppercase tracking-[0.08em] text-[var(--st-gray)]">
-                  Due date
+                  Follow-up due
                 </p>
 
                 <p className="mt-1 text-[11px] font-semibold text-[var(--st-charcoal-dark)]">
                   {formatLongDate(
-                    selectedTask.task.due_at
+                    selectedTask.task
+                      .due_at
                   )}
                 </p>
 
                 <p className="mt-1 text-[10px] text-[var(--st-gray)]">
                   {formatDateTime(
-                    selectedTask.task.due_at
+                    selectedTask.task
+                      .due_at
                   )}
                 </p>
+
+                <p
+                  className={`mt-1 text-[10px] font-bold ${
+                    isOverdue(
+                      selectedTask.task
+                    )
+                      ? "text-red-600"
+                      : "text-[var(--st-red)]"
+                  }`}
+                >
+                  {getRelativeLabel(
+                    selectedTask.task
+                  )}
+                </p>
+
               </div>
 
               <div>
+
+                <p className="m-0 text-[8px] font-bold uppercase tracking-[0.08em] text-[var(--st-gray)]">
+                  Channel
+                </p>
+
+                <span
+                  className={`mt-2 inline-flex rounded-full px-3 py-1.5 text-[8px] font-bold ${channelClasses(
+                    selectedTask.task
+                      .channel
+                  )}`}
+                >
+                  {channelLabel(
+                    selectedTask.task
+                      .channel
+                  )}
+                </span>
+
+              </div>
+
+              <div>
+
                 <p className="m-0 text-[8px] font-bold uppercase tracking-[0.08em] text-[var(--st-gray)]">
                   Status
                 </p>
@@ -1232,11 +1990,13 @@ export default function AdminFollowupsPage() {
                       .status
                   )}
                 </span>
+
               </div>
 
               {selectedTask.task
                 .message_template && (
                 <div>
+
                   <p className="m-0 text-[8px] font-bold uppercase tracking-[0.08em] text-[var(--st-gray)]">
                     Message
                   </p>
@@ -1245,16 +2005,20 @@ export default function AdminFollowupsPage() {
 
                     <p className="m-0 text-[10px] leading-relaxed text-[var(--st-charcoal-dark)]">
                       {
-                        selectedTask.task
+                        selectedTask
+                          .task
                           .message_template
                       }
                     </p>
 
                   </div>
+
                 </div>
               )}
 
             </div>
+
+            {/* ACTIONS */}
 
             <div className="mt-6 grid grid-cols-2 gap-2">
 
@@ -1276,9 +2040,58 @@ export default function AdminFollowupsPage() {
                 </button>
               )}
 
+              {selectedTask.lead
+                ?.whatsapp_number && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    callLead(
+                      selectedTask
+                    )
+                  }
+                  className="st-button st-button-secondary w-full"
+                >
+                  <Phone size={14} />
+                  Call
+                </button>
+              )}
+
               {selectedTask.task
                 .status ===
                 "pending" && (
+                <button
+                  type="button"
+                  disabled={
+                    updatingId ===
+                    selectedTask.task
+                      .id
+                  }
+                  onClick={() =>
+                    markSent(
+                      selectedTask
+                    )
+                  }
+                  className="st-button st-button-secondary w-full disabled:opacity-50"
+                >
+                  {updatingId ===
+                  selectedTask.task.id ? (
+                    <RefreshCw
+                      size={14}
+                      className="animate-spin"
+                    />
+                  ) : (
+                    <Check size={14} />
+                  )}
+                  Mark sent
+                </button>
+              )}
+
+              {(selectedTask.task
+                .status ===
+                "pending" ||
+                selectedTask.task
+                  .status ===
+                  "sent") && (
                 <button
                   type="button"
                   disabled={
@@ -1308,9 +2121,14 @@ export default function AdminFollowupsPage() {
 
             </div>
 
-            {selectedTask.task
+            {/* CANCEL */}
+
+            {(selectedTask.task
               .status ===
-              "pending" && (
+              "pending" ||
+              selectedTask.task
+                .status ===
+                "sent") && (
               <button
                 type="button"
                 disabled={
