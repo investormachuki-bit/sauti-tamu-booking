@@ -132,7 +132,9 @@ function formatDate(dateString: string) {
     day: "numeric",
     month: "short",
     year: "numeric",
-  }).format(new Date(`${dateString}T00:00:00+03:00`));
+  }).format(
+    new Date(`${dateString}T00:00:00+03:00`)
+  );
 }
 
 function formatLongDate(dateString: string) {
@@ -142,7 +144,9 @@ function formatLongDate(dateString: string) {
     day: "numeric",
     month: "long",
     year: "numeric",
-  }).format(new Date(`${dateString}T00:00:00+03:00`));
+  }).format(
+    new Date(`${dateString}T00:00:00+03:00`)
+  );
 }
 
 function getTodayKey() {
@@ -155,13 +159,40 @@ function getTodayKey() {
 }
 
 function calculateDaysRemaining(endDate: string) {
-  const today = new Date(`${getTodayKey()}T00:00:00+03:00`);
-  const end = new Date(`${endDate}T00:00:00+03:00`);
+  const today = new Date(
+    `${getTodayKey()}T00:00:00+03:00`
+  );
+
+  const end = new Date(
+    `${endDate}T00:00:00+03:00`
+  );
 
   return Math.ceil(
     (end.getTime() - today.getTime()) /
       (1000 * 60 * 60 * 24)
   );
+}
+
+function addThreeMonths(dateString: string) {
+  if (!dateString) {
+    return "";
+  }
+
+  const date = new Date(
+    `${dateString}T00:00:00+03:00`
+  );
+
+  date.setMonth(date.getMonth() + 3);
+
+  const year = date.getFullYear();
+  const month = String(
+    date.getMonth() + 1
+  ).padStart(2, "0");
+  const day = String(
+    date.getDate()
+  ).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
 }
 
 function initials(name: string) {
@@ -175,7 +206,10 @@ function initials(name: string) {
 }
 
 function instrumentName(instrument: Instrument) {
-  return instrument.charAt(0).toUpperCase() + instrument.slice(1);
+  return (
+    instrument.charAt(0).toUpperCase() +
+    instrument.slice(1)
+  );
 }
 
 function studentStatusLabel(status: StudentStatus) {
@@ -197,12 +231,16 @@ function studentStatusClasses(status: StudentStatus) {
   switch (status) {
     case "active":
       return "bg-green-50 text-green-700";
+
     case "completed":
       return "bg-blue-50 text-blue-700";
+
     case "paused":
       return "bg-amber-50 text-amber-700";
+
     case "inactive":
       return "bg-gray-100 text-gray-600";
+
     default:
       return "bg-gray-50 text-gray-700";
   }
@@ -353,7 +391,8 @@ function getPaymentFollowUpLabel(
 }
 
 export default function AdminStudentsPage() {
-  const [records, setRecords] = useState<StudentRecord[]>([]);
+  const [records, setRecords] =
+    useState<StudentRecord[]>([]);
 
   const [loading, setLoading] =
     useState(true);
@@ -390,6 +429,171 @@ export default function AdminStudentsPage() {
 
   const [paymentReference, setPaymentReference] =
     useState("");
+
+  /*
+   * =========================================================
+   * ADD STUDENT FORM
+   * =========================================================
+   */
+
+  const [studentName, setStudentName] =
+    useState("");
+
+  const [studentEmail, setStudentEmail] =
+    useState("");
+
+  const [studentWhatsapp, setStudentWhatsapp] =
+    useState("");
+
+  const [studentNotes, setStudentNotes] =
+    useState("");
+
+  const [instrument, setInstrument] =
+    useState<Instrument>("piano");
+
+  const [programmeName, setProgrammeName] =
+    useState("3 Month Training Programme");
+
+  const [startDate, setStartDate] =
+    useState(getTodayKey());
+
+  const [totalFee, setTotalFee] =
+    useState("");
+
+  const [initialPayment, setInitialPayment] =
+    useState("");
+
+  const [initialPaymentMethod, setInitialPaymentMethod] =
+    useState<PaymentMethod>("mpesa");
+
+  const [initialPaymentReference, setInitialPaymentReference] =
+    useState("");
+
+  const [nextPaymentAmount, setNextPaymentAmount] =
+    useState("");
+
+  const [nextPaymentDueDate, setNextPaymentDueDate] =
+    useState("");
+
+  const [nextPaymentFollowUpDate, setNextPaymentFollowUpDate] =
+    useState("");
+
+  const [nextPaymentNotes, setNextPaymentNotes] =
+    useState("");
+
+  const [addingStudent, setAddingStudent] =
+    useState(false);
+
+  const [addStudentError, setAddStudentError] =
+    useState("");
+
+  const endDate = useMemo(
+    () => addThreeMonths(startDate),
+    [startDate]
+  );
+
+  const numericTotalFee =
+    Number(totalFee) || 0;
+
+  const numericInitialPayment =
+    Number(initialPayment) || 0;
+
+  const numericNextPayment =
+    Number(nextPaymentAmount) || 0;
+
+  const remainingAfterInitial = Math.max(
+    numericTotalFee -
+      numericInitialPayment,
+    0
+  );
+
+  const remainingAfterNextPayment =
+    Math.max(
+      remainingAfterInitial -
+        numericNextPayment,
+      0
+    );
+
+  /*
+   * Automatically suggest the next payment date
+   * whenever a start date is selected.
+   */
+
+  useEffect(() => {
+    if (!startDate) {
+      return;
+    }
+
+    if (!nextPaymentDueDate) {
+      const date = new Date(
+        `${startDate}T00:00:00+03:00`
+      );
+
+      date.setDate(
+        date.getDate() + 14
+      );
+
+      const year = date.getFullYear();
+      const month = String(
+        date.getMonth() + 1
+      ).padStart(2, "0");
+      const day = String(
+        date.getDate()
+      ).padStart(2, "0");
+
+      setNextPaymentDueDate(
+        `${year}-${month}-${day}`
+      );
+    }
+  }, [startDate, nextPaymentDueDate]);
+
+  /*
+   * =========================================================
+   * RESET ADD STUDENT FORM
+   * =========================================================
+   */
+
+  function resetAddStudentForm() {
+    setStudentName("");
+    setStudentEmail("");
+    setStudentWhatsapp("");
+    setStudentNotes("");
+
+    setInstrument("piano");
+    setProgrammeName(
+      "3 Month Training Programme"
+    );
+
+    setStartDate(getTodayKey());
+
+    setTotalFee("");
+    setInitialPayment("");
+
+    setInitialPaymentMethod("mpesa");
+    setInitialPaymentReference("");
+
+    setNextPaymentAmount("");
+    setNextPaymentDueDate("");
+    setNextPaymentFollowUpDate("");
+    setNextPaymentNotes("");
+
+    setAddStudentError("");
+  }
+
+  /*
+   * =========================================================
+   * CLOSE ADD STUDENT
+   * =========================================================
+   */
+
+  function closeAddStudent() {
+    if (addingStudent) {
+      return;
+    }
+
+    setShowAddStudent(false);
+    resetAddStudentForm();
+  }
 
   /*
    * =========================================================
@@ -541,7 +745,8 @@ export default function AdminStudentsPage() {
           enrollment.id
       );
 
-    let schedules: PaymentSchedule[] = [];
+    let schedules: PaymentSchedule[] =
+      [];
 
     if (enrollmentIds.length > 0) {
       const {
@@ -673,6 +878,540 @@ export default function AdminStudentsPage() {
 
   /*
    * =========================================================
+   * ADD STUDENT
+   * =========================================================
+   */
+
+  async function addStudent() {
+    setAddStudentError("");
+
+    const name =
+      studentName.trim();
+
+    const email =
+      studentEmail.trim();
+
+    const whatsapp =
+      studentWhatsapp.trim();
+
+    const notes =
+      studentNotes.trim();
+
+    const total =
+      Number(totalFee);
+
+    const initial =
+      Number(initialPayment) || 0;
+
+    const nextAmount =
+      Number(nextPaymentAmount) || 0;
+
+    /*
+     * VALIDATION
+     */
+
+    if (!name) {
+      setAddStudentError(
+        "Please enter the student's full name."
+      );
+      return;
+    }
+
+    if (!email) {
+      setAddStudentError(
+        "Please enter the student's email address."
+      );
+      return;
+    }
+
+    if (!whatsapp) {
+      setAddStudentError(
+        "Please enter the student's WhatsApp number."
+      );
+      return;
+    }
+
+    if (!startDate) {
+      setAddStudentError(
+        "Please select a programme start date."
+      );
+      return;
+    }
+
+    if (!endDate) {
+      setAddStudentError(
+        "Programme end date could not be calculated."
+      );
+      return;
+    }
+
+    if (!total || total <= 0) {
+      setAddStudentError(
+        "Please enter a valid programme fee."
+      );
+      return;
+    }
+
+    if (initial < 0) {
+      setAddStudentError(
+        "Initial payment cannot be negative."
+      );
+      return;
+    }
+
+    if (initial > total) {
+      setAddStudentError(
+        "Initial payment cannot be greater than the total programme fee."
+      );
+      return;
+    }
+
+    if (
+      nextAmount < 0
+    ) {
+      setAddStudentError(
+        "Next payment amount cannot be negative."
+      );
+      return;
+    }
+
+    if (
+      nextAmount >
+      remainingAfterInitial
+    ) {
+      setAddStudentError(
+        "Next payment cannot be greater than the remaining balance."
+      );
+      return;
+    }
+
+    if (
+      remainingAfterInitial > 0 &&
+      nextAmount <= 0
+    ) {
+      setAddStudentError(
+        "Please enter the amount you want to request for the next payment."
+      );
+      return;
+    }
+
+    if (
+      remainingAfterInitial > 0 &&
+      !nextPaymentDueDate
+    ) {
+      setAddStudentError(
+        "Please select the next payment due date."
+      );
+      return;
+    }
+
+    if (
+      nextPaymentFollowUpDate &&
+      nextPaymentDueDate &&
+      nextPaymentFollowUpDate >
+        nextPaymentDueDate
+    ) {
+      setAddStudentError(
+        "The follow-up date should be on or before the payment due date."
+      );
+      return;
+    }
+
+    setAddingStudent(true);
+
+    let createdStudentId:
+      | string
+      | null = null;
+
+    let createdEnrollmentId:
+      | string
+      | null = null;
+
+    try {
+      /*
+       * =====================================================
+       * 1. CREATE STUDENT
+       * =====================================================
+       */
+
+      const {
+        data: createdStudent,
+        error: studentError,
+      } = await supabase
+        .from("students")
+        .insert({
+          full_name: name,
+          email,
+          whatsapp_number: whatsapp,
+          status: "active",
+          notes: notes || null,
+        })
+        .select(
+          `
+            id,
+            lead_id,
+            full_name,
+            email,
+            whatsapp_number,
+            status,
+            notes,
+            created_at,
+            updated_at
+          `
+        )
+        .single();
+
+      if (studentError) {
+        throw studentError;
+      }
+
+      createdStudentId =
+        createdStudent.id;
+
+      /*
+       * =====================================================
+       * 2. CREATE ENROLLMENT
+       * =====================================================
+       */
+
+      const {
+        data: createdEnrollment,
+        error: enrollmentError,
+      } = await supabase
+        .from("student_enrollments")
+        .insert({
+          student_id:
+            createdStudent.id,
+          instrument,
+          programme_name:
+            programmeName.trim() ||
+            "3 Month Training Programme",
+          start_date: startDate,
+          end_date: endDate,
+          total_fee: total,
+          status: "active",
+          notes: null,
+        })
+        .select(
+          `
+            id,
+            student_id,
+            instrument,
+            programme_name,
+            start_date,
+            end_date,
+            total_fee,
+            status,
+            notes,
+            created_at,
+            updated_at
+          `
+        )
+        .single();
+
+      if (enrollmentError) {
+        throw enrollmentError;
+      }
+
+      createdEnrollmentId =
+        createdEnrollment.id;
+
+      /*
+       * =====================================================
+       * 3. RECORD INITIAL PAYMENT
+       * =====================================================
+       */
+
+      if (initial > 0) {
+        const {
+          error: initialPaymentError,
+        } = await supabase
+          .from("payments")
+          .insert({
+            student_id:
+              createdStudent.id,
+
+            enrollment_id:
+              createdEnrollment.id,
+
+            payment_schedule_id:
+              null,
+
+            amount: initial,
+
+            payment_date:
+              getTodayKey(),
+
+            payment_method:
+              initialPaymentMethod,
+
+            reference:
+              initialPaymentReference.trim() ||
+              null,
+
+            notes:
+              "Initial payment at student registration.",
+          });
+
+        if (initialPaymentError) {
+          throw initialPaymentError;
+        }
+      }
+
+      /*
+       * =====================================================
+       * 4. CREATE NEXT PAYMENT SCHEDULE
+       * =====================================================
+       */
+
+      if (
+        remainingAfterInitial > 0 &&
+        nextAmount > 0
+      ) {
+        const {
+          error: scheduleError,
+        } = await supabase
+          .from("payment_schedule")
+          .insert({
+            enrollment_id:
+              createdEnrollment.id,
+
+            amount_due:
+              nextAmount,
+
+            due_date:
+              nextPaymentDueDate,
+
+            follow_up_date:
+              nextPaymentFollowUpDate ||
+              null,
+
+            status: "scheduled",
+
+            notes:
+              nextPaymentNotes.trim() ||
+              null,
+          });
+
+        if (scheduleError) {
+          throw scheduleError;
+        }
+      }
+
+      /*
+       * =====================================================
+       * 5. SUCCESS
+       * =====================================================
+       */
+
+      setShowAddStudent(false);
+
+      resetAddStudentForm();
+
+      await loadStudents(true);
+
+      /*
+       * Open the newly created student.
+       */
+
+      const newlyCreatedRecord =
+        await getStudentRecord(
+          createdStudent.id
+        );
+
+      if (newlyCreatedRecord) {
+        setSelectedStudent(
+          newlyCreatedRecord
+        );
+      }
+    } catch (err) {
+      console.error(
+        "Add student error:",
+        err
+      );
+
+      /*
+       * Cleanup partially created records.
+       */
+
+      if (createdEnrollmentId) {
+        await supabase
+          .from("student_enrollments")
+          .delete()
+          .eq(
+            "id",
+            createdEnrollmentId
+          );
+      }
+
+      if (createdStudentId) {
+        await supabase
+          .from("students")
+          .delete()
+          .eq(
+            "id",
+            createdStudentId
+          );
+      }
+
+      const message =
+        err &&
+        typeof err === "object" &&
+        "message" in err
+          ? String(
+              (
+                err as {
+                  message: string;
+                }
+              ).message
+            )
+          : "";
+
+      setAddStudentError(
+        message ||
+          "We couldn't add this student. Please check the details and try again."
+      );
+    } finally {
+      setAddingStudent(false);
+    }
+  }
+
+  /*
+   * =========================================================
+   * GET SINGLE STUDENT RECORD
+   * =========================================================
+   */
+
+  async function getStudentRecord(
+    studentId: string
+  ): Promise<StudentRecord | null> {
+    const {
+      data: studentData,
+      error: studentError,
+    } = await supabase
+      .from("students")
+      .select(
+        `
+          id,
+          lead_id,
+          full_name,
+          email,
+          whatsapp_number,
+          status,
+          notes,
+          created_at,
+          updated_at
+        `
+      )
+      .eq("id", studentId)
+      .single();
+
+    if (studentError || !studentData) {
+      return null;
+    }
+
+    const {
+      data: enrollmentData,
+    } = await supabase
+      .from("student_enrollments")
+      .select(
+        `
+          id,
+          student_id,
+          instrument,
+          programme_name,
+          start_date,
+          end_date,
+          total_fee,
+          status,
+          notes,
+          created_at,
+          updated_at
+        `
+      )
+      .eq(
+        "student_id",
+        studentId
+      )
+      .order("created_at", {
+        ascending: false,
+      });
+
+    const enrollment =
+      ((enrollmentData ??
+        []) as Enrollment[])[0] ??
+      null;
+
+    let schedules: PaymentSchedule[] =
+      [];
+
+    if (enrollment) {
+      const {
+        data: scheduleData,
+      } = await supabase
+        .from("payment_schedule")
+        .select(
+          `
+            id,
+            enrollment_id,
+            amount_due,
+            due_date,
+            follow_up_date,
+            status,
+            notes
+          `
+        )
+        .eq(
+          "enrollment_id",
+          enrollment.id
+        )
+        .order("due_date", {
+          ascending: true,
+        });
+
+      schedules =
+        (scheduleData ??
+          []) as PaymentSchedule[];
+    }
+
+    const {
+      data: paymentData,
+    } = await supabase
+      .from("payments")
+      .select(
+        `
+          id,
+          student_id,
+          enrollment_id,
+          payment_schedule_id,
+          amount,
+          payment_date,
+          payment_method,
+          reference,
+          notes
+        `
+      )
+      .eq(
+        "student_id",
+        studentId
+      )
+      .order("payment_date", {
+        ascending: false,
+      });
+
+    return {
+      student:
+        studentData as Student,
+      enrollment,
+      schedules,
+      payments:
+        (paymentData ??
+          []) as Payment[],
+    };
+  }
+
+  /*
+   * =========================================================
    * FILTERING
    * =========================================================
    */
@@ -779,7 +1518,7 @@ export default function AdminStudentsPage() {
 
   /*
    * =========================================================
-   * PAYMENT
+   * RECORD PAYMENT
    * =========================================================
    */
 
@@ -809,6 +1548,22 @@ export default function AdminStudentsPage() {
       return;
     }
 
+    const balance =
+      getBalance(
+        selectedStudent.enrollment,
+        selectedStudent.payments
+      );
+
+    if (amount > balance) {
+      setError(
+        `Payment cannot exceed the student's remaining balance of ${formatCurrency(
+          balance
+        )}.`
+      );
+
+      return;
+    }
+
     setUpdatingId(
       selectedStudent.student.id
     );
@@ -828,15 +1583,21 @@ export default function AdminStudentsPage() {
       .insert({
         student_id:
           selectedStudent.student.id,
+
         enrollment_id:
           selectedStudent.enrollment.id,
+
         payment_schedule_id:
           nextSchedule?.id ?? null,
+
         amount,
+
         payment_date:
           getTodayKey(),
+
         payment_method:
           paymentMethod,
+
         reference:
           paymentReference.trim() ||
           null,
@@ -872,7 +1633,7 @@ export default function AdminStudentsPage() {
     }
 
     /*
-     * Update schedule status.
+     * Update current schedule.
      */
 
     if (nextSchedule) {
@@ -940,6 +1701,15 @@ export default function AdminStudentsPage() {
     setUpdatingId(null);
 
     await loadStudents(true);
+
+    const refreshed =
+      await getStudentRecord(
+        selectedStudent.student.id
+      );
+
+    if (refreshed) {
+      setSelectedStudent(refreshed);
+    }
   }
 
   /*
@@ -972,6 +1742,10 @@ export default function AdminStudentsPage() {
       )} due on ${formatDate(
         next.due_date
       )}.`;
+
+      if (next.follow_up_date) {
+        message += ` We are following up on this payment today.`;
+      }
     }
 
     window.open(
@@ -1015,7 +1789,9 @@ export default function AdminStudentsPage() {
   return (
     <main className="st-content">
 
-      {/* HEADER */}
+      {/* =====================================================
+          HEADER
+      ===================================================== */}
 
       <div className="mb-7 flex flex-col gap-5 md:flex-row md:items-end md:justify-between">
 
@@ -1069,7 +1845,9 @@ export default function AdminStudentsPage() {
 
       </div>
 
-      {/* STATS */}
+      {/* =====================================================
+          STATS
+      ===================================================== */}
 
       <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
 
@@ -1163,7 +1941,9 @@ export default function AdminStudentsPage() {
 
       </section>
 
-      {/* PAYMENT ATTENTION */}
+      {/* =====================================================
+          PAYMENT ATTENTION
+      ===================================================== */}
 
       {stats.paymentAttention > 0 && (
         <section className="mt-5">
@@ -1287,6 +2067,15 @@ export default function AdminStudentsPage() {
                               )}
                             </p>
 
+                            {next.follow_up_date && (
+                              <p className="mt-1 mb-0 text-[8px] font-semibold text-[var(--st-gray)]">
+                                Follow-up:{" "}
+                                {formatDate(
+                                  next.follow_up_date
+                                )}
+                              </p>
+                            )}
+
                           </div>
 
                           <div className="flex gap-1">
@@ -1312,6 +2101,7 @@ export default function AdminStudentsPage() {
                                 setSelectedStudent(
                                   record
                                 );
+
                                 setShowPaymentForm(
                                   true
                                 );
@@ -1338,7 +2128,9 @@ export default function AdminStudentsPage() {
         </section>
       )}
 
-      {/* SEARCH */}
+      {/* =====================================================
+          SEARCH
+      ===================================================== */}
 
       <section className="st-card mt-6 p-4">
 
@@ -1409,17 +2201,28 @@ export default function AdminStudentsPage() {
 
       </section>
 
-      {/* ERROR */}
+      {/* =====================================================
+          ERROR
+      ===================================================== */}
 
       {error && (
-        <div className="mt-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3">
+        <div className="mt-5 flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3">
+
+          <AlertCircle
+            size={15}
+            className="mt-0.5 shrink-0 text-red-600"
+          />
+
           <p className="m-0 text-[10px] leading-relaxed text-red-700">
             {error}
           </p>
+
         </div>
       )}
 
-      {/* STUDENT LIST */}
+      {/* =====================================================
+          STUDENT LIST
+      ===================================================== */}
 
       <section className="mt-7">
 
@@ -1444,11 +2247,14 @@ export default function AdminStudentsPage() {
 
         {loading ? (
           <div className="st-card flex min-h-[260px] items-center justify-center gap-2 text-[10px] text-[var(--st-gray)]">
+
             <RefreshCw
               size={16}
               className="animate-spin"
             />
+
             Loading students...
+
           </div>
         ) : filteredRecords.length ===
           0 ? (
@@ -1527,16 +2333,12 @@ export default function AdminStudentsPage() {
 
                       <div className="flex items-start gap-4">
 
-                        {/* AVATAR */}
-
                         <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[var(--st-bg-soft)] text-[10px] font-bold text-[var(--st-red)]">
                           {initials(
                             record.student
                               .full_name
                           )}
                         </div>
-
-                        {/* CONTENT */}
 
                         <div className="min-w-0 flex-1">
 
@@ -1582,8 +2384,6 @@ export default function AdminStudentsPage() {
                             </span>
 
                           </div>
-
-                          {/* PROGRAMME */}
 
                           {enrollment && (
                             <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -1663,8 +2463,6 @@ export default function AdminStudentsPage() {
                             </div>
                           )}
 
-                          {/* PAYMENT */}
-
                           {enrollment && (
                             <div className="mt-4 rounded-xl bg-[var(--st-bg-soft)] p-3">
 
@@ -1685,17 +2483,28 @@ export default function AdminStudentsPage() {
                                     </p>
 
                                     {nextPayment ? (
-                                      <p className="mt-1 text-[11px] font-bold text-[var(--st-charcoal-dark)]">
-                                        {formatCurrency(
-                                          Number(
-                                            nextPayment.amount_due
-                                          )
-                                        )}{" "}
-                                        ·{" "}
-                                        {formatDate(
-                                          nextPayment.due_date
+                                      <>
+                                        <p className="mt-1 text-[11px] font-bold text-[var(--st-charcoal-dark)]">
+                                          {formatCurrency(
+                                            Number(
+                                              nextPayment.amount_due
+                                            )
+                                          )}{" "}
+                                          ·{" "}
+                                          {formatDate(
+                                            nextPayment.due_date
+                                          )}
+                                        </p>
+
+                                        {nextPayment.follow_up_date && (
+                                          <p className="mt-1 text-[8px] font-semibold text-[var(--st-gray)]">
+                                            Follow-up:{" "}
+                                            {formatDate(
+                                              nextPayment.follow_up_date
+                                            )}
+                                          </p>
                                         )}
-                                      </p>
+                                      </>
                                     ) : (
                                       <p className="mt-1 text-[10px] text-green-700">
                                         No outstanding scheduled payment
@@ -1723,8 +2532,6 @@ export default function AdminStudentsPage() {
                             </div>
                           )}
 
-                          {/* CONTACT */}
-
                           <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2">
 
                             <span className="flex min-w-0 items-center gap-1.5 text-[9px] text-[var(--st-gray)]">
@@ -1732,6 +2539,7 @@ export default function AdminStudentsPage() {
                                 size={12}
                                 className="shrink-0 text-[var(--st-red)]"
                               />
+
                               <span className="truncate">
                                 {
                                   record.student
@@ -1745,6 +2553,7 @@ export default function AdminStudentsPage() {
                                 size={12}
                                 className="shrink-0 text-[var(--st-red)]"
                               />
+
                               <span className="truncate">
                                 {
                                   record.student
@@ -1755,6 +2564,7 @@ export default function AdminStudentsPage() {
 
                             <span className="ml-auto flex shrink-0 items-center gap-1 text-[9px] font-bold text-[var(--st-red)]">
                               View
+
                               <ArrowRight
                                 size={12}
                                 className="transition-transform group-hover:translate-x-1"
@@ -1788,8 +2598,6 @@ export default function AdminStudentsPage() {
           <div className="fixed inset-0 z-[100] flex items-end justify-center bg-black/40 sm:items-center sm:p-5">
 
             <div className="max-h-[94vh] w-full max-w-[600px] overflow-y-auto rounded-t-3xl bg-white shadow-2xl sm:rounded-3xl">
-
-              {/* DRAWER HEADER */}
 
               <div className="sticky top-0 z-10 border-b border-[var(--st-border)] bg-white px-5 py-4">
 
@@ -2553,94 +3361,936 @@ export default function AdminStudentsPage() {
         )}
 
       {/* =====================================================
-          ADD STUDENT PLACEHOLDER
-          We will wire this to leads + enrollment next.
+          ADD STUDENT MODAL
       ===================================================== */}
 
       {showAddStudent && (
         <div className="fixed inset-0 z-[110] flex items-end justify-center bg-black/50 sm:items-center sm:p-5">
 
-          <div className="w-full max-w-[500px] rounded-t-3xl bg-white p-5 shadow-2xl sm:rounded-3xl">
+          <div className="max-h-[94vh] w-full max-w-[560px] overflow-y-auto rounded-t-3xl bg-white shadow-2xl sm:rounded-3xl">
 
-            <div className="flex items-start justify-between gap-4">
+            {/* HEADER */}
 
-              <div>
+            <div className="sticky top-0 z-20 border-b border-[var(--st-border)] bg-white px-5 py-4">
 
-                <p className="st-eyebrow">
-                  NEW STUDENT
-                </p>
-
-                <h2 className="mt-1 text-[21px] font-bold text-[var(--st-charcoal-dark)]">
-                  Add a student
-                </h2>
-
-                <p className="mt-2 text-[10px] leading-relaxed text-[var(--st-gray)]">
-                  The student registration workflow will
-                  connect a lead, programme and payment plan.
-                </p>
-
-              </div>
-
-              <button
-                type="button"
-                onClick={() =>
-                  setShowAddStudent(
-                    false
-                  )
-                }
-                className="st-icon-button"
-              >
-                <X size={17} />
-              </button>
-
-            </div>
-
-            <div className="mt-6 rounded-2xl bg-[var(--st-bg-soft)] p-5">
-
-              <div className="flex items-start gap-3">
-
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-[var(--st-red)]">
-                  <User size={18} />
-                </div>
+              <div className="flex items-start justify-between gap-4">
 
                 <div>
 
-                  <p className="m-0 text-[11px] font-bold text-[var(--st-charcoal-dark)]">
-                    Registration workflow
+                  <p className="st-eyebrow">
+                    NEW STUDENT
                   </p>
 
-                  <p className="mt-2 mb-0 text-[10px] leading-relaxed text-[var(--st-gray)]">
-                    Next we'll connect this form to your
-                    existing leads so you can convert a lead
-                    into a student, choose their instrument,
-                    set programme dates, create the payment
-                    plan and start tracking follow-ups.
+                  <h2 className="mt-1 text-[21px] font-bold text-[var(--st-charcoal-dark)]">
+                    Add a student
+                  </h2>
+
+                  <p className="mt-1 text-[10px] text-[var(--st-gray)]">
+                    Register the student, programme and payment plan.
                   </p>
 
                 </div>
+
+                <button
+                  type="button"
+                  onClick={
+                    closeAddStudent
+                  }
+                  disabled={
+                    addingStudent
+                  }
+                  className="st-icon-button disabled:opacity-40"
+                >
+                  <X size={17} />
+                </button>
 
               </div>
 
             </div>
 
-            <button
-              type="button"
-              onClick={() =>
-                setShowAddStudent(
-                  false
-                )
-              }
-              className="st-button st-button-primary mt-5 w-full"
-            >
-              Continue
-              <ArrowRight size={15} />
-            </button>
+            <div className="p-5">
+
+              {/* =================================================
+                  STUDENT INFORMATION
+              ================================================= */}
+
+              <div>
+
+                <div className="mb-4">
+
+                  <p className="st-eyebrow">
+                    01 · STUDENT INFORMATION
+                  </p>
+
+                  <h3 className="mt-1 text-[14px] font-bold text-[var(--st-charcoal-dark)]">
+                    Personal details
+                  </h3>
+
+                </div>
+
+                <div className="space-y-4">
+
+                  <div>
+
+                    <label className="mb-2 block text-[9px] font-bold uppercase tracking-[0.08em] text-[var(--st-charcoal)]">
+                      Full name *
+                    </label>
+
+                    <input
+                      type="text"
+                      value={studentName}
+                      onChange={(event) =>
+                        setStudentName(
+                          event.target
+                            .value
+                        )
+                      }
+                      placeholder="e.g. Jane Wanjiku"
+                      className="w-full rounded-xl border border-[var(--st-border)] px-4 py-3.5 text-[12px] outline-none transition focus:border-[var(--st-red)] focus:ring-2 focus:ring-[var(--st-red)]/10"
+                    />
+
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+
+                    <div>
+
+                      <label className="mb-2 block text-[9px] font-bold uppercase tracking-[0.08em] text-[var(--st-charcoal)]">
+                        WhatsApp number *
+                      </label>
+
+                      <input
+                        type="tel"
+                        value={studentWhatsapp}
+                        onChange={(event) =>
+                          setStudentWhatsapp(
+                            event.target
+                              .value
+                          )
+                        }
+                        placeholder="e.g. 254712345678"
+                        className="w-full rounded-xl border border-[var(--st-border)] px-4 py-3.5 text-[11px] outline-none focus:border-[var(--st-red)]"
+                      />
+
+                    </div>
+
+                    <div>
+
+                      <label className="mb-2 block text-[9px] font-bold uppercase tracking-[0.08em] text-[var(--st-charcoal)]">
+                        Email *
+                      </label>
+
+                      <input
+                        type="email"
+                        value={studentEmail}
+                        onChange={(event) =>
+                          setStudentEmail(
+                            event.target
+                              .value
+                          )
+                        }
+                        placeholder="student@email.com"
+                        className="w-full rounded-xl border border-[var(--st-border)] px-4 py-3.5 text-[11px] outline-none focus:border-[var(--st-red)]"
+                      />
+
+                    </div>
+
+                  </div>
+
+                  <div>
+
+                    <label className="mb-2 block text-[9px] font-bold uppercase tracking-[0.08em] text-[var(--st-charcoal)]">
+                      Notes
+                    </label>
+
+                    <textarea
+                      value={studentNotes}
+                      onChange={(event) =>
+                        setStudentNotes(
+                          event.target
+                            .value
+                        )
+                      }
+                      rows={3}
+                      placeholder="Optional student notes..."
+                      className="w-full resize-none rounded-xl border border-[var(--st-border)] px-4 py-3 text-[11px] outline-none focus:border-[var(--st-red)]"
+                    />
+
+                  </div>
+
+                </div>
+
+              </div>
+
+              {/* =================================================
+                  PROGRAMME
+              ================================================= */}
+
+              <div className="mt-7 border-t border-[var(--st-border)] pt-7">
+
+                <div className="mb-4">
+
+                  <p className="st-eyebrow">
+                    02 · PROGRAMME
+                  </p>
+
+                  <h3 className="mt-1 text-[14px] font-bold text-[var(--st-charcoal-dark)]">
+                    Training programme
+                  </h3>
+
+                </div>
+
+                <div className="space-y-4">
+
+                  <div>
+
+                    <label className="mb-2 block text-[9px] font-bold uppercase tracking-[0.08em] text-[var(--st-charcoal)]">
+                      Instrument *
+                    </label>
+
+                    <div className="grid grid-cols-2 gap-2">
+
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setInstrument(
+                            "piano"
+                          )
+                        }
+                        className={`rounded-xl border px-4 py-3.5 text-left transition ${
+                          instrument ===
+                          "piano"
+                            ? "border-[var(--st-red)] bg-red-50"
+                            : "border-[var(--st-border)] bg-white"
+                        }`}
+                      >
+
+                        <p
+                          className={`m-0 text-[11px] font-bold ${
+                            instrument ===
+                            "piano"
+                              ? "text-[var(--st-red)]"
+                              : "text-[var(--st-charcoal-dark)]"
+                          }`}
+                        >
+                          Piano
+                        </p>
+
+                        <p className="mt-1 mb-0 text-[8px] text-[var(--st-gray)]">
+                          Piano training
+                        </p>
+
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setInstrument(
+                            "guitar"
+                          )
+                        }
+                        className={`rounded-xl border px-4 py-3.5 text-left transition ${
+                          instrument ===
+                          "guitar"
+                            ? "border-[var(--st-red)] bg-red-50"
+                            : "border-[var(--st-border)] bg-white"
+                        }`}
+                      >
+
+                        <p
+                          className={`m-0 text-[11px] font-bold ${
+                            instrument ===
+                            "guitar"
+                              ? "text-[var(--st-red)]"
+                              : "text-[var(--st-charcoal-dark)]"
+                          }`}
+                        >
+                          Guitar
+                        </p>
+
+                        <p className="mt-1 mb-0 text-[8px] text-[var(--st-gray)]">
+                          Acoustic guitar training
+                        </p>
+
+                      </button>
+
+                    </div>
+
+                  </div>
+
+                  <div>
+
+                    <label className="mb-2 block text-[9px] font-bold uppercase tracking-[0.08em] text-[var(--st-charcoal)]">
+                      Programme name
+                    </label>
+
+                    <input
+                      type="text"
+                      value={programmeName}
+                      onChange={(event) =>
+                        setProgrammeName(
+                          event.target
+                            .value
+                        )
+                      }
+                      className="w-full rounded-xl border border-[var(--st-border)] px-4 py-3.5 text-[11px] outline-none focus:border-[var(--st-red)]"
+                    />
+
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+
+                    <div>
+
+                      <label className="mb-2 block text-[9px] font-bold uppercase tracking-[0.08em] text-[var(--st-charcoal)]">
+                        Start date *
+                      </label>
+
+                      <div className="relative">
+
+                        <CalendarDays
+                          size={14}
+                          className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-[var(--st-red)]"
+                        />
+
+                        <input
+                          type="date"
+                          value={startDate}
+                          onChange={(event) =>
+                            setStartDate(
+                              event.target
+                                .value
+                            )
+                          }
+                          className="w-full rounded-xl border border-[var(--st-border)] bg-white py-3.5 pl-10 pr-3 text-[11px] outline-none focus:border-[var(--st-red)]"
+                        />
+
+                      </div>
+
+                    </div>
+
+                    <div>
+
+                      <label className="mb-2 block text-[9px] font-bold uppercase tracking-[0.08em] text-[var(--st-charcoal)]">
+                        End date
+                      </label>
+
+                      <div className="rounded-xl border border-[var(--st-border)] bg-[var(--st-bg-soft)] px-4 py-3.5">
+
+                        <p className="m-0 text-[11px] font-bold text-[var(--st-charcoal-dark)]">
+                          {endDate
+                            ? formatDate(
+                                endDate
+                              )
+                            : "—"}
+                        </p>
+
+                        <p className="mt-1 mb-0 text-[8px] text-[var(--st-gray)]">
+                          Automatically calculated
+                        </p>
+
+                      </div>
+
+                    </div>
+
+                  </div>
+
+                  {endDate && (
+                    <div className="rounded-xl bg-[var(--st-bg-soft)] p-3">
+
+                      <div className="flex items-center gap-2">
+
+                        <Clock3
+                          size={14}
+                          className="text-[var(--st-red)]"
+                        />
+
+                        <p className="m-0 text-[9px] text-[var(--st-gray)]">
+                          Programme period
+                        </p>
+
+                        <p className="ml-auto m-0 text-[10px] font-bold text-[var(--st-charcoal-dark)]">
+                          3 months
+                        </p>
+
+                      </div>
+
+                    </div>
+                  )}
+
+                </div>
+
+              </div>
+
+              {/* =================================================
+                  FINANCIAL PLAN
+              ================================================= */}
+
+              <div className="mt-7 border-t border-[var(--st-border)] pt-7">
+
+                <div className="mb-4">
+
+                  <p className="st-eyebrow">
+                    03 · PAYMENT PLAN
+                  </p>
+
+                  <h3 className="mt-1 text-[14px] font-bold text-[var(--st-charcoal-dark)]">
+                    Programme payment
+                  </h3>
+
+                  <p className="mt-1 text-[9px] leading-relaxed text-[var(--st-gray)]">
+                    The student can start with any amount.
+                    The remaining balance can be followed up
+                    through scheduled payments.
+                  </p>
+
+                </div>
+
+                <div className="space-y-4">
+
+                  <div>
+
+                    <label className="mb-2 block text-[9px] font-bold uppercase tracking-[0.08em] text-[var(--st-charcoal)]">
+                      Total programme fee *
+                    </label>
+
+                    <div className="relative">
+
+                      <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[10px] font-bold text-[var(--st-gray)]">
+                        KES
+                      </span>
+
+                      <input
+                        type="number"
+                        min="0"
+                        value={totalFee}
+                        onChange={(event) =>
+                          setTotalFee(
+                            event.target
+                              .value
+                          )
+                        }
+                        placeholder="e.g. 26850"
+                        className="w-full rounded-xl border border-[var(--st-border)] py-3.5 pl-14 pr-4 text-[12px] font-semibold outline-none focus:border-[var(--st-red)]"
+                      />
+
+                    </div>
+
+                  </div>
+
+                  <div className="rounded-2xl bg-[var(--st-bg-soft)] p-4">
+
+                    <div className="flex items-center justify-between gap-3">
+
+                      <div>
+
+                        <p className="m-0 text-[9px] font-bold uppercase tracking-[0.06em] text-[var(--st-gray)]">
+                          Initial payment
+                        </p>
+
+                        <p className="mt-1 mb-0 text-[8px] text-[var(--st-gray)]">
+                          Amount paid today
+                        </p>
+
+                      </div>
+
+                      <p className="m-0 text-[13px] font-bold text-[var(--st-charcoal-dark)]">
+                        {formatCurrency(
+                          numericInitialPayment
+                        )}
+                      </p>
+
+                    </div>
+
+                    <div className="mt-3">
+
+                      <input
+                        type="number"
+                        min="0"
+                        value={initialPayment}
+                        onChange={(event) =>
+                          setInitialPayment(
+                            event.target
+                              .value
+                          )
+                        }
+                        placeholder="0"
+                        className="w-full rounded-xl border border-[var(--st-border)] bg-white px-4 py-3.5 text-[12px] font-semibold outline-none focus:border-[var(--st-red)]"
+                      />
+
+                    </div>
+
+                    {numericInitialPayment >
+                      0 && (
+                      <div className="mt-3">
+
+                        <label className="mb-2 block text-[8px] font-bold uppercase tracking-[0.08em] text-[var(--st-gray)]">
+                          Payment method
+                        </label>
+
+                        <div className="relative">
+
+                          <select
+                            value={
+                              initialPaymentMethod
+                            }
+                            onChange={(event) =>
+                              setInitialPaymentMethod(
+                                event.target
+                                  .value as PaymentMethod
+                              )
+                            }
+                            className="w-full appearance-none rounded-xl border border-[var(--st-border)] bg-white px-4 py-3.5 text-[10px] font-semibold outline-none focus:border-[var(--st-red)]"
+                          >
+                            <option value="mpesa">
+                              M-Pesa
+                            </option>
+
+                            <option value="cash">
+                              Cash
+                            </option>
+
+                            <option value="bank">
+                              Bank
+                            </option>
+
+                            <option value="card">
+                              Card
+                            </option>
+
+                            <option value="other">
+                              Other
+                            </option>
+
+                          </select>
+
+                          <ChevronDown
+                            size={14}
+                            className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-[var(--st-gray)]"
+                          />
+
+                        </div>
+
+                      </div>
+                    )}
+
+                    {numericInitialPayment >
+                      0 && (
+                      <div className="mt-3">
+
+                        <label className="mb-2 block text-[8px] font-bold uppercase tracking-[0.08em] text-[var(--st-gray)]">
+                          Reference
+                        </label>
+
+                        <input
+                          type="text"
+                          value={
+                            initialPaymentReference
+                          }
+                          onChange={(event) =>
+                            setInitialPaymentReference(
+                              event.target
+                                .value
+                            )
+                          }
+                          placeholder="M-Pesa code / receipt number"
+                          className="w-full rounded-xl border border-[var(--st-border)] bg-white px-4 py-3 text-[10px] outline-none focus:border-[var(--st-red)]"
+                        />
+
+                      </div>
+                    )}
+
+                  </div>
+
+                  {/* BALANCE */}
+
+                  <div className="grid grid-cols-2 gap-2">
+
+                    <div className="rounded-xl border border-[var(--st-border)] p-3">
+
+                      <p className="m-0 text-[8px] font-bold uppercase tracking-[0.06em] text-[var(--st-gray)]">
+                        Balance after initial
+                      </p>
+
+                      <p className="mt-2 text-[16px] font-bold text-[var(--st-red)]">
+                        {formatCurrency(
+                          remainingAfterInitial
+                        )}
+                      </p>
+
+                    </div>
+
+                    <div className="rounded-xl border border-[var(--st-border)] p-3">
+
+                      <p className="m-0 text-[8px] font-bold uppercase tracking-[0.06em] text-[var(--st-gray)]">
+                        After next payment
+                      </p>
+
+                      <p className="mt-2 text-[16px] font-bold text-[var(--st-charcoal-dark)]">
+                        {formatCurrency(
+                          remainingAfterNextPayment
+                        )}
+                      </p>
+
+                    </div>
+
+                  </div>
+
+                </div>
+
+              </div>
+
+              {/* =================================================
+                  NEXT PAYMENT
+              ================================================= */}
+
+              {remainingAfterInitial >
+                0 && (
+                <div className="mt-7 border-t border-[var(--st-border)] pt-7">
+
+                  <div className="mb-4">
+
+                    <p className="st-eyebrow">
+                      04 · NEXT FOLLOW-UP
+                    </p>
+
+                    <h3 className="mt-1 text-[14px] font-bold text-[var(--st-charcoal-dark)]">
+                      Next payment
+                    </h3>
+
+                    <p className="mt-1 text-[9px] leading-relaxed text-[var(--st-gray)]">
+                      Tell the system exactly when and how
+                      much you intend to follow up for next.
+                    </p>
+
+                  </div>
+
+                  <div className="space-y-4">
+
+                    <div>
+
+                      <label className="mb-2 block text-[9px] font-bold uppercase tracking-[0.08em] text-[var(--st-charcoal)]">
+                        Next payment amount *
+                      </label>
+
+                      <div className="relative">
+
+                        <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[10px] font-bold text-[var(--st-gray)]">
+                          KES
+                        </span>
+
+                        <input
+                          type="number"
+                          min="0"
+                          max={
+                            remainingAfterInitial
+                          }
+                          value={
+                            nextPaymentAmount
+                          }
+                          onChange={(event) =>
+                            setNextPaymentAmount(
+                              event.target
+                                .value
+                            )
+                          }
+                          placeholder="e.g. 5000"
+                          className="w-full rounded-xl border border-[var(--st-border)] py-3.5 pl-14 pr-4 text-[12px] font-semibold outline-none focus:border-[var(--st-red)]"
+                        />
+
+                      </div>
+
+                      <p className="mt-1.5 mb-0 text-[8px] text-[var(--st-gray)]">
+                        Remaining balance available:{" "}
+                        {formatCurrency(
+                          remainingAfterInitial
+                        )}
+                      </p>
+
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+
+                      <div>
+
+                        <label className="mb-2 block text-[9px] font-bold uppercase tracking-[0.08em] text-[var(--st-charcoal)]">
+                          Due date *
+                        </label>
+
+                        <div className="relative">
+
+                          <CalendarDays
+                            size={14}
+                            className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-[var(--st-red)]"
+                          />
+
+                          <input
+                            type="date"
+                            value={
+                              nextPaymentDueDate
+                            }
+                            onChange={(event) =>
+                              setNextPaymentDueDate(
+                                event.target
+                                  .value
+                              )
+                            }
+                            className="w-full rounded-xl border border-[var(--st-border)] bg-white py-3.5 pl-10 pr-3 text-[10px] outline-none focus:border-[var(--st-red)]"
+                          />
+
+                        </div>
+
+                      </div>
+
+                      <div>
+
+                        <label className="mb-2 block text-[9px] font-bold uppercase tracking-[0.08em] text-[var(--st-charcoal)]">
+                          Follow-up date
+                        </label>
+
+                        <div className="relative">
+
+                          <Clock3
+                            size={14}
+                            className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-[var(--st-red)]"
+                          />
+
+                          <input
+                            type="date"
+                            value={
+                              nextPaymentFollowUpDate
+                            }
+                            onChange={(event) =>
+                              setNextPaymentFollowUpDate(
+                                event.target
+                                  .value
+                              )
+                            }
+                            className="w-full rounded-xl border border-[var(--st-border)] bg-white py-3.5 pl-10 pr-3 text-[10px] outline-none focus:border-[var(--st-red)]"
+                          />
+
+                        </div>
+
+                      </div>
+
+                    </div>
+
+                    <div>
+
+                      <label className="mb-2 block text-[9px] font-bold uppercase tracking-[0.08em] text-[var(--st-charcoal)]">
+                        Follow-up notes
+                      </label>
+
+                      <textarea
+                        value={
+                          nextPaymentNotes
+                        }
+                        onChange={(event) =>
+                          setNextPaymentNotes(
+                            event.target
+                              .value
+                          )
+                        }
+                        rows={3}
+                        placeholder="e.g. Call student before the due date..."
+                        className="w-full resize-none rounded-xl border border-[var(--st-border)] px-4 py-3 text-[10px] outline-none focus:border-[var(--st-red)]"
+                      />
+
+                    </div>
+
+                  </div>
+
+                </div>
+              )}
+
+              {/* =================================================
+                  SUMMARY
+              ================================================= */}
+
+              <div className="mt-7 rounded-2xl bg-[var(--st-bg-soft)] p-4">
+
+                <p className="m-0 text-[9px] font-bold uppercase tracking-[0.1em] text-[var(--st-gray)]">
+                  REGISTRATION SUMMARY
+                </p>
+
+                <div className="mt-4 space-y-3">
+
+                  <div className="flex items-center justify-between gap-3">
+
+                    <span className="text-[9px] text-[var(--st-gray)]">
+                      Student
+                    </span>
+
+                    <span className="text-[10px] font-bold text-[var(--st-charcoal-dark)]">
+                      {studentName ||
+                        "Not entered"}
+                    </span>
+
+                  </div>
+
+                  <div className="flex items-center justify-between gap-3">
+
+                    <span className="text-[9px] text-[var(--st-gray)]">
+                      Programme
+                    </span>
+
+                    <span className="text-[10px] font-bold text-[var(--st-charcoal-dark)]">
+                      {instrumentName(
+                        instrument
+                      )}
+                    </span>
+
+                  </div>
+
+                  <div className="flex items-center justify-between gap-3">
+
+                    <span className="text-[9px] text-[var(--st-gray)]">
+                      Programme period
+                    </span>
+
+                    <span className="text-[10px] font-bold text-[var(--st-charcoal-dark)]">
+                      {startDate &&
+                      endDate
+                        ? `${formatDate(
+                            startDate
+                          )} – ${formatDate(
+                            endDate
+                          )}`
+                        : "Not entered"}
+                    </span>
+
+                  </div>
+
+                  <div className="border-t border-[var(--st-border)] pt-3">
+
+                    <div className="flex items-center justify-between gap-3">
+
+                      <span className="text-[9px] text-[var(--st-gray)]">
+                        Total fee
+                      </span>
+
+                      <span className="text-[11px] font-bold text-[var(--st-charcoal-dark)]">
+                        {formatCurrency(
+                          numericTotalFee
+                        )}
+                      </span>
+
+                    </div>
+
+                    <div className="mt-2 flex items-center justify-between gap-3">
+
+                      <span className="text-[9px] text-[var(--st-gray)]">
+                        Initial payment
+                      </span>
+
+                      <span className="text-[11px] font-bold text-green-700">
+                        {formatCurrency(
+                          numericInitialPayment
+                        )}
+                      </span>
+
+                    </div>
+
+                    <div className="mt-2 flex items-center justify-between gap-3">
+
+                      <span className="text-[9px] text-[var(--st-gray)]">
+                        Remaining balance
+                      </span>
+
+                      <span className="text-[13px] font-bold text-[var(--st-red)]">
+                        {formatCurrency(
+                          remainingAfterInitial
+                        )}
+                      </span>
+
+                    </div>
+
+                  </div>
+
+                </div>
+
+              </div>
+
+              {/* =================================================
+                  FORM ERROR
+              ================================================= */}
+
+              {addStudentError && (
+                <div className="mt-5 flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3">
+
+                  <AlertCircle
+                    size={15}
+                    className="mt-0.5 shrink-0 text-red-600"
+                  />
+
+                  <p className="m-0 text-[10px] leading-relaxed text-red-700">
+                    {addStudentError}
+                  </p>
+
+                </div>
+              )}
+
+              {/* =================================================
+                  ACTIONS
+              ================================================= */}
+
+              <div className="mt-6 grid grid-cols-2 gap-2">
+
+                <button
+                  type="button"
+                  onClick={
+                    closeAddStudent
+                  }
+                  disabled={
+                    addingStudent
+                  }
+                  className="st-button st-button-secondary w-full disabled:opacity-40"
+                >
+                  Cancel
+                </button>
+
+                <button
+                  type="button"
+                  onClick={
+                    addStudent
+                  }
+                  disabled={
+                    addingStudent
+                  }
+                  className="st-button st-button-primary w-full disabled:opacity-60"
+                >
+                  {addingStudent ? (
+                    <>
+                      <RefreshCw
+                        size={15}
+                        className="animate-spin"
+                      />
+                      Adding...
+                    </>
+                  ) : (
+                    <>
+                      <Check size={15} />
+                      Add student
+                    </>
+                  )}
+                </button>
+
+              </div>
+
+              <p className="mt-4 text-center text-[8px] leading-relaxed text-[var(--st-gray)]">
+                Student, programme and payment information
+                will be saved together.
+              </p>
+
+            </div>
 
           </div>
-
         </div>
       )}
 
     </main>
   );
 }
+                                
+                    
+                         
