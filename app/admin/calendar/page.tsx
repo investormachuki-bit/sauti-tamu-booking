@@ -1,19 +1,22 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
+  ArrowLeft,
+  ArrowRight,
   CalendarDays,
-  ChevronLeft,
-  ChevronRight,
+  Check,
   Clock3,
   Guitar,
   Loader2,
   Music2,
   Plus,
+  RefreshCw,
+  User,
   X,
 } from "lucide-react";
 
-import AppShell from "@/components/layout/AppShell";
+import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 
 type Instrument = "piano" | "guitar";
@@ -26,795 +29,1078 @@ type LessonSlot = {
   is_available: boolean;
 };
 
-function formatTime(dateString: string) {
-  return new Date(dateString).toLocaleTimeString("en-KE", {
-    hour: "numeric",
-    minute: "2-digit",
-    hour12: true,
-  });
-}
+type Booking = {
+  id: string;
+  slot_id: string;
+  lead_id: string;
+  status: string;
+};
 
-function formatDateHeading(date: Date) {
-  return date.toLocaleDateString("en-KE", {
-    month: "long",
-    day: "numeric",
+type Lead = {
+  id: string;
+  full_name: string;
+  whatsapp_number: string;
+  email: string;
+};
+
+const NAIROBI_TIME_ZONE = "Africa/Nairobi";
+
+const instrumentInfo = {
+  piano: {
+    name: "Piano",
+    icon: Music2,
+  },
+  guitar: {
+    name: "Guitar",
+    icon: Guitar,
+  },
+};
+
+function getNairobiDateKey(date: Date) {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: NAIROBI_TIME_ZONE,
     year: "numeric",
-  });
+    month: "2-digit",
+    day: "2-digit",
+  }).format(date);
 }
 
-function formatDay(date: Date) {
-  return date.toLocaleDateString("en-KE", {
-    weekday: "short",
-  }).toUpperCase();
+function dateKeyToDate(key: string) {
+  return new Date(`${key}T12:00:00Z`);
 }
 
-function getDateKey(date: Date) {
+function addDays(key: string, amount: number) {
+  const date = dateKeyToDate(key);
+  date.setUTCDate(date.getUTCDate() + amount);
+
   return date.toISOString().slice(0, 10);
 }
 
-function startOfWeek(date: Date) {
-  const result = new Date(date);
-  const day = result.getDay();
+function getMonday(key: string) {
+  const date = dateKeyToDate(key);
+  const day = date.getUTCDay();
 
-  const mondayOffset = day === 0 ? -6 : 1 - day;
+  const difference = day === 0 ? -6 : 1 - day;
 
-  result.setDate(result.getDate() + mondayOffset);
-  result.setHours(0, 0, 0, 0);
+  date.setUTCDate(date.getUTCDate() + difference);
 
-  return result;
+  return date.toISOString().slice(0, 10);
 }
 
-function getWeekDays(start: Date) {
-  return Array.from({ length: 7 }, (_, index) => {
-    const date = new Date(start);
-
-    date.setDate(start.getDate() + index);
-
-    return date;
-  });
+function formatDayNumber(key: string) {
+  return new Intl.DateTimeFormat("en-KE", {
+    timeZone: "UTC",
+    day: "numeric",
+  }).format(dateKeyToDate(key));
 }
 
-function InstrumentIcon({
-  instrument,
-}: {
-  instrument: Instrument;
-}) {
-  if (instrument === "guitar") {
-    return <Guitar size={16} />;
-  }
-
-  return <Music2 size={16} />;
+function formatWeekday(key: string) {
+  return new Intl.DateTimeFormat("en-KE", {
+    timeZone: "UTC",
+    weekday: "short",
+  })
+    .format(dateKeyToDate(key))
+    .toUpperCase();
 }
 
-function SlotCard({
-  slot,
-}: {
-  slot: LessonSlot;
-}) {
-  return (
-    <div
-      className={`rounded-xl border p-4 transition-all ${
-        slot.is_available
-          ? "border-dashed border-[var(--st-border)] bg-white hover:border-[var(--st-red)] hover:bg-[var(--st-bg-soft)]"
-          : "border-[var(--st-border)] bg-white"
-      }`}
-    >
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex min-w-0 items-center gap-3">
-          <div
-            className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${
-              slot.instrument === "piano"
-                ? "bg-[var(--st-bg-soft)] text-[var(--st-red)]"
-                : "bg-[#f5f5f5] text-[var(--st-charcoal)]"
-            }`}
-          >
-            <InstrumentIcon instrument={slot.instrument} />
-          </div>
-
-          <div>
-            <p className="m-0 text-[12px] font-bold text-[var(--st-charcoal-dark)]">
-              {formatTime(slot.starts_at)}
-            </p>
-
-            <p className="mt-1 mb-0 text-[10px] capitalize text-[var(--st-gray)]">
-              {slot.instrument}
-            </p>
-          </div>
-        </div>
-
-        <span
-          className={`st-badge ${
-            slot.is_available
-              ? "st-badge-green"
-              : "st-badge-red"
-          }`}
-        >
-          {slot.is_available ? "Available" : "Booked"}
-        </span>
-      </div>
-
-      {!slot.is_available && (
-        <div className="mt-4 border-t border-[var(--st-border)] pt-3">
-          <p className="m-0 text-[9px] text-[var(--st-gray)]">
-            Booking
-          </p>
-
-          <p className="mt-1 mb-0 text-[10px] font-bold text-[var(--st-charcoal-dark)]">
-            Reserved trial slot
-          </p>
-        </div>
-      )}
-    </div>
-  );
+function formatLongDate(key: string) {
+  return new Intl.DateTimeFormat("en-KE", {
+    timeZone: "UTC",
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  }).format(dateKeyToDate(key));
 }
 
-export default function CalendarPage() {
-  const [selectedDate, setSelectedDate] = useState(
-    new Date()
-  );
+function formatShortDate(key: string) {
+  return new Intl.DateTimeFormat("en-KE", {
+    timeZone: "UTC",
+    day: "numeric",
+    month: "short",
+  }).format(dateKeyToDate(key));
+}
 
-  const [weekStart, setWeekStart] = useState(
-    startOfWeek(new Date())
-  );
+function formatTime(dateString: string) {
+  return new Intl.DateTimeFormat("en-KE", {
+    timeZone: NAIROBI_TIME_ZONE,
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(new Date(dateString));
+}
+
+function formatTimeRange(start: string, end: string) {
+  return `${formatTime(start)} – ${formatTime(end)}`;
+}
+
+function initials(name: string) {
+  return name
+    .split(" ")
+    .map((part) => part[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
+}
+
+export default function AdminCalendarPage() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+
+  const requestedDate =
+    searchParams.get("date");
+
+  const todayKey = getNairobiDateKey(new Date());
+
+  const [selectedDate, setSelectedDate] =
+    useState(
+      requestedDate || todayKey
+    );
 
   const [slots, setSlots] = useState<LessonSlot[]>([]);
+  const [bookings, setBookings] = useState<Booking[]>([]);
+  const [leads, setLeads] = useState<Lead[]>([]);
 
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] =
+    useState(true);
+
+  const [refreshing, setRefreshing] =
+    useState(false);
+
   const [error, setError] = useState("");
 
-  const [showModal, setShowModal] = useState(false);
+  const [showAddSlot, setShowAddSlot] =
+    useState(false);
 
-  const [instrument, setInstrument] =
+  const [newInstrument, setNewInstrument] =
     useState<Instrument>("piano");
 
-  const [slotTime, setSlotTime] = useState("09:00");
+  const [newDate, setNewDate] =
+    useState(todayKey);
 
-  const [saving, setSaving] = useState(false);
-  const [saveError, setSaveError] = useState("");
+  const [newTime, setNewTime] =
+    useState("09:00");
 
-  const weekDays = useMemo(
-    () => getWeekDays(weekStart),
-    [weekStart]
+  const [savingSlot, setSavingSlot] =
+    useState(false);
+
+  /*
+   * Always keep selected date synchronized
+   * with the URL.
+   */
+
+  useEffect(() => {
+    if (requestedDate) {
+      setSelectedDate(requestedDate);
+    }
+  }, [requestedDate]);
+
+  const weekStart = useMemo(
+    () => getMonday(selectedDate),
+    [selectedDate]
   );
 
-  async function loadSlots() {
-    setLoading(true);
+  const weekDays = useMemo(() => {
+    return Array.from(
+      { length: 7 },
+      (_, index) =>
+        addDays(weekStart, index)
+    );
+  }, [weekStart]);
+
+  const weekEnd = addDays(
+    weekStart,
+    7
+  );
+
+  /*
+   * Load one complete calendar week.
+   *
+   * IMPORTANT:
+   * We query using Nairobi midnight boundaries,
+   * not the browser's timezone.
+   */
+
+  async function loadCalendar(
+    silent = false
+  ) {
+    if (silent) {
+      setRefreshing(true);
+    } else {
+      setLoading(true);
+    }
+
     setError("");
 
-    const rangeStart = new Date(weekStart);
-    rangeStart.setHours(0, 0, 0, 0);
+    const startIso = new Date(
+      `${weekStart}T00:00:00+03:00`
+    ).toISOString();
 
-    const rangeEnd = new Date(weekStart);
-    rangeEnd.setDate(rangeEnd.getDate() + 7);
-    rangeEnd.setHours(23, 59, 59, 999);
+    const endIso = new Date(
+      `${weekEnd}T00:00:00+03:00`
+    ).toISOString();
 
-    const { data, error } = await supabase
+    const {
+      data: slotData,
+      error: slotError,
+    } = await supabase
       .from("lesson_slots")
       .select(
         "id, instrument, starts_at, ends_at, is_available"
       )
-      .gte("starts_at", rangeStart.toISOString())
-      .lte("starts_at", rangeEnd.toISOString())
+      .gte("starts_at", startIso)
+      .lt("starts_at", endIso)
       .order("starts_at", {
         ascending: true,
       });
 
-    if (error) {
-      console.error(error);
-      setError(error.message);
-      setSlots([]);
+    if (slotError) {
+      console.error(slotError);
+
+      setError(
+        "We couldn't load the calendar."
+      );
+
       setLoading(false);
+      setRefreshing(false);
+
       return;
     }
 
-    setSlots((data ?? []) as LessonSlot[]);
+    const loadedSlots =
+      (slotData ?? []) as LessonSlot[];
+
+    setSlots(loadedSlots);
+
+    /*
+     * Load bookings belonging to these slots.
+     */
+
+    const slotIds =
+      loadedSlots.map(
+        (slot) => slot.id
+      );
+
+    if (slotIds.length === 0) {
+      setBookings([]);
+      setLeads([]);
+
+      setLoading(false);
+      setRefreshing(false);
+
+      return;
+    }
+
+    const {
+      data: bookingData,
+      error: bookingError,
+    } = await supabase
+      .from("bookings")
+      .select(
+        "id, slot_id, lead_id, status"
+      )
+      .in("slot_id", slotIds);
+
+    if (bookingError) {
+      console.error(bookingError);
+
+      setError(
+        "Calendar loaded, but booking information could not be loaded."
+      );
+
+      setLoading(false);
+      setRefreshing(false);
+
+      return;
+    }
+
+    const loadedBookings =
+      (bookingData ?? []) as Booking[];
+
+    setBookings(loadedBookings);
+
+    const leadIds = Array.from(
+      new Set(
+        loadedBookings.map(
+          (booking) => booking.lead_id
+        )
+      )
+    );
+
+    if (leadIds.length > 0) {
+      const {
+        data: leadData,
+        error: leadError,
+      } = await supabase
+        .from("leads")
+        .select(
+          "id, full_name, whatsapp_number, email"
+        )
+        .in("id", leadIds);
+
+      if (!leadError) {
+        setLeads(
+          (leadData ?? []) as Lead[]
+        );
+      }
+    } else {
+      setLeads([]);
+    }
+
     setLoading(false);
+    setRefreshing(false);
   }
 
   useEffect(() => {
-    loadSlots();
+    loadCalendar();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [weekStart]);
 
-  function goToPreviousWeek() {
-    const previous = new Date(weekStart);
+  /*
+   * IMPORTANT:
+   * Determine a slot's day using Nairobi time.
+   *
+   * This is what fixes the Monday 0 slots problem.
+   */
 
-    previous.setDate(previous.getDate() - 7);
+  const slotsByDate = useMemo(() => {
+    const map = new Map<
+      string,
+      LessonSlot[]
+    >();
 
-    setWeekStart(previous);
-    setSelectedDate(previous);
-  }
+    weekDays.forEach((day) => {
+      map.set(day, []);
+    });
 
-  function goToNextWeek() {
-    const next = new Date(weekStart);
+    slots.forEach((slot) => {
+      const key =
+        getNairobiDateKey(
+          new Date(slot.starts_at)
+        );
 
-    next.setDate(next.getDate() + 7);
+      if (!map.has(key)) {
+        map.set(key, []);
+      }
 
-    setWeekStart(next);
-    setSelectedDate(next);
-  }
+      map.get(key)!.push(slot);
+    });
 
-  function goToToday() {
-    const today = new Date();
+    return map;
+  }, [slots, weekDays]);
 
-    setSelectedDate(today);
-    setWeekStart(startOfWeek(today));
-  }
+  const selectedDaySlots =
+    slotsByDate.get(selectedDate) ?? [];
 
-  async function createSlot(
-    event: FormEvent<HTMLFormElement>
-  ) {
-    event.preventDefault();
+  const bookingBySlot = useMemo(() => {
+    const map = new Map<
+      string,
+      Booking
+    >();
 
-    setSaving(true);
-    setSaveError("");
+    bookings.forEach((booking) => {
+      /*
+       * Cancelled bookings should not make
+       * a slot look actively booked.
+       */
 
-    const dateKey = getDateKey(selectedDate);
+      if (
+        booking.status !== "cancelled"
+      ) {
+        map.set(
+          booking.slot_id,
+          booking
+        );
+      }
+    });
 
-    const startsAt = new Date(
-      `${dateKey}T${slotTime}:00`
+    return map;
+  }, [bookings]);
+
+  const leadById = useMemo(() => {
+    const map = new Map<
+      string,
+      Lead
+    >();
+
+    leads.forEach((lead) => {
+      map.set(lead.id, lead);
+    });
+
+    return map;
+  }, [leads]);
+
+  function selectDate(dateKey: string) {
+    setSelectedDate(dateKey);
+
+    router.push(
+      `/admin/calendar?date=${dateKey}`,
+      {
+        scroll: false,
+      }
     );
+  }
 
-    const endsAt = new Date(startsAt);
+  function changeWeek(amount: number) {
+    const newWeekStart =
+      addDays(weekStart, amount * 7);
 
-    endsAt.setMinutes(
-      endsAt.getMinutes() + 60
-    );
+    selectDate(newWeekStart);
+  }
 
-    const { error } = await supabase
-      .from("lesson_slots")
-      .insert({
-        instrument,
-        starts_at: startsAt.toISOString(),
-        ends_at: endsAt.toISOString(),
-        is_available: true,
-      });
+  function goToday() {
+    selectDate(todayKey);
+  }
 
-    if (error) {
-      console.error(error);
-      setSaveError(error.message);
-      setSaving(false);
+  async function createSlot() {
+    if (!newDate || !newTime) {
       return;
     }
 
-    setShowModal(false);
-    setSaving(false);
+    setSavingSlot(true);
+    setError("");
 
-    await loadSlots();
+    /*
+     * Convert Nairobi local time to UTC.
+     */
+
+    const startsAt = new Date(
+      `${newDate}T${newTime}:00+03:00`
+    );
+
+    const endsAt = new Date(
+      startsAt.getTime() +
+        60 * 60 * 1000
+    );
+
+    /*
+     * Prevent duplicate instrument/time slots.
+     */
+
+    const {
+      data: existing,
+      error: existingError,
+    } = await supabase
+      .from("lesson_slots")
+      .select("id")
+      .eq("instrument", newInstrument)
+      .eq(
+        "starts_at",
+        startsAt.toISOString()
+      )
+      .maybeSingle();
+
+    if (existingError) {
+      console.error(existingError);
+
+      setError(
+        "We couldn't check whether that slot already exists."
+      );
+
+      setSavingSlot(false);
+
+      return;
+    }
+
+    if (existing) {
+      setError(
+        "That instrument already has a slot at this time."
+      );
+
+      setSavingSlot(false);
+
+      return;
+    }
+
+    const {
+      error: insertError,
+    } = await supabase
+      .from("lesson_slots")
+      .insert({
+        instrument: newInstrument,
+        starts_at:
+          startsAt.toISOString(),
+        ends_at:
+          endsAt.toISOString(),
+        is_available: true,
+      });
+
+    if (insertError) {
+      console.error(insertError);
+
+      setError(
+        "We couldn't create the trial slot."
+      );
+
+      setSavingSlot(false);
+
+      return;
+    }
+
+    setShowAddSlot(false);
+
+    selectDate(newDate);
+
+    await loadCalendar(true);
+
+    setSavingSlot(false);
   }
 
-  const selectedDateKey = getDateKey(selectedDate);
-
-  const selectedDaySlots = slots.filter((slot) => {
-    return (
-      getDateKey(
-        new Date(slot.starts_at)
-      ) === selectedDateKey
-    );
-  });
-
-  const availableCount = selectedDaySlots.filter(
-    (slot) => slot.is_available
-  ).length;
-
-  const bookedCount = selectedDaySlots.filter(
-    (slot) => !slot.is_available
-  ).length;
-
   return (
-    <AppShell>
-      <main className="st-content">
-        {/* =====================================================
-            HEADER
-        ===================================================== */}
+    <main className="st-content">
 
-        <div className="mb-6 flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+      {/* HEADER */}
+
+      <div className="mb-7">
+
+        <p className="st-eyebrow">
+          SCHEDULE
+        </p>
+
+        <div className="mt-2 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+
           <div>
-            <p className="st-eyebrow">
-              SCHEDULE
-            </p>
-
-            <h1 className="st-page-title mt-2">
+            <h1 className="st-page-title">
               Calendar
             </h1>
 
             <p className="st-page-description">
-              Manage available trial lesson times and see what is booked.
+              Manage available trial lesson times
+              and see what is booked.
             </p>
           </div>
 
           <button
+            type="button"
             onClick={() => {
-              setSaveError("");
-              setShowModal(true);
+              setNewDate(selectedDate);
+              setShowAddSlot(true);
             }}
-            className="st-button st-button-primary"
+            className="st-button st-button-primary w-full sm:w-auto"
           >
             <Plus size={15} />
             Add trial slot
           </button>
+
         </div>
 
-        {/* =====================================================
-            WEEK TOOLBAR
-        ===================================================== */}
+      </div>
 
-        <div className="st-card mb-5 p-4">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-            <div className="flex flex-wrap items-center gap-2">
-              <button
-                onClick={goToPreviousWeek}
-                className="st-icon-button"
-                aria-label="Previous week"
-              >
-                <ChevronLeft size={16} />
-              </button>
+      {/* CALENDAR NAVIGATION */}
 
-              <button
-                onClick={goToNextWeek}
-                className="st-icon-button"
-                aria-label="Next week"
-              >
-                <ChevronRight size={16} />
-              </button>
+      <section className="st-card p-4 sm:p-5">
 
-              <button
-                onClick={goToToday}
-                className="rounded-lg border border-[var(--st-border)] bg-white px-4 py-2.5 text-[10px] font-bold text-[var(--st-charcoal-dark)] hover:bg-[var(--st-bg-soft)]"
-              >
-                Today
-              </button>
+        <div className="flex flex-wrap items-center gap-2">
 
-              <div className="ml-1 flex items-center gap-2 text-[11px] font-bold text-[var(--st-charcoal-dark)]">
-                <CalendarDays
-                  size={15}
-                  className="text-[var(--st-red)]"
-                />
+          <button
+            type="button"
+            onClick={() => changeWeek(-1)}
+            className="st-icon-button"
+            aria-label="Previous week"
+          >
+            <ArrowLeft size={16} />
+          </button>
 
-                {formatDateHeading(weekStart)}
-                {" – "}
-                {formatDateHeading(weekDays[6])}
-              </div>
-            </div>
+          <button
+            type="button"
+            onClick={() => changeWeek(1)}
+            className="st-icon-button"
+            aria-label="Next week"
+          >
+            <ArrowRight size={16} />
+          </button>
 
-            <div className="flex items-center gap-4">
-              <span className="flex items-center gap-1.5 text-[9px] text-[var(--st-gray)]">
-                <span className="h-2 w-2 rounded-full bg-[#35a66f]" />
-                Available
-              </span>
+          <button
+            type="button"
+            onClick={goToday}
+            className="st-button st-button-secondary"
+          >
+            Today
+          </button>
 
-              <span className="flex items-center gap-1.5 text-[9px] text-[var(--st-gray)]">
-                <span className="h-2 w-2 rounded-full bg-[var(--st-red)]" />
-                Booked
-              </span>
-            </div>
+          <div className="ml-auto flex items-center gap-2 text-[10px] text-[var(--st-gray)]">
+            {refreshing ? (
+              <Loader2
+                size={14}
+                className="animate-spin"
+              />
+            ) : (
+              <CalendarDays size={14} />
+            )}
+
+            <span>
+              {formatShortDate(
+                weekStart
+              )}{" "}
+              –{" "}
+              {formatShortDate(
+                addDays(weekStart, 6)
+              )}
+            </span>
           </div>
+
         </div>
 
-        {/* =====================================================
-            DAY SELECTOR
-        ===================================================== */}
+        <div className="mt-5 flex flex-wrap items-center gap-4 text-[9px] font-semibold text-[var(--st-gray)]">
 
-        <div className="mb-5 grid grid-cols-4 gap-2 sm:grid-cols-7">
+          <span className="flex items-center gap-2">
+            <span className="h-2.5 w-2.5 rounded-full bg-[#4d9b70]" />
+            Available
+          </span>
+
+          <span className="flex items-center gap-2">
+            <span className="h-2.5 w-2.5 rounded-full bg-[var(--st-red)]" />
+            Booked
+          </span>
+
+        </div>
+
+      </section>
+
+      {/* DAYS */}
+
+      <section className="mt-5">
+
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-7">
+
           {weekDays.map((day) => {
-            const active =
-              getDateKey(day) === selectedDateKey;
+            const daySlots =
+              slotsByDate.get(day) ?? [];
 
-            const daySlots = slots.filter(
-              (slot) =>
-                getDateKey(
-                  new Date(slot.starts_at)
-                ) === getDateKey(day)
-            );
+            const selected =
+              day === selectedDate;
+
+            const availableCount =
+              daySlots.filter(
+                (slot) =>
+                  slot.is_available &&
+                  !bookingBySlot.has(
+                    slot.id
+                  )
+              ).length;
+
+            const bookedCount =
+              daySlots.filter((slot) =>
+                bookingBySlot.has(
+                  slot.id
+                )
+              ).length;
 
             return (
               <button
-                key={getDateKey(day)}
-                onClick={() => setSelectedDate(day)}
-                className={`rounded-xl border px-2 py-3 text-center transition-all ${
-                  active
-                    ? "border-[var(--st-red)] bg-[var(--st-red)] text-white"
-                    : "border-[var(--st-border)] bg-white text-[var(--st-charcoal)] hover:border-[var(--st-red)]"
+                key={day}
+                type="button"
+                onClick={() =>
+                  selectDate(day)
+                }
+                className={`rounded-2xl border p-4 text-left transition-all ${
+                  selected
+                    ? "border-[var(--st-red)] bg-[var(--st-red)] text-white shadow-sm"
+                    : "border-[var(--st-border)] bg-white hover:border-[var(--st-red)] hover:bg-[var(--st-bg-soft)]"
                 }`}
               >
-                <span
-                  className={`block text-[8px] font-bold tracking-[0.12em] ${
-                    active
-                      ? "text-white/80"
-                      : "text-[var(--st-gray)]"
-                  }`}
-                >
-                  {formatDay(day)}
-                </span>
 
-                <span className="mt-1 block text-[17px] font-bold">
-                  {day.getDate()}
-                </span>
-
-                <span
-                  className={`mt-1 block text-[8px] ${
-                    active
+                <p
+                  className={`m-0 text-[9px] font-bold uppercase tracking-[0.08em] ${
+                    selected
                       ? "text-white/75"
                       : "text-[var(--st-gray)]"
                   }`}
                 >
-                  {daySlots.length}{" "}
-                  {daySlots.length === 1
-                    ? "slot"
-                    : "slots"}
-                </span>
+                  {formatWeekday(day)}
+                </p>
+
+                <p
+                  className={`mt-2 mb-0 text-[25px] font-bold ${
+                    selected
+                      ? "text-white"
+                      : "text-[var(--st-charcoal-dark)]"
+                  }`}
+                >
+                  {formatDayNumber(day)}
+                </p>
+
+                <p
+                  className={`mt-2 mb-0 text-[9px] ${
+                    selected
+                      ? "text-white/75"
+                      : "text-[var(--st-gray)]"
+                  }`}
+                >
+                  {daySlots.length} slots
+                </p>
+
+                {daySlots.length > 0 && (
+                  <div className="mt-3 flex flex-wrap gap-1">
+
+                    {availableCount > 0 && (
+                      <span
+                        className={`rounded-full px-2 py-1 text-[8px] font-bold ${
+                          selected
+                            ? "bg-white/15 text-white"
+                            : "bg-green-50 text-green-700"
+                        }`}
+                      >
+                        {availableCount} open
+                      </span>
+                    )}
+
+                    {bookedCount > 0 && (
+                      <span
+                        className={`rounded-full px-2 py-1 text-[8px] font-bold ${
+                          selected
+                            ? "bg-white/15 text-white"
+                            : "bg-red-50 text-red-700"
+                        }`}
+                      >
+                        {bookedCount} booked
+                      </span>
+                    )}
+
+                  </div>
+                )}
+
               </button>
             );
           })}
+
         </div>
 
-        {/* =====================================================
-            SUMMARY
-        ===================================================== */}
+      </section>
 
-        <div className="mb-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
-          <div className="st-card p-4">
-            <div className="flex items-center gap-3">
-              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[var(--st-bg-soft)] text-[var(--st-red)]">
-                <Clock3 size={17} />
-              </div>
+      {/* SELECTED DAY */}
 
-              <div>
-                <p className="m-0 text-[9px] font-semibold text-[var(--st-gray)]">
-                  SELECTED DAY
-                </p>
+      <section className="st-card mt-5 overflow-hidden">
 
-                <p className="mt-1 mb-0 text-[18px] font-bold text-[var(--st-charcoal-dark)]">
-                  {selectedDaySlots.length}{" "}
-                  {selectedDaySlots.length === 1
-                    ? "slot"
-                    : "slots"}
-                </p>
-              </div>
-            </div>
+        <div className="border-b border-[var(--st-border)] px-5 py-5">
+
+          <p className="st-eyebrow">
+            {formatLongDate(
+              selectedDate
+            )}
+          </p>
+
+          <h2 className="mt-1 st-section-title">
+            Trial lesson availability
+          </h2>
+
+          <div className="mt-2 flex items-center gap-2 text-[10px] text-[var(--st-gray)]">
+            <Clock3 size={14} />
+            60-minute lessons
           </div>
 
-          <div className="st-card p-4">
-            <div className="flex items-center gap-3">
-              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[var(--st-bg-soft)] text-[var(--st-red)]">
-                <CalendarDays size={17} />
-              </div>
-
-              <div>
-                <p className="m-0 text-[9px] font-semibold text-[var(--st-gray)]">
-                  AVAILABLE
-                </p>
-
-                <p className="mt-1 mb-0 text-[18px] font-bold text-[var(--st-charcoal-dark)]">
-                  {availableCount}
-                </p>
-              </div>
-            </div>
-          </div>
-
-          <div className="st-card p-4">
-            <div className="flex items-center gap-3">
-              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[var(--st-bg-soft)] text-[var(--st-red)]">
-                <Music2 size={17} />
-              </div>
-
-              <div>
-                <p className="m-0 text-[9px] font-semibold text-[var(--st-gray)]">
-                  BOOKED
-                </p>
-
-                <p className="mt-1 mb-0 text-[18px] font-bold text-[var(--st-red)]">
-                  {bookedCount}
-                </p>
-              </div>
-            </div>
-          </div>
         </div>
-
-        {/* =====================================================
-            ERROR
-        ===================================================== */}
 
         {error && (
-          <div className="mb-5 rounded-xl border border-red-200 bg-red-50 px-4 py-4">
-            <p className="m-0 text-[11px] font-bold text-red-700">
-              Unable to load calendar
-            </p>
-
-            <p className="mt-1 mb-0 text-[10px] leading-relaxed text-red-600">
+          <div className="mx-5 mt-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3">
+            <p className="m-0 text-[10px] leading-relaxed text-red-700">
               {error}
             </p>
           </div>
         )}
 
-        {/* =====================================================
-            DAILY SCHEDULE
-        ===================================================== */}
-
-        <div className="st-card overflow-hidden">
-          <div className="flex flex-col gap-2 border-b border-[var(--st-border)] px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <p className="m-0 text-[9px] font-bold uppercase tracking-[0.14em] text-[var(--st-red)]">
-                {selectedDate.toLocaleDateString(
-                  "en-KE",
-                  {
-                    weekday: "long",
-                    month: "long",
-                    day: "numeric",
-                  }
-                )}
-              </p>
-
-              <h2 className="mt-1 st-section-title">
-                Trial lesson availability
-              </h2>
-            </div>
-
-            <div className="flex items-center gap-2 text-[9px] text-[var(--st-gray)]">
-              <Clock3 size={13} />
-              60-minute lessons
-            </div>
+        {loading ? (
+          <div className="flex items-center justify-center gap-2 px-5 py-14 text-[10px] text-[var(--st-gray)]">
+            <Loader2
+              size={16}
+              className="animate-spin"
+            />
+            Loading calendar...
           </div>
+        ) : selectedDaySlots.length === 0 ? (
+          <div className="px-5 py-14 text-center">
 
-          <div className="p-4">
-            {loading ? (
-              <div className="flex min-h-[180px] items-center justify-center">
-                <div className="flex items-center gap-2 text-[11px] text-[var(--st-gray)]">
-                  <Loader2
-                    size={16}
-                    className="animate-spin text-[var(--st-red)]"
-                  />
-                  Loading slots...
-                </div>
-              </div>
-            ) : selectedDaySlots.length === 0 ? (
-              <div className="flex min-h-[220px] flex-col items-center justify-center rounded-xl border border-dashed border-[var(--st-border)] bg-[var(--st-bg-soft)] px-6 text-center">
-                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white text-[var(--st-red)] shadow-sm">
-                  <CalendarDays size={21} />
-                </div>
+            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-[var(--st-bg-soft)] text-[var(--st-red)]">
+              <CalendarDays size={19} />
+            </div>
 
-                <h3 className="mt-4 text-[13px] font-bold text-[var(--st-charcoal-dark)]">
-                  No trial slots yet
-                </h3>
+            <p className="mt-4 mb-0 text-[13px] font-bold text-[var(--st-charcoal-dark)]">
+              No trial slots
+            </p>
 
-                <p className="mt-1 max-w-[300px] text-[10px] leading-relaxed text-[var(--st-gray)]">
-                  Create available Piano or Guitar trial
-                  lesson times for this day.
-                </p>
+            <p className="mt-2 mb-0 text-[10px] text-[var(--st-gray)]">
+              There are no generated slots for this day.
+            </p>
 
-                <button
-                  onClick={() => {
-                    setSaveError("");
-                    setShowModal(true);
-                  }}
-                  className="st-button st-button-primary mt-4"
-                >
-                  <Plus size={14} />
-                  Add trial slot
-                </button>
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                {selectedDaySlots.map((slot) => (
-                  <SlotCard
+          </div>
+        ) : (
+          <div className="divide-y divide-[var(--st-border)]">
+
+            {selectedDaySlots.map(
+              (slot) => {
+                const booking =
+                  bookingBySlot.get(
+                    slot.id
+                  );
+
+                const lead =
+                  booking
+                    ? leadById.get(
+                        booking.lead_id
+                      )
+                    : undefined;
+
+                const isBooked =
+                  Boolean(booking);
+
+                const info =
+                  instrumentInfo[
+                    slot.instrument
+                  ];
+
+                const Icon =
+                  info.icon;
+
+                return (
+                  <div
                     key={slot.id}
-                    slot={slot}
-                  />
-                ))}
-              </div>
+                    className={`p-5 transition-colors ${
+                      isBooked
+                        ? "bg-white"
+                        : "hover:bg-[var(--st-bg-soft)]"
+                    }`}
+                  >
+
+                    <div className="flex items-start gap-4">
+
+                      <div
+                        className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-full ${
+                          slot.instrument ===
+                          "piano"
+                            ? "bg-[var(--st-bg-soft)] text-[var(--st-red)]"
+                            : "bg-gray-50 text-[var(--st-charcoal)]"
+                        }`}
+                      >
+                        <Icon size={21} />
+                      </div>
+
+                      <div className="min-w-0 flex-1">
+
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+
+                          <div>
+
+                            <p className="m-0 text-[16px] font-bold text-[var(--st-charcoal-dark)]">
+                              {formatTime(
+                                slot.starts_at
+                              )}
+                            </p>
+
+                            <p className="mt-1 mb-0 text-[10px] text-[var(--st-gray)]">
+                              {info.name}
+                            </p>
+
+                          </div>
+
+                          <span
+                            className={`inline-flex w-fit items-center gap-1.5 rounded-full px-3 py-1.5 text-[9px] font-bold uppercase tracking-[0.05em] ${
+                              isBooked
+                                ? "bg-red-50 text-[var(--st-red)]"
+                                : "bg-green-50 text-green-700"
+                            }`}
+                          >
+                            {isBooked ? (
+                              <>
+                                <Check
+                                  size={11}
+                                />
+                                Booked
+                              </>
+                            ) : (
+                              "Available"
+                            )}
+                          </span>
+
+                        </div>
+
+                        {isBooked && (
+                          <div className="mt-4 border-t border-[var(--st-border)] pt-4">
+
+                            <p className="m-0 text-[9px] font-semibold uppercase tracking-[0.08em] text-[var(--st-gray)]">
+                              Booking
+                            </p>
+
+                            <div className="mt-2 flex items-center gap-3">
+
+                              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[var(--st-bg-soft)] text-[9px] font-bold text-[var(--st-red)]">
+                                {lead
+                                  ? initials(
+                                      lead.full_name
+                                    )
+                                  : "BK"}
+                              </div>
+
+                              <div>
+                                <p className="m-0 text-[11px] font-bold text-[var(--st-charcoal-dark)]">
+                                  {lead?.full_name ||
+                                    "Reserved trial slot"}
+                                </p>
+
+                                {lead && (
+                                  <p className="mt-1 mb-0 text-[9px] text-[var(--st-gray)]">
+                                    {lead.whatsapp_number}
+                                  </p>
+                                )}
+                              </div>
+
+                            </div>
+
+                          </div>
+                        )}
+
+                      </div>
+
+                    </div>
+
+                  </div>
+                );
+              }
             )}
+
           </div>
-        </div>
+        )}
 
-        {/* =====================================================
-            INFORMATION
-        ===================================================== */}
+      </section>
 
-        <div className="mt-5 rounded-xl border border-dashed border-[var(--st-border)] bg-white/50 px-5 py-4">
-          <div className="flex gap-3">
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[var(--st-bg-soft)] text-[var(--st-red)]">
-              <CalendarDays size={15} />
-            </div>
+      {/* ADD SLOT MODAL */}
 
-            <div>
-              <p className="m-0 text-[10px] font-bold text-[var(--st-charcoal-dark)]">
-                How trial slots work
-              </p>
+      {showAddSlot && (
+        <div className="fixed inset-0 z-[100] flex items-end justify-center bg-black/40 p-0 sm:items-center sm:p-5">
 
-              <p className="mt-1 mb-0 text-[9px] leading-relaxed text-[var(--st-gray)]">
-                Available slots will appear on the public
-                booking page. When a potential student books
-                one, the slot becomes unavailable and is linked
-                to the booking and lead.
-              </p>
-            </div>
-          </div>
-        </div>
-      </main>
+          <div className="w-full max-w-[480px] rounded-t-3xl bg-white p-6 shadow-2xl sm:rounded-3xl">
 
-      {/* =======================================================
-          ADD SLOT MODAL
-      ======================================================= */}
+            <div className="flex items-center justify-between">
 
-      {showModal && (
-        <div className="fixed inset-0 z-[100] flex items-end justify-center bg-black/35 p-0 backdrop-blur-[2px] sm:items-center sm:p-5">
-          <div className="w-full max-w-[460px] rounded-t-3xl bg-white shadow-2xl sm:rounded-2xl">
-            <div className="flex items-center justify-between border-b border-[var(--st-border)] px-5 py-4">
               <div>
                 <p className="st-eyebrow">
                   NEW SLOT
                 </p>
 
-                <h2 className="mt-1 text-[18px] font-bold text-[var(--st-charcoal-dark)]">
+                <h2 className="mt-1 text-[22px] font-bold text-[var(--st-charcoal-dark)]">
                   Add trial lesson
                 </h2>
               </div>
 
               <button
-                onClick={() => setShowModal(false)}
+                type="button"
+                onClick={() =>
+                  setShowAddSlot(false)
+                }
                 className="st-icon-button"
-                aria-label="Close"
               >
-                <X size={17} />
+                <X size={16} />
               </button>
+
             </div>
 
-            <form
-              onSubmit={createSlot}
-              className="space-y-5 p-5"
-            >
-              {/* DATE */}
+            <div className="mt-6 space-y-5">
 
               <div>
-                <label className="mb-2 block text-[10px] font-bold uppercase tracking-[0.08em] text-[var(--st-charcoal)]">
+                <label className="mb-2 block text-[9px] font-bold uppercase tracking-[0.08em] text-[var(--st-gray)]">
                   Date
                 </label>
 
-                <div className="rounded-xl border border-[var(--st-border)] bg-[var(--st-bg-soft)] px-4 py-3 text-[12px] font-bold text-[var(--st-charcoal-dark)]">
-                  {selectedDate.toLocaleDateString(
-                    "en-KE",
-                    {
-                      weekday: "long",
-                      month: "long",
-                      day: "numeric",
-                      year: "numeric",
-                    }
-                  )}
-                </div>
+                <input
+                  type="date"
+                  value={newDate}
+                  onChange={(e) =>
+                    setNewDate(
+                      e.target.value
+                    )
+                  }
+                  className="w-full rounded-xl border border-[var(--st-border)] px-4 py-3 text-[12px] outline-none focus:border-[var(--st-red)]"
+                />
               </div>
 
-              {/* INSTRUMENT */}
-
               <div>
-                <label className="mb-2 block text-[10px] font-bold uppercase tracking-[0.08em] text-[var(--st-charcoal)]">
+                <label className="mb-2 block text-[9px] font-bold uppercase tracking-[0.08em] text-[var(--st-gray)]">
                   Instrument
                 </label>
 
                 <div className="grid grid-cols-2 gap-3">
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setInstrument("piano")
-                    }
-                    className={`flex items-center gap-3 rounded-xl border p-4 text-left transition-all ${
-                      instrument === "piano"
-                        ? "border-[var(--st-red)] bg-[var(--st-bg-soft)]"
-                        : "border-[var(--st-border)] bg-white"
-                    }`}
-                  >
-                    <Music2
-                      size={18}
-                      className="text-[var(--st-red)]"
-                    />
 
-                    <div>
-                      <p className="m-0 text-[11px] font-bold text-[var(--st-charcoal-dark)]">
-                        Piano
+                  {(
+                    Object.keys(
+                      instrumentInfo
+                    ) as Instrument[]
+                  ).map((instrument) => (
+                    <button
+                      key={instrument}
+                      type="button"
+                      onClick={() =>
+                        setNewInstrument(
+                          instrument
+                        )
+                      }
+                      className={`rounded-xl border p-4 text-left ${
+                        newInstrument ===
+                        instrument
+                          ? "border-[var(--st-red)] bg-[var(--st-bg-soft)]"
+                          : "border-[var(--st-border)]"
+                      }`}
+                    >
+                      <p className="m-0 text-[12px] font-bold">
+                        {
+                          instrumentInfo[
+                            instrument
+                          ].name
+                        }
                       </p>
 
                       <p className="mt-1 mb-0 text-[9px] text-[var(--st-gray)]">
-                        Trial lesson
+                        60 minutes
                       </p>
-                    </div>
-                  </button>
+                    </button>
+                  ))}
 
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setInstrument("guitar")
-                    }
-                    className={`flex items-center gap-3 rounded-xl border p-4 text-left transition-all ${
-                      instrument === "guitar"
-                        ? "border-[var(--st-red)] bg-[var(--st-bg-soft)]"
-                        : "border-[var(--st-border)] bg-white"
-                    }`}
-                  >
-                    <Guitar
-                      size={18}
-                      className="text-[var(--st-red)]"
-                    />
-
-                    <div>
-                      <p className="m-0 text-[11px] font-bold text-[var(--st-charcoal-dark)]">
-                        Guitar
-                      </p>
-
-                      <p className="mt-1 mb-0 text-[9px] text-[var(--st-gray)]">
-                        Trial lesson
-                      </p>
-                    </div>
-                  </button>
                 </div>
               </div>
 
-              {/* TIME */}
-
               <div>
-                <label
-                  htmlFor="slot-time"
-                  className="mb-2 block text-[10px] font-bold uppercase tracking-[0.08em] text-[var(--st-charcoal)]"
-                >
+                <label className="mb-2 block text-[9px] font-bold uppercase tracking-[0.08em] text-[var(--st-gray)]">
                   Start time
                 </label>
 
                 <input
-                  id="slot-time"
                   type="time"
-                  required
-                  value={slotTime}
-                  onChange={(event) =>
-                    setSlotTime(event.target.value)
+                  value={newTime}
+                  onChange={(e) =>
+                    setNewTime(
+                      e.target.value
+                    )
                   }
-                  className="w-full rounded-xl border border-[var(--st-border)] bg-white px-4 py-3 text-sm text-[var(--st-charcoal-dark)] outline-none focus:border-[var(--st-red)]"
+                  className="w-full rounded-xl border border-[var(--st-border)] px-4 py-3 text-[12px] outline-none focus:border-[var(--st-red)]"
                 />
-
-                <p className="mt-2 mb-0 text-[9px] text-[var(--st-gray)]">
-                  Trial lesson duration is automatically set
-                  to 60 minutes.
-                </p>
               </div>
 
-              {saveError && (
-                <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3">
-                  <p className="m-0 text-[10px] leading-relaxed text-red-700">
-                    {saveError}
-                  </p>
-                </div>
+            </div>
+
+            <button
+              type="button"
+              disabled={savingSlot}
+              onClick={createSlot}
+              className="st-button st-button-primary mt-6 w-full disabled:opacity-60"
+            >
+              {savingSlot ? (
+                <>
+                  <Loader2
+                    size={15}
+                    className="animate-spin"
+                  />
+                  Creating...
+                </>
+              ) : (
+                <>
+                  <Plus size={15} />
+                  Create slot
+                </>
               )}
+            </button>
 
-              <div className="flex gap-3 pt-1">
-                <button
-                  type="button"
-                  onClick={() => setShowModal(false)}
-                  className="st-button st-button-secondary flex-1"
-                >
-                  Cancel
-                </button>
-
-                <button
-                  type="submit"
-                  disabled={saving}
-                  className="st-button st-button-primary flex-1"
-                >
-                  {saving ? (
-                    <>
-                      <Loader2
-                        size={14}
-                        className="animate-spin"
-                      />
-                      Saving...
-                    </>
-                  ) : (
-                    <>
-                      <Plus size={14} />
-                      Create slot
-                    </>
-                  )}
-                </button>
-              </div>
-            </form>
           </div>
+
         </div>
       )}
-    </AppShell>
+
+    </main>
   );
 }
