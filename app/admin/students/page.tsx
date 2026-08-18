@@ -8,21 +8,22 @@ import {
   CheckCircle2,
   ChevronDown,
   Clock3,
+  Download,
   Mail,
   MessageCircle,
   Phone,
   Plus,
-  Printer,
   RefreshCw,
   Search,
   Users,
   Wallet,
   X,
   AlertCircle,
-  FileText,
 } from "lucide-react";
 
 import { supabase } from "@/lib/supabase";
+import { generatePaymentReceipt } from "@/lib/generate-payment-receipt";
+import type { PaymentReceiptData } from "@/lib/generate-payment-receipt";
 
 type StudentStatus =
   | "active"
@@ -101,6 +102,7 @@ type Payment = {
   payment_method: PaymentMethod;
   reference: string | null;
   notes: string | null;
+  created_at?: string;
 };
 
 type StudentRecord = {
@@ -108,12 +110,6 @@ type StudentRecord = {
   enrollment: Enrollment | null;
   schedules: PaymentSchedule[];
   payments: Payment[];
-};
-
-type ReceiptData = {
-  payment: Payment;
-  student: Student;
-  enrollment: Enrollment | null;
 };
 
 type Filter =
@@ -134,6 +130,8 @@ function formatCurrency(amount: number) {
 }
 
 function formatDate(dateString: string) {
+  if (!dateString) return "—";
+
   return new Intl.DateTimeFormat("en-KE", {
     timeZone: NAIROBI_TIME_ZONE,
     day: "numeric",
@@ -145,6 +143,8 @@ function formatDate(dateString: string) {
 }
 
 function formatLongDate(dateString: string) {
+  if (!dateString) return "—";
+
   return new Intl.DateTimeFormat("en-KE", {
     timeZone: NAIROBI_TIME_ZONE,
     weekday: "long",
@@ -181,9 +181,7 @@ function calculateDaysRemaining(endDate: string) {
 }
 
 function addThreeMonths(dateString: string) {
-  if (!dateString) {
-    return "";
-  }
+  if (!dateString) return "";
 
   const date = new Date(
     `${dateString}T00:00:00+03:00`
@@ -238,16 +236,12 @@ function studentStatusClasses(status: StudentStatus) {
   switch (status) {
     case "active":
       return "bg-green-50 text-green-700";
-
     case "completed":
       return "bg-blue-50 text-blue-700";
-
     case "paused":
       return "bg-amber-50 text-amber-700";
-
     case "inactive":
       return "bg-gray-100 text-gray-600";
-
     default:
       return "bg-gray-50 text-gray-700";
   }
@@ -263,22 +257,16 @@ function paymentStatusLabel(
   switch (schedule.status) {
     case "paid":
       return "Paid";
-
     case "due":
       return "Due today";
-
     case "overdue":
       return "Overdue";
-
     case "partially_paid":
       return "Partially paid";
-
     case "scheduled":
       return "Upcoming";
-
     case "cancelled":
       return "Cancelled";
-
     default:
       return schedule.status;
   }
@@ -294,22 +282,16 @@ function paymentStatusClasses(
   switch (schedule.status) {
     case "paid":
       return "bg-green-50 text-green-700";
-
     case "due":
       return "bg-amber-50 text-amber-700";
-
     case "overdue":
       return "bg-red-50 text-red-700";
-
     case "partially_paid":
       return "bg-orange-50 text-orange-700";
-
     case "scheduled":
       return "bg-blue-50 text-blue-700";
-
     case "cancelled":
       return "bg-gray-100 text-gray-600";
-
     default:
       return "bg-gray-50 text-gray-600";
   }
@@ -357,9 +339,7 @@ function getBalance(
 function getPaymentFollowUpLabel(
   schedule: PaymentSchedule | null
 ) {
-  if (!schedule) {
-    return "";
-  }
+  if (!schedule) return "";
 
   const today = new Date(
     `${getTodayKey()}T00:00:00+03:00`
@@ -403,38 +383,145 @@ function getPaymentFollowUpLabel(
  * =========================================================
  */
 
-function getReceiptNumber(paymentId: string) {
-  const shortId = paymentId
+function createReceiptNumber(paymentId: string) {
+  return `ST-${paymentId
     .replace(/-/g, "")
-    .slice(0, 8)
-    .toUpperCase();
-
-  return `ST-${shortId}`;
+    .slice(0, 10)
+    .toUpperCase()}`;
 }
 
-function paymentMethodLabel(
-  method: PaymentMethod
+function getPaymentBalanceAfter(
+  enrollment: Enrollment,
+  payments: Payment[],
+  payment: Payment
 ) {
-  switch (method) {
-    case "mpesa":
-      return "M-Pesa";
+  const paymentIndex =
+    payments.findIndex(
+      (item) => item.id === payment.id
+    );
 
-    case "cash":
-      return "Cash";
-
-    case "bank":
-      return "Bank";
-
-    case "card":
-      return "Card";
-
-    case "other":
-      return "Other";
-
-    default:
-      return method;
+  if (paymentIndex === -1) {
+    return Math.max(
+      Number(enrollment.total_fee) -
+        Number(payment.amount),
+      0
+    );
   }
+
+  const paymentsUpToThisPayment =
+    payments.filter((item) => {
+      if (item.id === payment.id) {
+        return true;
+      }
+
+      if (
+        item.payment_date <
+        payment.payment_date
+      ) {
+        return true;
+      }
+
+      if (
+        item.payment_date >
+        payment.payment_date
+      ) {
+        return false;
+      }
+
+      /*
+       * Payments on the same date.
+       *
+       * If created_at exists, use it to establish
+       * the actual payment order.
+       */
+      if (
+        item.created_at &&
+        payment.created_at
+      ) {
+        return (
+          item.created_at <=
+          payment.created_at
+        );
+      }
+
+      return (
+        payments.indexOf(item) <=
+        paymentIndex
+      );
+    });
+
+  const paid =
+    paymentsUpToThisPayment.reduce(
+      (sum, item) =>
+        sum + Number(item.amount),
+      0
+    );
+
+  return Math.max(
+    Number(enrollment.total_fee) - paid,
+    0
+  );
 }
+
+function buildReceiptData(
+  record: StudentRecord,
+  payment: Payment,
+  balanceAfter?: number
+): PaymentReceiptData | null {
+  if (!record.enrollment) {
+    return null;
+  }
+
+  return {
+    receiptNumber:
+      createReceiptNumber(payment.id),
+
+    studentName:
+      record.student.full_name,
+
+    studentEmail:
+      record.student.email,
+
+    studentPhone:
+      record.student.whatsapp_number,
+
+    programmeName:
+      record.enrollment.programme_name,
+
+    instrument: instrumentName(
+      record.enrollment.instrument
+    ),
+
+    programmeAmount:
+      Number(record.enrollment.total_fee),
+
+    amountPaid:
+      Number(payment.amount),
+
+    balance:
+      balanceAfter ??
+      getPaymentBalanceAfter(
+        record.enrollment,
+        record.payments,
+        payment
+      ),
+
+    paymentMethod:
+      payment.payment_method,
+
+    reference:
+      payment.reference,
+
+    paymentDate:
+      payment.payment_date,
+  };
+}
+
+/*
+ * =========================================================
+ * COMPONENT
+ * =========================================================
+ */
 
 export default function AdminStudentsPage() {
   const [records, setRecords] =
@@ -467,21 +554,6 @@ export default function AdminStudentsPage() {
   const [updatingId, setUpdatingId] =
     useState<string | null>(null);
 
-  /*
-   * =========================================================
-   * RECEIPT STATE
-   * =========================================================
-   */
-
-  const [receiptData, setReceiptData] =
-    useState<ReceiptData | null>(null);
-
-  /*
-   * =========================================================
-   * PAYMENT FORM
-   * =========================================================
-   */
-
   const [paymentAmount, setPaymentAmount] =
     useState("");
 
@@ -490,6 +562,18 @@ export default function AdminStudentsPage() {
 
   const [paymentReference, setPaymentReference] =
     useState("");
+
+  /*
+   * Receipt success state.
+   *
+   * We keep the receipt available after payment so
+   * the user can explicitly download it.
+   */
+
+  const [lastReceipt, setLastReceipt] =
+    useState<PaymentReceiptData | null>(
+      null
+    );
 
   /*
    * =========================================================
@@ -576,9 +660,7 @@ export default function AdminStudentsPage() {
     );
 
   useEffect(() => {
-    if (!startDate) {
-      return;
-    }
+    if (!startDate) return;
 
     if (!nextPaymentDueDate) {
       const date = new Date(
@@ -590,9 +672,11 @@ export default function AdminStudentsPage() {
       );
 
       const year = date.getFullYear();
+
       const month = String(
         date.getMonth() + 1
       ).padStart(2, "0");
+
       const day = String(
         date.getDate()
       ).padStart(2, "0");
@@ -605,33 +689,7 @@ export default function AdminStudentsPage() {
 
   /*
    * =========================================================
-   * RECEIPT ACTIONS
-   * =========================================================
-   */
-
-  function viewReceipt(
-    payment: Payment,
-    student: Student,
-    enrollment: Enrollment | null
-  ) {
-    setReceiptData({
-      payment,
-      student,
-      enrollment,
-    });
-  }
-
-  function printReceipt() {
-    window.print();
-  }
-
-  function closeReceipt() {
-    setReceiptData(null);
-  }
-
-  /*
-   * =========================================================
-   * RESET ADD STUDENT FORM
+   * RESET
    * =========================================================
    */
 
@@ -642,6 +700,7 @@ export default function AdminStudentsPage() {
     setStudentNotes("");
 
     setInstrument("piano");
+
     setProgrammeName(
       "3 Month Training Programme"
     );
@@ -663,9 +722,7 @@ export default function AdminStudentsPage() {
   }
 
   function closeAddStudent() {
-    if (addingStudent) {
-      return;
-    }
+    if (addingStudent) return;
 
     setShowAddStudent(false);
     resetAddStudentForm();
@@ -784,7 +841,8 @@ export default function AdminStudentsPage() {
             payment_date,
             payment_method,
             reference,
-            notes
+            notes,
+            created_at
           `
         )
         .in("student_id", studentIds)
@@ -1099,7 +1157,7 @@ export default function AdminStudentsPage() {
 
     try {
       /*
-       * 1. STUDENT
+       * 1. CREATE STUDENT
        */
 
       const {
@@ -1137,7 +1195,7 @@ export default function AdminStudentsPage() {
         createdStudent.id;
 
       /*
-       * 2. ENROLLMENT
+       * 2. CREATE ENROLLMENT
        */
 
       const {
@@ -1184,10 +1242,6 @@ export default function AdminStudentsPage() {
 
       /*
        * 3. INITIAL PAYMENT
-       *
-       * IMPORTANT:
-       * We select the inserted payment so it can
-       * immediately become a receipt.
        */
 
       let createdInitialPayment:
@@ -1196,7 +1250,7 @@ export default function AdminStudentsPage() {
 
       if (initial > 0) {
         const {
-          data: paymentData,
+          data: initialPaymentData,
           error: initialPaymentError,
         } = await supabase
           .from("payments")
@@ -1235,7 +1289,8 @@ export default function AdminStudentsPage() {
               payment_date,
               payment_method,
               reference,
-              notes
+              notes,
+              created_at
             `
           )
           .single();
@@ -1245,7 +1300,7 @@ export default function AdminStudentsPage() {
         }
 
         createdInitialPayment =
-          paymentData as Payment;
+          initialPaymentData as Payment;
       }
 
       /*
@@ -1307,19 +1362,31 @@ export default function AdminStudentsPage() {
         );
 
         /*
-         * If an initial payment was made,
-         * immediately show its receipt.
+         * If there was an initial payment,
+         * expose its receipt immediately.
          */
 
         if (createdInitialPayment) {
-          setReceiptData({
-            payment:
+          const receipt =
+            buildReceiptData(
+              {
+                ...newlyCreatedRecord,
+                payments: [
+                  createdInitialPayment,
+                ],
+              },
               createdInitialPayment,
-            student:
-              newlyCreatedRecord.student,
-            enrollment:
-              newlyCreatedRecord.enrollment,
-          });
+              Math.max(
+                Number(
+                  createdEnrollment.total_fee
+                ) - initial,
+                0
+              )
+            );
+
+          if (receipt) {
+            setLastReceipt(receipt);
+          }
         }
       }
     } catch (err) {
@@ -1372,7 +1439,7 @@ export default function AdminStudentsPage() {
 
   /*
    * =========================================================
-   * GET SINGLE STUDENT RECORD
+   * GET SINGLE STUDENT
    * =========================================================
    */
 
@@ -1482,7 +1549,8 @@ export default function AdminStudentsPage() {
           payment_date,
           payment_method,
           reference,
-          notes
+          notes,
+          created_at
         `
       )
       .eq(
@@ -1502,6 +1570,35 @@ export default function AdminStudentsPage() {
         (paymentData ??
           []) as Payment[],
     };
+  }
+
+  /*
+   * =========================================================
+   * DOWNLOAD RECEIPT
+   * =========================================================
+   */
+
+  function downloadReceipt(
+    record: StudentRecord,
+    payment: Payment
+  ) {
+    const receipt =
+      buildReceiptData(
+        record,
+        payment
+      );
+
+    if (!receipt) {
+      setError(
+        "This student does not have a programme attached to the payment."
+      );
+
+      return;
+    }
+
+    generatePaymentReceipt(
+      receipt
+    );
   }
 
   /*
@@ -1706,7 +1803,8 @@ export default function AdminStudentsPage() {
           payment_date,
           payment_method,
           reference,
-          notes
+          notes,
+          created_at
         `
       )
       .single();
@@ -1775,6 +1873,27 @@ export default function AdminStudentsPage() {
     const newPayment =
       data as Payment;
 
+    const newBalance =
+      Math.max(
+        balance - amount,
+        0
+      );
+
+    /*
+     * Prepare receipt immediately.
+     */
+
+    const receipt =
+      buildReceiptData(
+        selectedStudent,
+        newPayment,
+        newBalance
+      );
+
+    if (receipt) {
+      setLastReceipt(receipt);
+    }
+
     setSelectedStudent(
       (current) =>
         current
@@ -1794,10 +1913,6 @@ export default function AdminStudentsPage() {
     setShowPaymentForm(false);
     setUpdatingId(null);
 
-    /*
-     * Refresh the database record.
-     */
-
     await loadStudents(true);
 
     const refreshed =
@@ -1807,18 +1922,6 @@ export default function AdminStudentsPage() {
 
     if (refreshed) {
       setSelectedStudent(refreshed);
-
-      /*
-       * OPEN RECEIPT IMMEDIATELY.
-       */
-
-      setReceiptData({
-        payment: newPayment,
-        student:
-          refreshed.student,
-        enrollment:
-          refreshed.enrollment,
-      });
     }
   }
 
@@ -1835,9 +1938,7 @@ export default function AdminStudentsPage() {
       record.student
         .whatsapp_number;
 
-    if (!phone) {
-      return;
-    }
+    if (!phone) return;
 
     const next =
       getNextPayment(
@@ -1899,9 +2000,7 @@ export default function AdminStudentsPage() {
   return (
     <main className="st-content">
 
-      {/* =====================================================
-          HEADER
-      ===================================================== */}
+      {/* HEADER */}
 
       <div className="mb-7 flex flex-col gap-5 md:flex-row md:items-end md:justify-between">
 
@@ -1955,15 +2054,12 @@ export default function AdminStudentsPage() {
 
       </div>
 
-      {/* =====================================================
-          STATS
-      ===================================================== */}
+      {/* STATS */}
 
       <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
 
         <div className="st-card p-5">
           <div className="flex items-center justify-between gap-3">
-
             <div>
               <p className="m-0 text-[10px] font-bold uppercase tracking-[0.08em] text-[var(--st-gray)]">
                 Active students
@@ -1977,13 +2073,11 @@ export default function AdminStudentsPage() {
             <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[var(--st-bg-soft)] text-[var(--st-red)]">
               <Users size={18} />
             </div>
-
           </div>
         </div>
 
         <div className="st-card p-5">
           <div className="flex items-center justify-between gap-3">
-
             <div>
               <p className="m-0 text-[10px] font-bold uppercase tracking-[0.08em] text-[var(--st-gray)]">
                 Ending soon
@@ -2001,13 +2095,11 @@ export default function AdminStudentsPage() {
             <div className="flex h-10 w-10 items-center justify-center rounded-full bg-amber-50 text-amber-700">
               <Clock3 size={18} />
             </div>
-
           </div>
         </div>
 
         <div className="st-card p-5">
           <div className="flex items-center justify-between gap-3">
-
             <div>
               <p className="m-0 text-[10px] font-bold uppercase tracking-[0.08em] text-[var(--st-gray)]">
                 Payments due
@@ -2025,13 +2117,11 @@ export default function AdminStudentsPage() {
             <div className="flex h-10 w-10 items-center justify-center rounded-full bg-red-50 text-[var(--st-red)]">
               <Wallet size={18} />
             </div>
-
           </div>
         </div>
 
         <div className="st-card p-5">
           <div className="flex items-center justify-between gap-3">
-
             <div>
               <p className="m-0 text-[10px] font-bold uppercase tracking-[0.08em] text-[var(--st-gray)]">
                 Completed
@@ -2045,15 +2135,73 @@ export default function AdminStudentsPage() {
             <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-50 text-blue-700">
               <CheckCircle2 size={18} />
             </div>
-
           </div>
         </div>
 
       </section>
 
       {/* =====================================================
-          PAYMENT ATTENTION
+          RECEIPT SUCCESS
       ===================================================== */}
+
+      {lastReceipt && (
+        <section className="mt-5 rounded-2xl border border-green-200 bg-green-50 p-4">
+
+          <div className="flex items-start gap-3">
+
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-green-100 text-green-700">
+              <CheckCircle2 size={17} />
+            </div>
+
+            <div className="min-w-0 flex-1">
+
+              <p className="m-0 text-[11px] font-bold text-green-800">
+                Payment recorded successfully
+              </p>
+
+              <p className="mt-1 mb-0 text-[9px] text-green-700">
+                Receipt {lastReceipt.receiptNumber}
+                {" · "}
+                {formatCurrency(
+                  lastReceipt.amountPaid
+                )}
+              </p>
+
+              <div className="mt-3 flex flex-wrap gap-2">
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    generatePaymentReceipt(
+                      lastReceipt
+                    )
+                  }
+                  className="st-button st-button-primary !min-h-[38px] !px-4 text-[10px]"
+                >
+                  <Download size={14} />
+                  Download Receipt
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    setLastReceipt(null)
+                  }
+                  className="st-button st-button-secondary !min-h-[38px] !px-4 text-[10px]"
+                >
+                  Dismiss
+                </button>
+
+              </div>
+
+            </div>
+
+          </div>
+
+        </section>
+      )}
+
+      {/* PAYMENT ATTENTION */}
 
       {stats.paymentAttention > 0 && (
         <section className="mt-5">
@@ -2104,9 +2252,7 @@ export default function AdminStudentsPage() {
                     record.schedules
                   );
 
-                if (!next) {
-                  return null;
-                }
+                if (!next) return null;
 
                 return (
                   <div
@@ -2238,9 +2384,7 @@ export default function AdminStudentsPage() {
         </section>
       )}
 
-      {/* =====================================================
-          SEARCH
-      ===================================================== */}
+      {/* SEARCH */}
 
       <section className="st-card mt-6 p-4">
 
@@ -2311,9 +2455,7 @@ export default function AdminStudentsPage() {
 
       </section>
 
-      {/* =====================================================
-          ERROR
-      ===================================================== */}
+      {/* ERROR */}
 
       {error && (
         <div className="mt-5 flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3">
@@ -2330,9 +2472,7 @@ export default function AdminStudentsPage() {
         </div>
       )}
 
-      {/* =====================================================
-          STUDENT LIST
-      ===================================================== */}
+      {/* STUDENT LIST */}
 
       <section className="mt-7">
 
@@ -3172,60 +3312,54 @@ export default function AdminStudentsPage() {
                             key={
                               payment.id
                             }
-                            className="p-3"
+                            className="flex items-center justify-between gap-3 p-3"
                           >
 
-                            <div className="flex items-center justify-between gap-3">
+                            <div className="min-w-0">
 
-                              <div className="min-w-0">
-
-                                <p className="m-0 text-[11px] font-bold text-[var(--st-charcoal-dark)]">
-                                  {formatCurrency(
-                                    Number(
-                                      payment.amount
-                                    )
-                                  )}
-                                </p>
-
-                                <p className="mt-1 text-[9px] text-[var(--st-gray)]">
-                                  {formatDate(
-                                    payment.payment_date
-                                  )}{" "}
-                                  ·{" "}
-                                  {paymentMethodLabel(
-                                    payment.payment_method
-                                  )}
-                                </p>
-
-                                {payment.reference && (
-                                  <p className="mt-1 text-[8px] text-[var(--st-gray)]">
-                                    Ref:{" "}
-                                    {
-                                      payment.reference
-                                    }
-                                  </p>
-                                )}
-
-                              </div>
-
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  viewReceipt(
-                                    payment,
-                                    selectedStudent.student,
-                                    selectedStudent.enrollment
+                              <p className="m-0 text-[11px] font-bold text-[var(--st-charcoal-dark)]">
+                                {formatCurrency(
+                                  Number(
+                                    payment.amount
                                   )
-                                }
-                                className="st-button st-button-secondary !min-h-[36px] !px-3 text-[9px]"
-                              >
-                                <FileText
-                                  size={13}
-                                />
-                                Receipt
-                              </button>
+                                )}
+                              </p>
+
+                              <p className="mt-1 text-[9px] text-[var(--st-gray)]">
+                                {formatDate(
+                                  payment.payment_date
+                                )}{" "}
+                                ·{" "}
+                                {payment.payment_method.toUpperCase()}
+                              </p>
+
+                              {payment.reference && (
+                                <p className="mt-1 max-w-[170px] truncate text-[8px] text-[var(--st-gray)]">
+                                  Ref:{" "}
+                                  {
+                                    payment.reference
+                                  }
+                                </p>
+                              )}
 
                             </div>
+
+                            <button
+                              type="button"
+                              onClick={() =>
+                                downloadReceipt(
+                                  selectedStudent,
+                                  payment
+                                )
+                              }
+                              className="st-button st-button-secondary !min-h-[36px] !px-3 text-[9px]"
+                              aria-label="Download payment receipt"
+                            >
+                              <Download
+                                size={13}
+                              />
+                              Receipt
+                            </button>
 
                           </div>
                         )
@@ -3943,81 +4077,81 @@ export default function AdminStudentsPage() {
 
                     {numericInitialPayment >
                       0 && (
-                      <>
-                        <div className="mt-3">
+                      <div className="mt-3">
 
-                          <label className="mb-2 block text-[8px] font-bold uppercase tracking-[0.08em] text-[var(--st-gray)]">
-                            Payment method
-                          </label>
+                        <label className="mb-2 block text-[8px] font-bold uppercase tracking-[0.08em] text-[var(--st-gray)]">
+                          Payment method
+                        </label>
 
-                          <div className="relative">
+                        <div className="relative">
 
-                            <select
-                              value={
-                                initialPaymentMethod
-                              }
-                              onChange={(event) =>
-                                setInitialPaymentMethod(
-                                  event.target
-                                    .value as PaymentMethod
-                                )
-                              }
-                              className="w-full appearance-none rounded-xl border border-[var(--st-border)] bg-white px-4 py-3.5 text-[10px] font-semibold outline-none focus:border-[var(--st-red)]"
-                            >
-                              <option value="mpesa">
-                                M-Pesa
-                              </option>
-
-                              <option value="cash">
-                                Cash
-                              </option>
-
-                              <option value="bank">
-                                Bank
-                              </option>
-
-                              <option value="card">
-                                Card
-                              </option>
-
-                              <option value="other">
-                                Other
-                              </option>
-
-                            </select>
-
-                            <ChevronDown
-                              size={14}
-                              className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-[var(--st-gray)]"
-                            />
-
-                          </div>
-
-                        </div>
-
-                        <div className="mt-3">
-
-                          <label className="mb-2 block text-[8px] font-bold uppercase tracking-[0.08em] text-[var(--st-gray)]">
-                            Reference
-                          </label>
-
-                          <input
-                            type="text"
+                          <select
                             value={
-                              initialPaymentReference
+                              initialPaymentMethod
                             }
                             onChange={(event) =>
-                              setInitialPaymentReference(
+                              setInitialPaymentMethod(
                                 event.target
-                                  .value
+                                  .value as PaymentMethod
                               )
                             }
-                            placeholder="M-Pesa code / receipt number"
-                            className="w-full rounded-xl border border-[var(--st-border)] bg-white px-4 py-3 text-[10px] outline-none focus:border-[var(--st-red)]"
+                            className="w-full appearance-none rounded-xl border border-[var(--st-border)] bg-white px-4 py-3.5 text-[10px] font-semibold outline-none focus:border-[var(--st-red)]"
+                          >
+                            <option value="mpesa">
+                              M-Pesa
+                            </option>
+
+                            <option value="cash">
+                              Cash
+                            </option>
+
+                            <option value="bank">
+                              Bank
+                            </option>
+
+                            <option value="card">
+                              Card
+                            </option>
+
+                            <option value="other">
+                              Other
+                            </option>
+                          </select>
+
+                          <ChevronDown
+                            size={14}
+                            className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-[var(--st-gray)]"
                           />
 
                         </div>
-                      </>
+
+                      </div>
+                    )}
+
+                    {numericInitialPayment >
+                      0 && (
+                      <div className="mt-3">
+
+                        <label className="mb-2 block text-[8px] font-bold uppercase tracking-[0.08em] text-[var(--st-gray)]">
+                          Reference
+                        </label>
+
+                        <input
+                          type="text"
+                          value={
+                            initialPaymentReference
+                          }
+                          onChange={(event) =>
+                            setInitialPaymentReference(
+                              event.target
+                                .value
+                            )
+                          }
+                          placeholder="M-Pesa code / receipt number"
+                          className="w-full rounded-xl border border-[var(--st-border)] bg-white px-4 py-3 text-[10px] outline-none focus:border-[var(--st-red)]"
+                        />
+
+                      </div>
                     )}
 
                   </div>
@@ -4391,371 +4525,6 @@ export default function AdminStudentsPage() {
             </div>
 
           </div>
-        </div>
-      )}
-
-      {/* =====================================================
-          RECEIPT MODAL
-      ===================================================== */}
-
-      {receiptData && (
-        <div className="fixed inset-0 z-[200] flex items-end justify-center bg-black/60 sm:items-center sm:p-5">
-
-          <div className="flex max-h-[96vh] w-full max-w-[620px] flex-col overflow-hidden rounded-t-3xl bg-white shadow-2xl sm:rounded-3xl">
-
-            {/* RECEIPT HEADER */}
-
-            <div className="flex shrink-0 items-center justify-between gap-4 border-b border-[var(--st-border)] bg-white px-5 py-4">
-
-              <div>
-
-                <p className="st-eyebrow">
-                  PAYMENT RECEIPT
-                </p>
-
-                <h2 className="mt-1 text-[18px] font-bold text-[var(--st-charcoal-dark)]">
-                  Receipt{" "}
-                  {getReceiptNumber(
-                    receiptData.payment.id
-                  )}
-                </h2>
-
-              </div>
-
-              <button
-                type="button"
-                onClick={
-                  closeReceipt
-                }
-                className="st-icon-button"
-                aria-label="Close receipt"
-              >
-                <X size={17} />
-              </button>
-
-            </div>
-
-            {/* RECEIPT BODY */}
-
-            <div className="overflow-y-auto bg-[#f8f8f8] p-4 sm:p-6">
-
-              <div
-                id="payment-receipt"
-                className="mx-auto max-w-[560px] bg-white p-7 shadow-sm sm:p-9"
-              >
-
-                {/* BRAND */}
-
-                <div className="flex items-start justify-between gap-6 border-b border-[var(--st-border)] pb-6">
-
-                  <div>
-
-                    <div className="flex items-center gap-3">
-
-                      <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-[var(--st-red)] text-sm font-extrabold text-white">
-                        ST
-                      </div>
-
-                      <div>
-
-                        <p className="m-0 text-[18px] font-extrabold tracking-tight text-[var(--st-charcoal-dark)]">
-                          Sauti Tamu
-                        </p>
-
-                        <p className="mt-1 mb-0 text-[8px] font-bold uppercase tracking-[0.18em] text-[var(--st-gray)]">
-                          Piano Center
-                        </p>
-
-                      </div>
-
-                    </div>
-
-                    <p className="mt-4 mb-0 text-[9px] leading-relaxed text-[var(--st-gray)]">
-                      Junction Trade Center
-                      <br />
-                      4th Floor, Room F401
-                      <br />
-                      Above Equity Bank Tearoom Branch
-                      <br />
-                      Nairobi CBD, Kenya
-                    </p>
-
-                  </div>
-
-                  <div className="text-right">
-
-                    <p className="m-0 text-[8px] font-bold uppercase tracking-[0.12em] text-[var(--st-gray)]">
-                      RECEIPT
-                    </p>
-
-                    <p className="mt-2 mb-0 text-[12px] font-bold text-[var(--st-red)]">
-                      {getReceiptNumber(
-                        receiptData.payment.id
-                      )}
-                    </p>
-
-                    <p className="mt-2 mb-0 text-[9px] text-[var(--st-gray)]">
-                      {formatDate(
-                        receiptData.payment
-                          .payment_date
-                      )}
-                    </p>
-
-                  </div>
-
-                </div>
-
-                {/* RECEIVED FROM */}
-
-                <div className="mt-7">
-
-                  <p className="m-0 text-[8px] font-bold uppercase tracking-[0.12em] text-[var(--st-gray)]">
-                    RECEIVED FROM
-                  </p>
-
-                  <p className="mt-2 text-[18px] font-bold text-[var(--st-charcoal-dark)]">
-                    {
-                      receiptData.student
-                        .full_name
-                    }
-                  </p>
-
-                  <div className="mt-2 grid grid-cols-1 gap-1 sm:grid-cols-2">
-
-                    <p className="m-0 text-[9px] text-[var(--st-gray)]">
-                      {
-                        receiptData.student
-                          .email
-                      }
-                    </p>
-
-                    <p className="m-0 text-[9px] text-[var(--st-gray)] sm:text-right">
-                      {
-                        receiptData.student
-                          .whatsapp_number
-                      }
-                    </p>
-
-                  </div>
-
-                </div>
-
-                {/* PAYMENT DETAILS */}
-
-                <div className="mt-7 overflow-hidden rounded-xl border border-[var(--st-border)]">
-
-                  <div className="grid grid-cols-2 border-b border-[var(--st-border)] bg-[var(--st-bg-soft)]">
-
-                    <div className="p-4">
-
-                      <p className="m-0 text-[8px] font-bold uppercase tracking-[0.08em] text-[var(--st-gray)]">
-                        PAYMENT METHOD
-                      </p>
-
-                      <p className="mt-2 text-[12px] font-bold text-[var(--st-charcoal-dark)]">
-                        {paymentMethodLabel(
-                          receiptData
-                            .payment
-                            .payment_method
-                        )}
-                      </p>
-
-                    </div>
-
-                    <div className="border-l border-[var(--st-border)] p-4">
-
-                      <p className="m-0 text-[8px] font-bold uppercase tracking-[0.08em] text-[var(--st-gray)]">
-                        PAYMENT DATE
-                      </p>
-
-                      <p className="mt-2 text-[12px] font-bold text-[var(--st-charcoal-dark)]">
-                        {formatLongDate(
-                          receiptData
-                            .payment
-                            .payment_date
-                        )}
-                      </p>
-
-                    </div>
-
-                  </div>
-
-                  <div className="p-5">
-
-                    <p className="m-0 text-[8px] font-bold uppercase tracking-[0.08em] text-[var(--st-gray)]">
-                      DESCRIPTION
-                    </p>
-
-                    <p className="mt-2 text-[12px] font-semibold text-[var(--st-charcoal-dark)]">
-                      {receiptData.enrollment
-                        ? `${instrumentName(
-                            receiptData
-                              .enrollment
-                              .instrument
-                          )} — ${
-                            receiptData
-                              .enrollment
-                              .programme_name
-                          }`
-                        : "Training programme payment"}
-                    </p>
-
-                    {receiptData.payment.reference && (
-                      <div className="mt-4">
-
-                        <p className="m-0 text-[8px] font-bold uppercase tracking-[0.08em] text-[var(--st-gray)]">
-                          TRANSACTION REFERENCE
-                        </p>
-
-                        <p className="mt-1 text-[10px] font-semibold text-[var(--st-charcoal-dark)]">
-                          {
-                            receiptData
-                              .payment
-                              .reference
-                          }
-                        </p>
-
-                      </div>
-                    )}
-
-                  </div>
-
-                </div>
-
-                {/* AMOUNT */}
-
-                <div className="mt-6 rounded-2xl bg-[var(--st-red)] p-5 text-white">
-
-                  <div className="flex items-end justify-between gap-4">
-
-                    <div>
-
-                      <p className="m-0 text-[8px] font-bold uppercase tracking-[0.12em] opacity-80">
-                        AMOUNT PAID
-                      </p>
-
-                      <p className="mt-2 mb-0 text-[30px] font-extrabold leading-none">
-                        {formatCurrency(
-                          Number(
-                            receiptData
-                              .payment
-                              .amount
-                          )
-                        )}
-                      </p>
-
-                    </div>
-
-                    <CheckCircle2
-                      size={30}
-                      strokeWidth={2}
-                    />
-
-                  </div>
-
-                </div>
-
-                {/* PROGRAMME INFO */}
-
-                {receiptData.enrollment && (
-                  <div className="mt-6 grid grid-cols-2 gap-3">
-
-                    <div className="rounded-xl border border-[var(--st-border)] p-4">
-
-                      <p className="m-0 text-[8px] font-bold uppercase tracking-[0.08em] text-[var(--st-gray)]">
-                        PROGRAMME FEE
-                      </p>
-
-                      <p className="mt-2 text-[12px] font-bold text-[var(--st-charcoal-dark)]">
-                        {formatCurrency(
-                          Number(
-                            receiptData
-                              .enrollment
-                              .total_fee
-                          )
-                        )}
-                      </p>
-
-                    </div>
-
-                    <div className="rounded-xl border border-[var(--st-border)] p-4">
-
-                      <p className="m-0 text-[8px] font-bold uppercase tracking-[0.08em] text-[var(--st-gray)]">
-                        PAYMENT STATUS
-                      </p>
-
-                      <p className="mt-2 text-[12px] font-bold text-green-700">
-                        Payment received
-                      </p>
-
-                    </div>
-
-                  </div>
-                )}
-
-                {/* THANK YOU */}
-
-                <div className="mt-7 border-t border-[var(--st-border)] pt-5 text-center">
-
-                  <p className="m-0 text-[12px] font-bold text-[var(--st-charcoal-dark)]">
-                    Thank you for choosing Sauti Tamu.
-                  </p>
-
-                  <p className="mt-2 mb-0 text-[9px] leading-relaxed text-[var(--st-gray)]">
-                    Please keep this receipt for your records.
-                    <br />
-                    This receipt was generated electronically.
-                  </p>
-
-                </div>
-
-                {/* RECEIPT FOOTER */}
-
-                <div className="mt-6 text-center">
-
-                  <p className="m-0 text-[8px] font-bold uppercase tracking-[0.14em] text-[var(--st-red)]">
-                    SAUTI TAMU PIANO CENTER
-                  </p>
-
-                  <p className="mt-1 mb-0 text-[8px] text-[var(--st-gray)]">
-                    Junction Trade Center · Nairobi CBD
-                  </p>
-
-                </div>
-
-              </div>
-
-            </div>
-
-            {/* RECEIPT ACTIONS */}
-
-            <div className="flex shrink-0 gap-2 border-t border-[var(--st-border)] bg-white p-4">
-
-              <button
-                type="button"
-                onClick={
-                  closeReceipt
-                }
-                className="st-button st-button-secondary flex-1"
-              >
-                Close
-              </button>
-
-              <button
-                type="button"
-                onClick={
-                  printReceipt
-                }
-                className="st-button st-button-primary flex-1"
-              >
-                <Printer size={15} />
-                Print / Save PDF
-              </button>
-
-            </div>
-
-          </div>
-
         </div>
       )}
 
