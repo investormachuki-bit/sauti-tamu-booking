@@ -1,31 +1,7 @@
 import jsPDF from "jspdf";
 
-/*
- * =========================================================
- * SAUTI TAMU — PAYMENT RECEIPT GENERATOR
- * =========================================================
- *
- * Receipt format:
- * - 80mm thermal/receipt-style width
- * - Dynamic height based on number of payments
- * - Progressive payment history
- * - Programme amount
- * - Total paid
- * - Current balance
- * - Current payment details
- *
- * The generator can:
- * 1. Generate a jsPDF document
- * 2. Download the receipt
- * 3. Create a Blob for viewing/sharing
- */
-
-/* =========================================================
-   TYPES
-   ========================================================= */
-
 export type PaymentReceiptHistoryItem = {
-  id?: string;
+  id: string;
   amount: number;
   paymentDate: string;
   paymentMethod: string;
@@ -45,69 +21,103 @@ export type PaymentReceiptData = {
 
   programmeAmount: number;
 
-  /*
-   * Balance before the current payment.
-   */
   previousBalance: number;
-
-  /*
-   * Current payment.
-   */
   amountPaid: number;
-
-  /*
-   * Balance after the current payment.
-   *
-   * Both names are supported because the student page
-   * may use either one.
-   */
   balanceAfterPayment: number;
-  balance?: number;
 
   paymentMethod: string;
   paymentDate: string;
+
   reference?: string | null;
 
   /*
-   * Complete payment history.
-   *
-   * Every receipt generated after a payment will contain
-   * all payments made up to that point.
+   * Complete payment history up to and including
+   * the payment represented by this receipt.
    */
   payments?: PaymentReceiptHistoryItem[];
 };
 
-/* =========================================================
-   BRAND
-   ========================================================= */
+/*
+ * ============================================================
+ * SETTINGS
+ * ============================================================
+ */
 
-const RED = [197, 31, 42] as const;
-const RED_DARK = [168, 23, 34] as const;
+const PAGE_WIDTH = 80;
 
-const DARK = [53, 53, 53] as const;
-const GRAY = [120, 120, 120] as const;
-const LIGHT_GRAY = [245, 245, 245] as const;
-const LIGHT_RED = [245, 232, 232] as const;
-const WHITE = [255, 255, 255] as const;
+const MARGIN = 6;
 
-const BORDER = [220, 205, 205] as const;
+const CONTENT_WIDTH =
+  PAGE_WIDTH - MARGIN * 2;
 
-/* =========================================================
-   HELPERS
-   ========================================================= */
+const RED = [181, 31, 47] as const;
+const DARK = [35, 35, 35] as const;
+const GRAY = [105, 105, 105] as const;
+const LIGHT_GRAY = [232, 232, 232] as const;
+const SOFT = [248, 248, 248] as const;
+const GREEN = [35, 125, 76] as const;
 
-function money(amount: number) {
-  return `KES ${new Intl.NumberFormat("en-KE", {
-    maximumFractionDigits: 0,
-  }).format(Number(amount) || 0)}`;
+/*
+ * ============================================================
+ * FORMATTERS
+ * ============================================================
+ */
+
+function formatCurrency(
+  amount: number
+) {
+  const value = Number(amount) || 0;
+
+  return `KES ${new Intl.NumberFormat(
+    "en-KE",
+    {
+      maximumFractionDigits: 0,
+    }
+  ).format(value)}`;
 }
 
-function normalisePaymentMethod(method: string) {
-  if (!method) {
-    return "Payment";
+function formatDate(
+  dateString: string
+) {
+  if (!dateString) {
+    return "—";
   }
 
-  switch (method.toLowerCase()) {
+  /*
+   * The application stores dates as YYYY-MM-DD.
+   * Adding the Nairobi offset prevents the date from
+   * shifting backward in some browser environments.
+   */
+  const date = new Date(
+    `${dateString}T00:00:00+03:00`
+  );
+
+  if (Number.isNaN(date.getTime())) {
+    return dateString;
+  }
+
+  return new Intl.DateTimeFormat(
+    "en-KE",
+    {
+      timeZone: "Africa/Nairobi",
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+    }
+  ).format(date);
+}
+
+function cleanPaymentMethod(
+  method: string
+) {
+  if (!method) {
+    return "Other";
+  }
+
+  const normalized =
+    method.toLowerCase();
+
+  switch (normalized) {
     case "mpesa":
       return "M-Pesa";
 
@@ -120,9 +130,6 @@ function normalisePaymentMethod(method: string) {
     case "card":
       return "Card";
 
-    case "other":
-      return "Other";
-
     default:
       return (
         method.charAt(0).toUpperCase() +
@@ -131,521 +138,231 @@ function normalisePaymentMethod(method: string) {
   }
 }
 
-function formatDate(dateString: string) {
-  if (!dateString) {
+function safeText(
+  value: unknown
+) {
+  if (
+    value === null ||
+    value === undefined
+  ) {
     return "";
   }
 
-  const date = new Date(
-    `${dateString}T00:00:00+03:00`
+  return String(value);
+}
+
+/*
+ * ============================================================
+ * PDF HELPERS
+ * ============================================================
+ */
+
+function setFont(
+  doc: jsPDF,
+  size: number,
+  style:
+    | "normal"
+    | "bold" = "normal",
+  color = DARK
+) {
+  doc.setFont(
+    "helvetica",
+    style
   );
 
-  if (Number.isNaN(date.getTime())) {
-    return dateString;
-  }
+  doc.setFontSize(size);
 
-  return new Intl.DateTimeFormat("en-KE", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-    timeZone: "Africa/Nairobi",
-  }).format(date);
+  doc.setTextColor(
+    color[0],
+    color[1],
+    color[2]
+  );
 }
 
 function drawLine(
   doc: jsPDF,
   y: number,
-  x1 = 8,
-  x2 = 72
+  color = LIGHT_GRAY,
+  lineWidth = 0.2
 ) {
-  doc.setDrawColor(...BORDER);
-  doc.setLineWidth(0.25);
-  doc.line(x1, y, x2, y);
+  doc.setDrawColor(
+    color[0],
+    color[1],
+    color[2]
+  );
+
+  doc.setLineWidth(lineWidth);
+
+  doc.line(
+    MARGIN,
+    y,
+    PAGE_WIDTH - MARGIN,
+    y
+  );
 }
 
-function text(
+function drawRoundedBox(
   doc: jsPDF,
-  value: string,
   x: number,
   y: number,
-  size: number,
-  color = DARK,
-  weight: "normal" | "bold" = "normal",
-  align: "left" | "center" | "right" = "left"
+  width: number,
+  height: number,
+  fillColor: readonly [
+    number,
+    number,
+    number
+  ],
+  radius = 2
 ) {
-  doc.setFont("helvetica", weight);
-  doc.setFontSize(size);
-  doc.setTextColor(...color);
+  doc.setFillColor(
+    fillColor[0],
+    fillColor[1],
+    fillColor[2]
+  );
 
-  doc.text(value, x, y, {
-    align,
-  });
-}
+  doc.setDrawColor(
+    fillColor[0],
+    fillColor[1],
+    fillColor[2]
+  );
 
-function rightText(
-  doc: jsPDF,
-  value: string,
-  x: number,
-  y: number,
-  size: number,
-  color = DARK,
-  weight: "normal" | "bold" = "normal"
-) {
-  text(
-    doc,
-    value,
+  doc.roundedRect(
     x,
     y,
-    size,
-    color,
-    weight,
-    "right"
+    width,
+    height,
+    radius,
+    radius,
+    "F"
   );
 }
 
-function sectionLabel(
+function drawLabelValue(
   doc: jsPDF,
   label: string,
-  y: number
+  value: string,
+  y: number,
+  valueBold = true
 ) {
-  text(
+  setFont(
     doc,
+    7.2,
+    "normal",
+    GRAY
+  );
+
+  doc.text(
     label,
-    8,
+    MARGIN,
+    y
+  );
+
+  setFont(
+    doc,
+    7.4,
+    valueBold
+      ? "bold"
+      : "normal",
+    DARK
+  );
+
+  doc.text(
+    value,
+    PAGE_WIDTH - MARGIN,
     y,
-    7,
-    RED,
-    "bold"
-  );
-
-  return y + 5;
-}
-
-/* =========================================================
-   CALCULATE RECEIPT HEIGHT
-   ========================================================= */
-
-function calculateReceiptHeight(
-  data: PaymentReceiptData
-) {
-  const payments =
-    data.payments ?? [];
-
-  /*
-   * Base height for:
-   * header
-   * student
-   * programme
-   * summary
-   * payment details
-   * footer
-   */
-  let height = 184;
-
-  /*
-   * Each payment row requires approximately 11mm.
-   */
-  height += payments.length * 11;
-
-  /*
-   * Give additional space for larger histories.
-   */
-  if (payments.length > 5) {
-    height += 8;
-  }
-
-  /*
-   * Minimum and maximum safety bounds.
-   */
-  return Math.max(
-    184,
-    Math.min(height, 500)
+    {
+      align: "right",
+    }
   );
 }
 
-/* =========================================================
-   NORMALISE PAYMENT HISTORY
-   * ========================================================= */
-
-function getPaymentHistory(
-  data: PaymentReceiptData
-): PaymentReceiptHistoryItem[] {
-  const history = [
-    ...(data.payments ?? []),
-  ];
-
-  /*
-   * If the caller hasn't supplied payment history,
-   * construct a one-payment history from the current
-   * payment so the receipt still works.
-   */
-  if (history.length === 0) {
-    history.push({
-      amount: data.amountPaid,
-      paymentDate: data.paymentDate,
-      paymentMethod:
-        data.paymentMethod,
-      reference: data.reference,
-      isCurrent: true,
-    });
-  }
-
-  return history;
-}
-
-/* =========================================================
-   GENERATE PDF DOCUMENT
-   ========================================================= */
+/*
+ * ============================================================
+ * MAIN GENERATOR
+ * ============================================================
+ */
 
 export function generatePaymentReceipt(
   data: PaymentReceiptData
 ) {
-  const payments =
-    getPaymentHistory(data);
-
-  const receiptHeight =
-    calculateReceiptHeight({
-      ...data,
-      payments,
-    });
-
   /*
-   * 80mm receipt width.
+   * We use a custom 80mm receipt width.
    *
-   * Dynamic height prevents the bottom of the receipt
-   * from being cut off when more payment rows are added.
+   * Height is intentionally generous. This prevents the
+   * progressive payment history from being cut off when
+   * a student has several payments.
    */
-  const doc = new jsPDF({
-    orientation: "portrait",
-    unit: "mm",
-    format: [80, receiptHeight],
-    compress: true,
-  });
-
-  doc.setProperties({
-    title:
-      `Sauti Tamu Payment Receipt ${data.receiptNumber}`,
-    subject: "Payment Receipt",
-    author:
-      "Sauti Tamu Piano Center",
-    creator: "Sauti Tamu",
-  });
-
-  let y = 9;
-
-  /* =======================================================
-     HEADER
-     ======================================================= */
-
-  text(
-    doc,
-    "Sauti Tamu",
-    40,
-    y,
-    15,
-    RED,
-    "bold",
-    "center"
-  );
-
-  y += 5;
-
-  text(
-    doc,
-    "Piano Center",
-    40,
-    y,
-    7,
-    DARK,
-    "bold",
-    "center"
-  );
-
-  y += 7;
-
-  doc.setFillColor(...RED);
-
-  doc.roundedRect(
-    20,
-    y,
-    40,
-    7,
-    1.5,
-    1.5,
-    "F"
-  );
-
-  text(
-    doc,
-    "Payment Receipt",
-    40,
-    y + 4.7,
-    7,
-    WHITE,
-    "bold",
-    "center"
-  );
-
-  y += 12;
-
-  rightText(
-    doc,
-    `Receipt No. ${data.receiptNumber}`,
-    72,
-    y,
-    6.5,
-    GRAY
-  );
-
-  y += 6;
-
-  drawLine(doc, y);
-
-  y += 7;
-
-  /* =======================================================
-     RECEIVED FROM
-     ======================================================= */
-
-  y = sectionLabel(
-    doc,
-    "Received From",
-    y
-  );
-
-  text(
-    doc,
-    data.studentName,
-    8,
-    y,
-    10,
-    DARK,
-    "bold"
-  );
-
-  y += 5;
-
-  text(
-    doc,
-    data.studentEmail,
-    8,
-    y,
-    7,
-    GRAY
-  );
-
-  y += 4;
-
-  text(
-    doc,
-    data.studentPhone,
-    8,
-    y,
-    7,
-    GRAY
-  );
-
-  y += 7;
-
-  drawLine(doc, y);
-
-  y += 7;
-
-  /* =======================================================
-     PROGRAMME
-     ======================================================= */
-
-  y = sectionLabel(
-    doc,
-    "Programme",
-    y
-  );
-
-  text(
-    doc,
-    data.programmeName,
-    8,
-    y,
-    8,
-    DARK,
-    "bold"
-  );
-
-  y += 5;
-
-  text(
-    doc,
-    `${data.instrument} Training`,
-    8,
-    y,
-    7,
-    GRAY
-  );
-
-  y += 7;
-
-  /* =======================================================
-     PROGRAMME AMOUNT
-     ======================================================= */
-
-  doc.setFillColor(...LIGHT_RED);
-
-  doc.roundedRect(
-    8,
-    y - 1,
-    64,
-    10,
-    1.5,
-    1.5,
-    "F"
-  );
-
-  text(
-    doc,
-    "Programme Amount",
-    11,
-    y + 5.2,
-    7,
-    GRAY
-  );
-
-  rightText(
-    doc,
-    money(data.programmeAmount),
-    69,
-    y + 5.2,
-    8,
-    DARK,
-    "bold"
-  );
-
-  y += 15;
-
-  /* =======================================================
-     PAYMENT PROGRESS
-     ======================================================= */
-
-  y = sectionLabel(
-    doc,
-    "Payment Progress",
-    y
-  );
+  const payments =
+    data.payments &&
+    data.payments.length > 0
+      ? [...data.payments]
+      : [
+          {
+            id:
+              data.receiptNumber,
+            amount:
+              Number(
+                data.amountPaid
+              ),
+            paymentDate:
+              data.paymentDate,
+            paymentMethod:
+              data.paymentMethod,
+            reference:
+              data.reference,
+            isCurrent: true,
+          },
+        ];
 
   /*
-   * Column headers
+   * Sort oldest -> newest.
+   *
+   * The receipt should read:
+   * Payment 1
+   * Payment 2
+   * Payment 3
+   * ...
    */
-  text(
-    doc,
-    "Payment",
-    8,
-    y,
-    6.5,
-    GRAY,
-    "bold"
-  );
-
-  text(
-    doc,
-    "Date",
-    35,
-    y,
-    6.5,
-    GRAY,
-    "bold"
-  );
-
-  rightText(
-    doc,
-    "Amount",
-    72,
-    y,
-    6.5,
-    GRAY,
-    "bold"
-  );
-
-  y += 4;
-
-  drawLine(doc, y);
-
-  y += 6;
-
-  /*
-   * Progressive payments.
-   */
-  payments.forEach(
-    (payment, index) => {
-      const paymentNumber =
-        index + 1;
-
-      /*
-       * Highlight the current/latest payment.
-       */
-      if (payment.isCurrent) {
-        doc.setFillColor(
-          ...LIGHT_RED
-        );
-
-        doc.roundedRect(
-          7,
-          y - 4,
-          66,
-          9,
-          1.2,
-          1.2,
-          "F"
-        );
-      }
-
-      text(
-        doc,
-        `${paymentNumber}${getOrdinalSuffix(
-          paymentNumber
-        )} Payment`,
-        8,
-        y + 1,
-        6.8,
-        payment.isCurrent
-          ? RED
-          : DARK,
-        "bold"
+  payments.sort((a, b) => {
+    const dateCompare =
+      safeText(
+        a.paymentDate
+      ).localeCompare(
+        safeText(
+          b.paymentDate
+        )
       );
 
-      text(
-        doc,
-        formatDate(
-          payment.paymentDate
-        ),
-        35,
-        y + 1,
-        6.2,
-        GRAY
-      );
-
-      rightText(
-        doc,
-        money(payment.amount),
-        72,
-        y + 1,
-        7,
-        payment.isCurrent
-          ? RED
-          : DARK,
-        "bold"
-      );
-
-      y += 10;
+    if (dateCompare !== 0) {
+      return dateCompare;
     }
-  );
 
-  drawLine(doc, y);
+    return 0;
+  });
 
-  y += 7;
+  /*
+   * Determine which payment is the current one.
+   *
+   * If the page supplied isCurrent, respect it.
+   * Otherwise the latest payment becomes current.
+   */
+  let currentIndex =
+    payments.findIndex(
+      (payment) =>
+        payment.isCurrent === true
+    );
 
-  /* =======================================================
-     TOTAL PAID
-     ======================================================= */
+  if (currentIndex < 0) {
+    currentIndex =
+      payments.length - 1;
+  }
 
+  const currentPayment =
+    payments[currentIndex];
+
+  /*
+   * Calculate total paid from the visible history.
+   */
   const totalPaid =
     payments.reduce(
       (total, payment) =>
@@ -654,508 +371,944 @@ export function generatePaymentReceipt(
       0
     );
 
-  text(
-    doc,
-    "Total Paid",
-    8,
-    y,
-    8,
-    DARK,
-    "bold"
-  );
-
-  rightText(
-    doc,
-    money(totalPaid),
-    72,
-    y,
-    8,
-    DARK,
-    "bold"
-  );
-
-  y += 8;
-
-  /* =======================================================
-     BALANCE
-     ======================================================= */
-
   /*
-   * Prefer the explicit balance supplied by the caller.
-   * Fall back to balanceAfterPayment.
+   * The programme amount is authoritative.
    */
-  const currentBalance =
+  const programmeAmount =
     Number(
-      data.balance ??
-        data.balanceAfterPayment ??
-        Math.max(
-          Number(
-            data.programmeAmount
-          ) - totalPaid,
-          0
-        )
-    );
+      data.programmeAmount
+    ) || 0;
 
   /*
-   * This is the important progressive calculation:
+   * Calculate balance ourselves where possible.
    *
-   * Programme amount
-   *       -
-   * All payments to date
-   *       =
-   * Current balance
+   * This prevents a receipt from displaying a stale
+   * balance if the payment history is available.
    */
   const calculatedBalance =
     Math.max(
-      Number(
-        data.programmeAmount
-      ) - totalPaid,
+      programmeAmount -
+        totalPaid,
       0
     );
 
-  const finalBalance =
-    Number.isFinite(currentBalance)
-      ? currentBalance
-      : calculatedBalance;
+  const balanceAfterPayment =
+    Number.isFinite(
+      calculatedBalance
+    )
+      ? calculatedBalance
+      : Number(
+          data.balanceAfterPayment
+        ) || 0;
 
-  doc.setFillColor(...RED);
+  /*
+   * Previous balance is the balance before the current
+   * payment.
+   */
+  const calculatedPreviousBalance =
+    Math.max(
+      programmeAmount -
+        (totalPaid -
+          Number(
+            currentPayment?.amount ||
+              0
+          )),
+      0
+    );
 
-  doc.roundedRect(
-    8,
-    y - 2,
-    64,
-    14,
-    1.8,
-    1.8,
+  const previousBalance =
+    Number.isFinite(
+      calculatedPreviousBalance
+    )
+      ? calculatedPreviousBalance
+      : Number(
+          data.previousBalance
+        ) || 0;
+
+  /*
+   * Estimate receipt height.
+   *
+   * This is deliberately calculated dynamically so a
+   * student with 2 payments doesn't get an unnecessarily
+   * huge receipt, while a student with 8 payments isn't
+   * cut off.
+   */
+  const paymentRowsHeight =
+    payments.length * 9;
+
+  const baseHeight = 158;
+
+  const receiptHeight =
+    Math.max(
+      180,
+      baseHeight +
+        paymentRowsHeight
+    );
+
+  const doc = new jsPDF({
+    orientation: "portrait",
+    unit: "mm",
+    format: [
+      PAGE_WIDTH,
+      receiptHeight,
+    ],
+    compress: true,
+  });
+
+  let y = 7;
+
+  /*
+   * ========================================================
+   * HEADER
+   * ========================================================
+   */
+
+  /*
+   * Small brand mark.
+   */
+  doc.setFillColor(
+    RED[0],
+    RED[1],
+    RED[2]
+  );
+
+  doc.circle(
+    PAGE_WIDTH / 2,
+    y + 4,
+    4,
     "F"
   );
 
-  text(
+  setFont(
     doc,
-    "Current Balance",
-    11,
-    y + 6,
-    7.5,
-    WHITE,
-    "bold"
-  );
-
-  rightText(
-    doc,
-    money(finalBalance),
-    69,
-    y + 6,
-    9,
-    WHITE,
-    "bold"
-  );
-
-  y += 20;
-
-  /* =======================================================
-     CURRENT PAYMENT DETAILS
-     ======================================================= */
-
-  drawLine(doc, y);
-
-  y += 7;
-
-  y = sectionLabel(
-    doc,
-    "Latest Payment",
-    y
-  );
-
-  /*
-   * Payment amount
-   */
-  text(
-    doc,
-    "Amount Paid",
     8,
-    y,
-    7,
-    GRAY
+    "bold",
+    [255, 255, 255]
   );
 
-  rightText(
-    doc,
-    money(data.amountPaid),
-    72,
-    y,
-    7.5,
-    DARK,
-    "bold"
+  doc.text(
+    "S",
+    PAGE_WIDTH / 2,
+    y + 6.1,
+    {
+      align: "center",
+    }
   );
 
-  y += 6;
+  y += 13;
 
-  /*
-   * Previous balance
-   */
-  text(
+  setFont(
     doc,
-    "Previous Balance",
-    8,
-    y,
-    7,
-    GRAY
+    14,
+    "bold",
+    RED
   );
 
-  rightText(
-    doc,
-    money(data.previousBalance),
-    72,
+  doc.text(
+    "Sauti Tamu",
+    PAGE_WIDTH / 2,
     y,
-    7.5,
-    DARK,
-    "bold"
+    {
+      align: "center",
+    }
   );
 
-  y += 6;
+  y += 4.2;
 
-  /*
-   * Payment method
-   */
-  text(
+  setFont(
     doc,
-    "Payment Method",
-    8,
-    y,
-    7,
-    GRAY
+    6.5,
+    "bold",
+    DARK
   );
 
-  rightText(
-    doc,
-    normalisePaymentMethod(
-      data.paymentMethod
-    ),
-    72,
+  doc.text(
+    "PIANO CENTER",
+    PAGE_WIDTH / 2,
     y,
-    7.5,
-    DARK,
-    "bold"
-  );
-
-  y += 6;
-
-  /*
-   * Payment date
-   */
-  text(
-    doc,
-    "Payment Date",
-    8,
-    y,
-    7,
-    GRAY
-  );
-
-  rightText(
-    doc,
-    formatDate(
-      data.paymentDate
-    ),
-    72,
-    y,
-    7.5,
-    DARK,
-    "bold"
-  );
-
-  y += 6;
-
-  /*
-   * Reference
-   */
-  if (data.reference) {
-    text(
-      doc,
-      "Reference",
-      8,
-      y,
-      7,
-      GRAY
-    );
-
-    /*
-     * Long M-Pesa references can become too wide.
-     */
-    const reference =
-      String(data.reference);
-
-    rightText(
-      doc,
-      reference.length > 20
-        ? `${reference.slice(
-            0,
-            20
-          )}…`
-        : reference,
-      72,
-      y,
-      6.8,
-      DARK,
-      "bold"
-    );
-
-    y += 6;
-  }
-
-  y += 3;
-
-  drawLine(doc, y);
-
-  y += 8;
-
-  /* =======================================================
-     PAYMENT CALCULATION
-     ======================================================= */
-
-  text(
-    doc,
-    "Payment Calculation",
-    8,
-    y,
-    7,
-    RED,
-    "bold"
-  );
-
-  y += 6;
-
-  text(
-    doc,
-    "Programme Amount",
-    8,
-    y,
-    7,
-    GRAY
-  );
-
-  rightText(
-    doc,
-    money(data.programmeAmount),
-    72,
-    y,
-    7,
-    DARK,
-    "bold"
+    {
+      align: "center",
+    }
   );
 
   y += 5;
 
-  text(
+  setFont(
     doc,
-    "Less: Total Payments",
-    8,
-    y,
-    7,
+    6.5,
+    "normal",
     GRAY
   );
 
-  rightText(
-    doc,
-    `- ${money(totalPaid)}`,
-    72,
+  doc.text(
+    "Junction Trade Center · Nairobi CBD",
+    PAGE_WIDTH / 2,
     y,
-    7,
-    DARK,
-    "bold"
+    {
+      align: "center",
+    }
   );
 
   y += 7;
 
-  doc.setFillColor(
-    ...LIGHT_GRAY
-  );
+  /*
+   * ========================================================
+   * RECEIPT TITLE
+   * ========================================================
+   */
 
-  doc.roundedRect(
-    8,
-    y - 3,
-    64,
+  drawRoundedBox(
+    doc,
+    MARGIN,
+    y,
+    CONTENT_WIDTH,
     10,
-    1.5,
-    1.5,
-    "F"
-  );
-
-  text(
-    doc,
-    "Balance",
-    11,
-    y + 3.5,
-    7.5,
-    DARK,
-    "bold"
-  );
-
-  rightText(
-    doc,
-    money(finalBalance),
-    69,
-    y + 3.5,
-    8,
     RED,
-    "bold"
+    2
+  );
+
+  setFont(
+    doc,
+    8.5,
+    "bold",
+    [255, 255, 255]
+  );
+
+  doc.text(
+    "Payment Receipt",
+    PAGE_WIDTH / 2,
+    y + 6.5,
+    {
+      align: "center",
+    }
   );
 
   y += 15;
 
-  /* =======================================================
-     FOOTER
-     ======================================================= */
+  /*
+   * Receipt number and date.
+   */
+
+  setFont(
+    doc,
+    6.5,
+    "normal",
+    GRAY
+  );
+
+  doc.text(
+    "Receipt No.",
+    MARGIN,
+    y
+  );
+
+  setFont(
+    doc,
+    7,
+    "bold",
+    DARK
+  );
+
+  doc.text(
+    safeText(
+      data.receiptNumber
+    ),
+    MARGIN,
+    y + 3.8
+  );
+
+  setFont(
+    doc,
+    6.5,
+    "normal",
+    GRAY
+  );
+
+  doc.text(
+    "Payment Date",
+    PAGE_WIDTH - MARGIN,
+    y,
+    {
+      align: "right",
+    }
+  );
+
+  setFont(
+    doc,
+    7,
+    "bold",
+    DARK
+  );
+
+  doc.text(
+    formatDate(
+      currentPayment?.paymentDate ||
+        data.paymentDate
+    ),
+    PAGE_WIDTH - MARGIN,
+    y + 3.8,
+    {
+      align: "right",
+    }
+  );
+
+  y += 10;
 
   drawLine(doc, y);
 
-  y += 8;
+  y += 6;
 
-  text(
+  /*
+   * ========================================================
+   * RECEIVED FROM
+   * ========================================================
+   */
+
+  setFont(
     doc,
-    "Thank you for choosing",
-    40,
-    y,
-    7,
-    GRAY,
-    "normal",
-    "center"
+    6.5,
+    "bold",
+    RED
   );
 
-  y += 4.5;
+  doc.text(
+    "RECEIVED FROM",
+    MARGIN,
+    y
+  );
 
-  text(
+  y += 5;
+
+  setFont(
     doc,
-    "Sauti Tamu Piano Center",
-    40,
-    y,
-    8.5,
-    DARK,
+    9.5,
     "bold",
-    "center"
+    DARK
+  );
+
+  const studentNameLines =
+    doc.splitTextToSize(
+      safeText(
+        data.studentName
+      ),
+      CONTENT_WIDTH
+    );
+
+  doc.text(
+    studentNameLines,
+    MARGIN,
+    y
+  );
+
+  y +=
+    studentNameLines.length * 4;
+
+  if (data.studentEmail) {
+    setFont(
+      doc,
+      6.8,
+      "normal",
+      GRAY
+    );
+
+    const emailLines =
+      doc.splitTextToSize(
+        safeText(
+          data.studentEmail
+        ),
+        CONTENT_WIDTH
+      );
+
+    doc.text(
+      emailLines,
+      MARGIN,
+      y
+    );
+
+    y +=
+      emailLines.length * 3.5;
+  }
+
+  if (data.studentPhone) {
+    setFont(
+      doc,
+      6.8,
+      "normal",
+      GRAY
+    );
+
+    doc.text(
+      safeText(
+        data.studentPhone
+      ),
+      MARGIN,
+      y
+    );
+
+    y += 4;
+  }
+
+  y += 2;
+
+  drawLine(doc, y);
+
+  y += 6;
+
+  /*
+   * ========================================================
+   * PROGRAMME
+   * ========================================================
+   */
+
+  setFont(
+    doc,
+    6.5,
+    "bold",
+    RED
+  );
+
+  doc.text(
+    "PROGRAMME",
+    MARGIN,
+    y
+  );
+
+  y += 5;
+
+  setFont(
+    doc,
+    8,
+    "bold",
+    DARK
+  );
+
+  const programmeLines =
+    doc.splitTextToSize(
+      safeText(
+        data.programmeName
+      ),
+      CONTENT_WIDTH
+    );
+
+  doc.text(
+    programmeLines,
+    MARGIN,
+    y
+  );
+
+  y +=
+    programmeLines.length * 3.8;
+
+  setFont(
+    doc,
+    6.8,
+    "normal",
+    GRAY
+  );
+
+  doc.text(
+    `${safeText(
+      data.instrument
+    )} Training`,
+    MARGIN,
+    y
+  );
+
+  y += 5;
+
+  /*
+   * Programme amount.
+   */
+
+  drawRoundedBox(
+    doc,
+    MARGIN,
+    y,
+    CONTENT_WIDTH,
+    11,
+    SOFT,
+    2
+  );
+
+  setFont(
+    doc,
+    6.5,
+    "normal",
+    GRAY
+  );
+
+  doc.text(
+    "Programme Amount",
+    MARGIN + 4,
+    y + 6.8
+  );
+
+  setFont(
+    doc,
+    9,
+    "bold",
+    DARK
+  );
+
+  doc.text(
+    formatCurrency(
+      programmeAmount
+    ),
+    PAGE_WIDTH - MARGIN - 4,
+    y + 6.8,
+    {
+      align: "right",
+    }
+  );
+
+  y += 16;
+
+  /*
+   * ========================================================
+   * PAYMENT PROGRESS
+   * ========================================================
+   */
+
+  setFont(
+    doc,
+    6.5,
+    "bold",
+    RED
+  );
+
+  doc.text(
+    "PAYMENT PROGRESS",
+    MARGIN,
+    y
+  );
+
+  y += 5;
+
+  /*
+   * Header row.
+   */
+
+  drawRoundedBox(
+    doc,
+    MARGIN,
+    y,
+    CONTENT_WIDTH,
+    7,
+    SOFT,
+    1.5
+  );
+
+  setFont(
+    doc,
+    5.8,
+    "bold",
+    GRAY
+  );
+
+  doc.text(
+    "PAYMENT",
+    MARGIN + 3,
+    y + 4.6
+  );
+
+  doc.text(
+    "DATE",
+    MARGIN + 29,
+    y + 4.6
+  );
+
+  doc.text(
+    "AMOUNT",
+    PAGE_WIDTH - MARGIN - 3,
+    y + 4.6,
+    {
+      align: "right",
+    }
+  );
+
+  y += 9;
+
+  /*
+   * Payment rows.
+   */
+
+  payments.forEach(
+    (payment, index) => {
+      const rowHeight = 8.5;
+
+      const isCurrent =
+        payment.isCurrent ===
+          true ||
+        index === currentIndex;
+
+      if (isCurrent) {
+        drawRoundedBox(
+          doc,
+          MARGIN,
+          y - 1,
+          CONTENT_WIDTH,
+          rowHeight,
+          [253, 239, 241],
+          1.5
+        );
+      }
+
+      setFont(
+        doc,
+        6.5,
+        "bold",
+        isCurrent
+          ? RED
+          : DARK
+      );
+
+      doc.text(
+        `Payment ${index + 1}`,
+        MARGIN + 3,
+        y + 4
+      );
+
+      setFont(
+        doc,
+        5.9,
+        "normal",
+        GRAY
+      );
+
+      doc.text(
+        formatDate(
+          payment.paymentDate
+        ),
+        MARGIN + 29,
+        y + 4
+      );
+
+      setFont(
+        doc,
+        6.7,
+        "bold",
+        isCurrent
+          ? RED
+          : DARK
+      );
+
+      doc.text(
+        formatCurrency(
+          Number(
+            payment.amount
+          )
+        ),
+        PAGE_WIDTH - MARGIN - 3,
+        y + 4,
+        {
+          align: "right",
+        }
+      );
+
+      /*
+       * Payment method / reference sits beneath the
+       * main row only when useful.
+       */
+      const methodText =
+        cleanPaymentMethod(
+          payment.paymentMethod
+        );
+
+      if (
+        payment.reference
+      ) {
+        setFont(
+          doc,
+          5.2,
+          "normal",
+          GRAY
+        );
+
+        doc.text(
+          `${methodText} · Ref: ${safeText(
+            payment.reference
+          )}`,
+          MARGIN + 3,
+          y + 7
+        );
+      } else {
+        setFont(
+          doc,
+          5.2,
+          "normal",
+          GRAY
+        );
+
+        doc.text(
+          methodText,
+          MARGIN + 3,
+          y + 7
+        );
+      }
+
+      y += rowHeight;
+    }
+  );
+
+  /*
+   * ========================================================
+   * PAYMENT TOTALS
+   * ========================================================
+   */
+
+  y += 2;
+
+  drawLine(doc, y);
+
+  y += 6;
+
+  drawLabelValue(
+    doc,
+    "Total paid to date",
+    formatCurrency(
+      totalPaid
+    ),
+    y
   );
 
   y += 6;
 
-  text(
+  /*
+   * Current balance box.
+   */
+
+  drawRoundedBox(
     doc,
-    "Junction Trade Center · Nairobi CBD",
-    40,
+    MARGIN,
     y,
+    CONTENT_WIDTH,
+    15,
+    RED,
+    2
+  );
+
+  setFont(
+    doc,
     6.5,
-    GRAY,
-    "normal",
-    "center"
+    "bold",
+    [255, 255, 255]
+  );
+
+  doc.text(
+    "CURRENT BALANCE",
+    MARGIN + 4,
+    y + 6
+  );
+
+  setFont(
+    doc,
+    11,
+    "bold",
+    [255, 255, 255]
+  );
+
+  doc.text(
+    formatCurrency(
+      balanceAfterPayment
+    ),
+    PAGE_WIDTH - MARGIN - 4,
+    y + 9,
+    {
+      align: "right",
+    }
+  );
+
+  y += 20;
+
+  /*
+   * ========================================================
+   * LATEST PAYMENT DETAILS
+   * ========================================================
+   */
+
+  setFont(
+    doc,
+    6.5,
+    "bold",
+    RED
+  );
+
+  doc.text(
+    "LATEST PAYMENT",
+    MARGIN,
+    y
+  );
+
+  y += 6;
+
+  drawLabelValue(
+    doc,
+    "Amount received",
+    formatCurrency(
+      Number(
+        currentPayment?.amount ||
+          data.amountPaid
+      )
+    ),
+    y
+  );
+
+  y += 5.5;
+
+  drawLabelValue(
+    doc,
+    "Payment method",
+    cleanPaymentMethod(
+      currentPayment?.paymentMethod ||
+        data.paymentMethod
+    ),
+    y
+  );
+
+  y += 5.5;
+
+  if (
+    currentPayment?.reference ||
+    data.reference
+  ) {
+    drawLabelValue(
+      doc,
+      "Reference",
+      safeText(
+        currentPayment?.reference ||
+          data.reference
+      ),
+      y
+    );
+
+    y += 5.5;
+  }
+
+  drawLabelValue(
+    doc,
+    "Balance before payment",
+    formatCurrency(
+      previousBalance
+    ),
+    y
+  );
+
+  y += 7;
+
+  /*
+   * ========================================================
+   * PAYMENT STATUS
+   * ========================================================
+   */
+
+  drawRoundedBox(
+    doc,
+    MARGIN,
+    y,
+    CONTENT_WIDTH,
+    10,
+    [239, 249, 243],
+    2
+  );
+
+  setFont(
+    doc,
+    7,
+    "bold",
+    GREEN
+  );
+
+  doc.text(
+    balanceAfterPayment <= 0
+      ? "Programme fully paid"
+      : "Payment successfully received",
+    PAGE_WIDTH / 2,
+    y + 6.3,
+    {
+      align: "center",
+    }
+  );
+
+  y += 16;
+
+  /*
+   * ========================================================
+   * FOOTER
+   * ========================================================
+   */
+
+  drawLine(doc, y);
+
+  y += 6;
+
+  setFont(
+    doc,
+    7,
+    "bold",
+    DARK
+  );
+
+  doc.text(
+    "Thank you for choosing Sauti Tamu.",
+    PAGE_WIDTH / 2,
+    y,
+    {
+      align: "center",
+    }
   );
 
   y += 4;
 
-  text(
+  setFont(
     doc,
-    "Piano & Acoustic Guitar Training",
-    40,
-    y,
-    6.5,
-    GRAY,
+    5.8,
     "normal",
-    "center"
+    GRAY
   );
+
+  doc.text(
+    "Learn with confidence. Grow with music.",
+    PAGE_WIDTH / 2,
+    y,
+    {
+      align: "center",
+    }
+  );
+
+  y += 5;
+
+  setFont(
+    doc,
+    5.5,
+    "normal",
+    GRAY
+  );
+
+  doc.text(
+    "Junction Trade Center · 4th Floor · Room F401",
+    PAGE_WIDTH / 2,
+    y,
+    {
+      align: "center",
+    }
+  );
+
+  y += 3.5;
+
+  doc.text(
+    "Above Equity Bank Tearoom Branch · Nairobi CBD",
+    PAGE_WIDTH / 2,
+    y,
+    {
+      align: "center",
+    }
+  );
+
+  /*
+   * ========================================================
+   * RETURN PDF DOCUMENT
+   * ========================================================
+   */
 
   return doc;
 }
-
-/* =========================================================
-   ORDINAL SUFFIX
-   ========================================================= */
-
-function getOrdinalSuffix(
-  number: number
-) {
-  const mod100 = number % 100;
-
-  if (
-    mod100 >= 11 &&
-    mod100 <= 13
-  ) {
-    return "th";
-  }
-
-  switch (number % 10) {
-    case 1:
-      return "st";
-
-    case 2:
-      return "nd";
-
-    case 3:
-      return "rd";
-
-    default:
-      return "th";
-  }
-}
-
-/* =========================================================
-   DOWNLOAD RECEIPT
-   ========================================================= */
-
-export function downloadPaymentReceipt(
-  data: PaymentReceiptData
-) {
-  const doc =
-    generatePaymentReceipt(
-      data
-    );
-
-  doc.save(
-    `Sauti-Tamu-Receipt-${data.receiptNumber}.pdf`
-  );
-}
-
-/* =========================================================
-   GET RECEIPT BLOB
-   =========================================================
- *
- * Used by:
- *
- * - View Receipt
- * - Email Receipt
- * - Share Receipt
- */
-
-export function getPaymentReceiptBlob(
-  data: PaymentReceiptData
-) {
-  const doc =
-    generatePaymentReceipt(
-      data
-    );
-
-  return doc.output("blob");
-}
-
-/* =========================================================
-   GET RECEIPT BLOB URL
-   =========================================================
- *
- * Useful for opening the receipt in a browser tab.
- */
-
-export function getPaymentReceiptBlobUrl(
-  data: PaymentReceiptData
-) {
-  const blob =
-    getPaymentReceiptBlob(
-      data
-    );
-
-  return URL.createObjectURL(
-    blob
-  );
-}
-
-/* =========================================================
-   DEFAULT EXPORT
-   ========================================================= */
-
-export default generatePaymentReceipt;
