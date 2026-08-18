@@ -9,6 +9,7 @@ import {
   ChevronDown,
   Clock3,
   Download,
+  Eye,
   Mail,
   MessageCircle,
   Phone,
@@ -119,14 +120,46 @@ type Filter =
   | "paused"
   | "inactive";
 
+/*
+ * =========================================================
+ * RECEIPT HISTORY TYPE
+ * =========================================================
+ *
+ * Kept locally so this page can pass progressive payment
+ * history to the receipt generator.
+ */
+
+type ReceiptHistoryItem = {
+  id: string;
+  amount: number;
+  paymentDate: string;
+  paymentMethod: PaymentMethod;
+  reference?: string | null;
+  isCurrent: boolean;
+};
+
+type ReceiptDataWithHistory =
+  PaymentReceiptData & {
+    previousBalance: number;
+    balanceAfterPayment: number;
+    balance: number;
+    payments: ReceiptHistoryItem[];
+  };
+
 const NAIROBI_TIME_ZONE = "Africa/Nairobi";
+
+/*
+ * =========================================================
+ * FORMATTING
+ * =========================================================
+ */
 
 function formatCurrency(amount: number) {
   return new Intl.NumberFormat("en-KE", {
     style: "currency",
     currency: "KES",
     maximumFractionDigits: 0,
-  }).format(amount);
+  }).format(Number(amount) || 0);
 }
 
 function formatDate(dateString: string) {
@@ -165,7 +198,9 @@ function getTodayKey() {
   }).format(new Date());
 }
 
-function calculateDaysRemaining(endDate: string) {
+function calculateDaysRemaining(
+  endDate: string
+) {
   const today = new Date(
     `${getTodayKey()}T00:00:00+03:00`
   );
@@ -193,6 +228,7 @@ function addThreeMonths(dateString: string) {
   const month = String(
     date.getMonth() + 1
   ).padStart(2, "0");
+
   const day = String(
     date.getDate()
   ).padStart(2, "0");
@@ -210,14 +246,24 @@ function initials(name: string) {
     .toUpperCase();
 }
 
-function instrumentName(instrument: Instrument) {
+function instrumentName(
+  instrument: Instrument
+) {
   return (
     instrument.charAt(0).toUpperCase() +
     instrument.slice(1)
   );
 }
 
-function studentStatusLabel(status: StudentStatus) {
+/*
+ * =========================================================
+ * STATUS HELPERS
+ * =========================================================
+ */
+
+function studentStatusLabel(
+  status: StudentStatus
+) {
   switch (status) {
     case "active":
       return "Active";
@@ -232,7 +278,9 @@ function studentStatusLabel(status: StudentStatus) {
   }
 }
 
-function studentStatusClasses(status: StudentStatus) {
+function studentStatusClasses(
+  status: StudentStatus
+) {
   switch (status) {
     case "active":
       return "bg-green-50 text-green-700";
@@ -297,6 +345,12 @@ function paymentStatusClasses(
   }
 }
 
+/*
+ * =========================================================
+ * PAYMENT HELPERS
+ * =========================================================
+ */
+
 function getNextPayment(
   schedules: PaymentSchedule[]
 ) {
@@ -313,7 +367,9 @@ function getNextPayment(
   return activeSchedules[0] ?? null;
 }
 
-function getTotalPaid(payments: Payment[]) {
+function getTotalPaid(
+  payments: Payment[]
+) {
   return payments.reduce(
     (total, payment) =>
       total + Number(payment.amount),
@@ -383,98 +439,166 @@ function getPaymentFollowUpLabel(
  * =========================================================
  */
 
-function createReceiptNumber(paymentId: string) {
+function createReceiptNumber(
+  paymentId: string
+) {
   return `ST-${paymentId
     .replace(/-/g, "")
     .slice(0, 10)
     .toUpperCase()}`;
 }
 
-function getPaymentBalanceAfter(
-  enrollment: Enrollment,
-  payments: Payment[],
-  payment: Payment
-) {
-  const paymentIndex =
-    payments.findIndex(
-      (item) => item.id === payment.id
-    );
-
-  if (paymentIndex === -1) {
-    return Math.max(
-      Number(enrollment.total_fee) -
-        Number(payment.amount),
-      0
-    );
-  }
-
-  const paymentsUpToThisPayment =
-    payments.filter((item) => {
-      if (item.id === payment.id) {
-        return true;
-      }
-
-      if (
-        item.payment_date <
-        payment.payment_date
-      ) {
-        return true;
-      }
-
-      if (
-        item.payment_date >
-        payment.payment_date
-      ) {
-        return false;
-      }
-
-      /*
-       * Payments on the same date.
-       *
-       * If created_at exists, use it to establish
-       * the actual payment order.
-       */
-      if (
-        item.created_at &&
-        payment.created_at
-      ) {
-        return (
-          item.created_at <=
-          payment.created_at
-        );
-      }
-
-      return (
-        payments.indexOf(item) <=
-        paymentIndex
-      );
-    });
-
-  const paid =
-    paymentsUpToThisPayment.reduce(
-      (sum, item) =>
-        sum + Number(item.amount),
-      0
-    );
-
-  return Math.max(
-    Number(enrollment.total_fee) - paid,
-    0
-  );
-}
+/*
+ * Build the receipt using payment history up to the
+ * selected payment.
+ *
+ * Example:
+ *
+ * Payment 1:
+ * Programme 26,850
+ * Payment 1  2,000
+ * Balance   24,850
+ *
+ * Payment 2:
+ * Programme 26,850
+ * Payment 1  2,000
+ * Payment 2  5,000
+ * Balance   19,850
+ */
 
 function buildReceiptData(
   record: StudentRecord,
-  payment: Payment,
-  balanceAfter?: number
-): PaymentReceiptData | null {
+  payment: Payment
+): ReceiptDataWithHistory | null {
   if (!record.enrollment) {
     return null;
   }
 
+  const paymentsChronological = [
+    ...record.payments,
+  ].sort((a, b) => {
+    const dateDifference =
+      a.payment_date.localeCompare(
+        b.payment_date
+      );
+
+    if (dateDifference !== 0) {
+      return dateDifference;
+    }
+
+    if (
+      a.created_at &&
+      b.created_at
+    ) {
+      return a.created_at.localeCompare(
+        b.created_at
+      );
+    }
+
+    return 0;
+  });
+
+  /*
+   * Make sure the current payment is included.
+   * This matters immediately after recording a payment.
+   */
+  if (
+    !paymentsChronological.some(
+      (item) =>
+        item.id === payment.id
+    )
+  ) {
+    paymentsChronological.push(
+      payment
+    );
+
+    paymentsChronological.sort(
+      (a, b) => {
+        const dateDifference =
+          a.payment_date.localeCompare(
+            b.payment_date
+          );
+
+        if (dateDifference !== 0) {
+          return dateDifference;
+        }
+
+        if (
+          a.created_at &&
+          b.created_at
+        ) {
+          return a.created_at.localeCompare(
+            b.created_at
+          );
+        }
+
+        return 0;
+      }
+    );
+  }
+
+  const currentIndex =
+    paymentsChronological.findIndex(
+      (item) =>
+        item.id === payment.id
+    );
+
+  /*
+   * Only show payments up to the payment represented
+   * by this receipt.
+   */
+  const paymentsUpToCurrent =
+    paymentsChronological.slice(
+      0,
+      currentIndex + 1
+    );
+
+  const previousPaymentsTotal =
+    paymentsUpToCurrent
+      .slice(0, currentIndex)
+      .reduce(
+        (sum, item) =>
+          sum + Number(item.amount),
+        0
+      );
+
+  const previousBalance =
+    Math.max(
+      Number(
+        record.enrollment.total_fee
+      ) -
+        previousPaymentsTotal,
+      0
+    );
+
+  const balanceAfterPayment =
+    Math.max(
+      previousBalance -
+        Number(payment.amount),
+      0
+    );
+
+  const paymentHistory: ReceiptHistoryItem[] =
+    paymentsUpToCurrent.map(
+      (item, index) => ({
+        id: item.id,
+        amount: Number(item.amount),
+        paymentDate:
+          item.payment_date,
+        paymentMethod:
+          item.payment_method,
+        reference:
+          item.reference,
+        isCurrent:
+          index === currentIndex,
+      })
+    );
+
   return {
     receiptNumber:
-      createReceiptNumber(payment.id),
+      createReceiptNumber(
+        payment.id
+      ),
 
     studentName:
       record.student.full_name,
@@ -483,28 +607,32 @@ function buildReceiptData(
       record.student.email,
 
     studentPhone:
-      record.student.whatsapp_number,
+      record.student
+        .whatsapp_number,
 
     programmeName:
-      record.enrollment.programme_name,
+      record.enrollment
+        .programme_name,
 
     instrument: instrumentName(
-      record.enrollment.instrument
+      record.enrollment
+        .instrument
     ),
 
     programmeAmount:
-      Number(record.enrollment.total_fee),
+      Number(
+        record.enrollment.total_fee
+      ),
+
+    previousBalance,
 
     amountPaid:
       Number(payment.amount),
 
+    balanceAfterPayment,
+
     balance:
-      balanceAfter ??
-      getPaymentBalanceAfter(
-        record.enrollment,
-        record.payments,
-        payment
-      ),
+      balanceAfterPayment,
 
     paymentMethod:
       payment.payment_method,
@@ -514,6 +642,9 @@ function buildReceiptData(
 
     paymentDate:
       payment.payment_date,
+
+    payments:
+      paymentHistory,
   };
 }
 
@@ -563,15 +694,13 @@ export default function AdminStudentsPage() {
   const [paymentReference, setPaymentReference] =
     useState("");
 
-  /*
-   * Receipt success state.
-   *
-   * We keep the receipt available after payment so
-   * the user can explicitly download it.
-   */
-
   const [lastReceipt, setLastReceipt] =
-    useState<PaymentReceiptData | null>(
+    useState<ReceiptDataWithHistory | null>(
+      null
+    );
+
+  const [viewingReceipt, setViewingReceipt] =
+    useState<ReceiptDataWithHistory | null>(
       null
     );
 
@@ -597,7 +726,9 @@ export default function AdminStudentsPage() {
     useState<Instrument>("piano");
 
   const [programmeName, setProgrammeName] =
-    useState("3 Month Training Programme");
+    useState(
+      "3 Month Training Programme"
+    );
 
   const [startDate, setStartDate] =
     useState(getTodayKey());
@@ -646,11 +777,12 @@ export default function AdminStudentsPage() {
   const numericNextPayment =
     Number(nextPaymentAmount) || 0;
 
-  const remainingAfterInitial = Math.max(
-    numericTotalFee -
-      numericInitialPayment,
-    0
-  );
+  const remainingAfterInitial =
+    Math.max(
+      numericTotalFee -
+        numericInitialPayment,
+      0
+    );
 
   const remainingAfterNextPayment =
     Math.max(
@@ -671,7 +803,8 @@ export default function AdminStudentsPage() {
         date.getDate() + 14
       );
 
-      const year = date.getFullYear();
+      const year =
+        date.getFullYear();
 
       const month = String(
         date.getMonth() + 1
@@ -685,7 +818,10 @@ export default function AdminStudentsPage() {
         `${year}-${month}-${day}`
       );
     }
-  }, [startDate, nextPaymentDueDate]);
+  }, [
+    startDate,
+    nextPaymentDueDate,
+  ]);
 
   /*
    * =========================================================
@@ -784,7 +920,8 @@ export default function AdminStudentsPage() {
     }
 
     const students =
-      (studentsData ?? []) as Student[];
+      (studentsData ??
+        []) as Student[];
 
     if (students.length === 0) {
       setRecords([]);
@@ -795,13 +932,15 @@ export default function AdminStudentsPage() {
       return;
     }
 
-    const studentIds = Array.from(
-      new Set(
-        students.map(
-          (student) => student.id
+    const studentIds =
+      Array.from(
+        new Set(
+          students.map(
+            (student) =>
+              student.id
+          )
         )
-      )
-    );
+      );
 
     const [
       enrollmentsResult,
@@ -824,7 +963,10 @@ export default function AdminStudentsPage() {
             updated_at
           `
         )
-        .in("student_id", studentIds)
+        .in(
+          "student_id",
+          studentIds
+        )
         .order("created_at", {
           ascending: false,
         }),
@@ -845,7 +987,10 @@ export default function AdminStudentsPage() {
             created_at
           `
         )
-        .in("student_id", studentIds)
+        .in(
+          "student_id",
+          studentIds
+        )
         .order("payment_date", {
           ascending: false,
         }),
@@ -1012,6 +1157,145 @@ export default function AdminStudentsPage() {
 
   /*
    * =========================================================
+   * GET SINGLE STUDENT
+   * =========================================================
+   */
+
+  async function getStudentRecord(
+    studentId: string
+  ): Promise<StudentRecord | null> {
+    const {
+      data: studentData,
+      error: studentError,
+    } = await supabase
+      .from("students")
+      .select(
+        `
+          id,
+          lead_id,
+          full_name,
+          email,
+          whatsapp_number,
+          status,
+          notes,
+          created_at,
+          updated_at
+        `
+      )
+      .eq("id", studentId)
+      .single();
+
+    if (
+      studentError ||
+      !studentData
+    ) {
+      return null;
+    }
+
+    const {
+      data: enrollmentData,
+    } = await supabase
+      .from("student_enrollments")
+      .select(
+        `
+          id,
+          student_id,
+          instrument,
+          programme_name,
+          start_date,
+          end_date,
+          total_fee,
+          status,
+          notes,
+          created_at,
+          updated_at
+        `
+      )
+      .eq(
+        "student_id",
+        studentId
+      )
+      .order("created_at", {
+        ascending: false,
+      });
+
+    const enrollment =
+      (
+        (enrollmentData ??
+          []) as Enrollment[]
+      )[0] ?? null;
+
+    let schedules: PaymentSchedule[] =
+      [];
+
+    if (enrollment) {
+      const {
+        data: scheduleData,
+      } = await supabase
+        .from("payment_schedule")
+        .select(
+          `
+            id,
+            enrollment_id,
+            amount_due,
+            due_date,
+            follow_up_date,
+            status,
+            notes
+          `
+        )
+        .eq(
+          "enrollment_id",
+          enrollment.id
+        )
+        .order("due_date", {
+          ascending: true,
+        });
+
+      schedules =
+        (scheduleData ??
+          []) as PaymentSchedule[];
+    }
+
+    const {
+      data: paymentData,
+    } = await supabase
+      .from("payments")
+      .select(
+        `
+          id,
+          student_id,
+          enrollment_id,
+          payment_schedule_id,
+          amount,
+          payment_date,
+          payment_method,
+          reference,
+          notes,
+          created_at
+        `
+      )
+      .eq(
+        "student_id",
+        studentId
+      )
+      .order("payment_date", {
+        ascending: false,
+      });
+
+    return {
+      student:
+        studentData as Student,
+      enrollment,
+      schedules,
+      payments:
+        (paymentData ??
+          []) as Payment[],
+    };
+  }
+
+  /*
+   * =========================================================
    * ADD STUDENT
    * =========================================================
    */
@@ -1157,7 +1441,7 @@ export default function AdminStudentsPage() {
 
     try {
       /*
-       * 1. CREATE STUDENT
+       * 1. STUDENT
        */
 
       const {
@@ -1168,7 +1452,8 @@ export default function AdminStudentsPage() {
         .insert({
           full_name: name,
           email,
-          whatsapp_number: whatsapp,
+          whatsapp_number:
+            whatsapp,
           status: "active",
           notes: notes || null,
         })
@@ -1195,7 +1480,7 @@ export default function AdminStudentsPage() {
         createdStudent.id;
 
       /*
-       * 2. CREATE ENROLLMENT
+       * 2. ENROLLMENT
        */
 
       const {
@@ -1361,12 +1646,9 @@ export default function AdminStudentsPage() {
           newlyCreatedRecord
         );
 
-        /*
-         * If there was an initial payment,
-         * expose its receipt immediately.
-         */
-
-        if (createdInitialPayment) {
+        if (
+          createdInitialPayment
+        ) {
           const receipt =
             buildReceiptData(
               {
@@ -1375,17 +1657,13 @@ export default function AdminStudentsPage() {
                   createdInitialPayment,
                 ],
               },
-              createdInitialPayment,
-              Math.max(
-                Number(
-                  createdEnrollment.total_fee
-                ) - initial,
-                0
-              )
+              createdInitialPayment
             );
 
           if (receipt) {
-            setLastReceipt(receipt);
+            setLastReceipt(
+              receipt
+            );
           }
         }
       }
@@ -1397,7 +1675,9 @@ export default function AdminStudentsPage() {
 
       if (createdEnrollmentId) {
         await supabase
-          .from("student_enrollments")
+          .from(
+            "student_enrollments"
+          )
           .delete()
           .eq(
             "id",
@@ -1439,146 +1719,11 @@ export default function AdminStudentsPage() {
 
   /*
    * =========================================================
-   * GET SINGLE STUDENT
+   * RECEIPT ACTIONS
    * =========================================================
    */
 
-  async function getStudentRecord(
-    studentId: string
-  ): Promise<StudentRecord | null> {
-    const {
-      data: studentData,
-      error: studentError,
-    } = await supabase
-      .from("students")
-      .select(
-        `
-          id,
-          lead_id,
-          full_name,
-          email,
-          whatsapp_number,
-          status,
-          notes,
-          created_at,
-          updated_at
-        `
-      )
-      .eq("id", studentId)
-      .single();
-
-    if (studentError || !studentData) {
-      return null;
-    }
-
-    const {
-      data: enrollmentData,
-    } = await supabase
-      .from("student_enrollments")
-      .select(
-        `
-          id,
-          student_id,
-          instrument,
-          programme_name,
-          start_date,
-          end_date,
-          total_fee,
-          status,
-          notes,
-          created_at,
-          updated_at
-        `
-      )
-      .eq(
-        "student_id",
-        studentId
-      )
-      .order("created_at", {
-        ascending: false,
-      });
-
-    const enrollment =
-      ((enrollmentData ??
-        []) as Enrollment[])[0] ??
-      null;
-
-    let schedules: PaymentSchedule[] =
-      [];
-
-    if (enrollment) {
-      const {
-        data: scheduleData,
-      } = await supabase
-        .from("payment_schedule")
-        .select(
-          `
-            id,
-            enrollment_id,
-            amount_due,
-            due_date,
-            follow_up_date,
-            status,
-            notes
-          `
-        )
-        .eq(
-          "enrollment_id",
-          enrollment.id
-        )
-        .order("due_date", {
-          ascending: true,
-        });
-
-      schedules =
-        (scheduleData ??
-          []) as PaymentSchedule[];
-    }
-
-    const {
-      data: paymentData,
-    } = await supabase
-      .from("payments")
-      .select(
-        `
-          id,
-          student_id,
-          enrollment_id,
-          payment_schedule_id,
-          amount,
-          payment_date,
-          payment_method,
-          reference,
-          notes,
-          created_at
-        `
-      )
-      .eq(
-        "student_id",
-        studentId
-      )
-      .order("payment_date", {
-        ascending: false,
-      });
-
-    return {
-      student:
-        studentData as Student,
-      enrollment,
-      schedules,
-      payments:
-        (paymentData ??
-          []) as Payment[],
-    };
-  }
-
-  /*
-   * =========================================================
-   * DOWNLOAD RECEIPT
-   * =========================================================
-   */
-
-  function downloadReceipt(
+  function getReceiptData(
     record: StudentRecord,
     payment: Payment
   ) {
@@ -1593,119 +1738,139 @@ export default function AdminStudentsPage() {
         "This student does not have a programme attached to the payment."
       );
 
-      return;
+      return null;
     }
 
-    generatePaymentReceipt(
+    return receipt;
+  }
+
+  function downloadReceipt(
+    record: StudentRecord,
+    payment: Payment
+  ) {
+    const receipt =
+      getReceiptData(
+        record,
+        payment
+      );
+
+    if (!receipt) return;
+
+    /*
+     * generatePaymentReceipt returns the jsPDF
+     * document. It does not save automatically.
+     */
+    const doc =
+      generatePaymentReceipt(
+        receipt as PaymentReceiptData
+      );
+
+    doc.save(
+      `Sauti-Tamu-Receipt-${receipt.receiptNumber}.pdf`
+    );
+  }
+
+  function viewReceipt(
+    record: StudentRecord,
+    payment: Payment
+  ) {
+    const receipt =
+      getReceiptData(
+        record,
+        payment
+      );
+
+    if (!receipt) return;
+
+    setViewingReceipt(
       receipt
     );
   }
 
-  /*
-   * =========================================================
-   * FILTERING
-   * =========================================================
-   */
+  function downloadLastReceipt() {
+    if (!lastReceipt) return;
 
-  const filteredRecords =
-    useMemo(() => {
-      const query =
-        search.trim().toLowerCase();
-
-      return records.filter(
-        (record) => {
-          if (
-            filter !== "all" &&
-            record.student.status !==
-              filter
-          ) {
-            return false;
-          }
-
-          if (!query) {
-            return true;
-          }
-
-          const searchable = [
-            record.student.full_name,
-            record.student.email,
-            record.student.whatsapp_number,
-            record.enrollment?.instrument ??
-              "",
-            record.enrollment
-              ?.programme_name ?? "",
-          ]
-            .join(" ")
-            .toLowerCase();
-
-          return searchable.includes(
-            query
-          );
-        }
+    const doc =
+      generatePaymentReceipt(
+        lastReceipt as PaymentReceiptData
       );
-    }, [records, search, filter]);
 
-  /*
-   * =========================================================
-   * STATS
-   * =========================================================
-   */
+    doc.save(
+      `Sauti-Tamu-Receipt-${lastReceipt.receiptNumber}.pdf`
+    );
+  }
 
-  const stats = useMemo(() => {
-    const active =
-      records.filter(
-        (record) =>
-          record.student.status ===
-          "active"
-      ).length;
+  function emailReceipt(
+    record: StudentRecord,
+    payment: Payment
+  ) {
+    const receipt =
+      getReceiptData(
+        record,
+        payment
+      );
 
-    const completed =
-      records.filter(
-        (record) =>
-          record.student.status ===
-          "completed"
-      ).length;
+    if (!receipt) return;
 
-    const endingSoon =
-      records.filter((record) => {
-        if (
-          !record.enrollment ||
-          record.student.status !==
-            "active"
-        ) {
-          return false;
-        }
+    const totalPaid =
+      receipt.payments.reduce(
+        (sum, item) =>
+          sum +
+          Number(item.amount),
+        0
+      );
 
-        const days =
-          calculateDaysRemaining(
-            record.enrollment.end_date
-          );
+    const subject =
+      `Sauti Tamu Payment Receipt ${receipt.receiptNumber}`;
 
-        return days >= 0 && days <= 30;
-      }).length;
+    const body = [
+      `Dear ${receipt.studentName},`,
+      "",
+      "Thank you for your payment to Sauti Tamu Piano Center.",
+      "",
+      `Receipt No.: ${receipt.receiptNumber}`,
+      `Programme: ${receipt.programmeName}`,
+      `Instrument: ${receipt.instrument}`,
+      "",
+      `Programme Amount: ${formatCurrency(
+        receipt.programmeAmount
+      )}`,
+      `Latest Payment: ${formatCurrency(
+        receipt.amountPaid
+      )}`,
+      `Total Paid To Date: ${formatCurrency(
+        totalPaid
+      )}`,
+      `Current Balance: ${formatCurrency(
+        receipt.balanceAfterPayment
+      )}`,
+      "",
+      `Payment Method: ${receipt.paymentMethod}`,
+      `Payment Date: ${formatDate(
+        receipt.paymentDate
+      )}`,
+      receipt.reference
+        ? `Reference: ${receipt.reference}`
+        : "",
+      "",
+      "Your latest payment receipt reflects your payment progress to date.",
+      "",
+      "Kind regards,",
+      "Sauti Tamu Piano Center",
+      "Junction Trade Center · Nairobi CBD",
+    ]
+      .filter(Boolean)
+      .join("\n");
 
-    const paymentAttention =
-      records.filter((record) => {
-        const next =
-          getNextPayment(
-            record.schedules
-          );
-
-        return (
-          next?.status === "due" ||
-          next?.status === "overdue" ||
-          next?.status ===
-            "partially_paid"
-        );
-      }).length;
-
-    return {
-      active,
-      completed,
-      endingSoon,
-      paymentAttention,
-    };
-  }, [records]);
+    window.location.href =
+      `mailto:${encodeURIComponent(
+        receipt.studentEmail
+      )}?subject=${encodeURIComponent(
+        subject
+      )}&body=${encodeURIComponent(
+        body
+      )}`;
+  }
 
   /*
    * =========================================================
@@ -1873,25 +2038,29 @@ export default function AdminStudentsPage() {
     const newPayment =
       data as Payment;
 
-    const newBalance =
-      Math.max(
-        balance - amount,
-        0
-      );
-
     /*
-     * Prepare receipt immediately.
+     * Build the receipt immediately using the
+     * OLD history + NEW payment.
      */
+    const recordForReceipt: StudentRecord =
+      {
+        ...selectedStudent,
+        payments: [
+          ...selectedStudent.payments,
+          newPayment,
+        ],
+      };
 
     const receipt =
       buildReceiptData(
-        selectedStudent,
-        newPayment,
-        newBalance
+        recordForReceipt,
+        newPayment
       );
 
     if (receipt) {
-      setLastReceipt(receipt);
+      setLastReceipt(
+        receipt
+      );
     }
 
     setSelectedStudent(
@@ -1921,7 +2090,9 @@ export default function AdminStudentsPage() {
       );
 
     if (refreshed) {
-      setSelectedStudent(refreshed);
+      setSelectedStudent(
+        refreshed
+      );
     }
   }
 
@@ -1945,19 +2116,29 @@ export default function AdminStudentsPage() {
         record.schedules
       );
 
-    let message = `Hello ${record.student.full_name}, this is Sauti Tamu Piano Center.`;
+    const balance =
+      getBalance(
+        record.enrollment,
+        record.payments
+      );
+
+    let message =
+      `Hello ${record.student.full_name}, this is Sauti Tamu Piano Center.`;
+
+    message += ` Your current outstanding balance is ${formatCurrency(
+      balance
+    )}.`;
 
     if (next) {
-      message += ` This is a reminder regarding your payment of ${formatCurrency(
+      message += ` This is a reminder regarding your next payment of ${formatCurrency(
         Number(next.amount_due)
       )} due on ${formatDate(
         next.due_date
       )}.`;
-
-      if (next.follow_up_date) {
-        message += ` We are following up on this payment today.`;
-      }
     }
+
+    message +=
+      " Payment details: Paybill 542 542, Account 466 170.";
 
     window.open(
       `https://wa.me/${phone.replace(
@@ -1993,6 +2174,120 @@ export default function AdminStudentsPage() {
 
   /*
    * =========================================================
+   * FILTERING
+   * =========================================================
+   */
+
+  const filteredRecords =
+    useMemo(() => {
+      const query =
+        search.trim().toLowerCase();
+
+      return records.filter(
+        (record) => {
+          if (
+            filter !== "all" &&
+            record.student.status !==
+              filter
+          ) {
+            return false;
+          }
+
+          if (!query) {
+            return true;
+          }
+
+          const searchable = [
+            record.student.full_name,
+            record.student.email,
+            record.student.whatsapp_number,
+            record.enrollment
+              ?.instrument ?? "",
+            record.enrollment
+              ?.programme_name ?? "",
+          ]
+            .join(" ")
+            .toLowerCase();
+
+          return searchable.includes(
+            query
+          );
+        }
+      );
+    }, [
+      records,
+      search,
+      filter,
+    ]);
+
+  /*
+   * =========================================================
+   * STATS
+   * =========================================================
+   */
+
+  const stats = useMemo(() => {
+    const active =
+      records.filter(
+        (record) =>
+          record.student.status ===
+          "active"
+      ).length;
+
+    const completed =
+      records.filter(
+        (record) =>
+          record.student.status ===
+          "completed"
+      ).length;
+
+    const endingSoon =
+      records.filter((record) => {
+        if (
+          !record.enrollment ||
+          record.student.status !==
+            "active"
+        ) {
+          return false;
+        }
+
+        const days =
+          calculateDaysRemaining(
+            record.enrollment.end_date
+          );
+
+        return (
+          days >= 0 &&
+          days <= 30
+        );
+      }).length;
+
+    const paymentAttention =
+      records.filter((record) => {
+        const next =
+          getNextPayment(
+            record.schedules
+          );
+
+        return (
+          next?.status === "due" ||
+          next?.status ===
+            "overdue" ||
+          next?.status ===
+            "partially_paid"
+        );
+      }).length;
+
+    return {
+      active,
+      completed,
+      endingSoon,
+      paymentAttention,
+    };
+  }, [records]);
+
+  /*
+   * =========================================================
    * RENDER
    * =========================================================
    */
@@ -2003,7 +2298,6 @@ export default function AdminStudentsPage() {
       {/* HEADER */}
 
       <div className="mb-7 flex flex-col gap-5 md:flex-row md:items-end md:justify-between">
-
         <div>
           <p className="st-eyebrow">
             STUDENTS
@@ -2014,13 +2308,13 @@ export default function AdminStudentsPage() {
           </h1>
 
           <p className="st-page-description">
-            Manage enrolled students, programmes,
-            payments and follow-ups.
+            Manage enrolled students,
+            programmes, payments and
+            follow-ups.
           </p>
         </div>
 
         <div className="flex gap-2">
-
           <button
             type="button"
             onClick={() =>
@@ -2049,9 +2343,7 @@ export default function AdminStudentsPage() {
             <Plus size={15} />
             Add student
           </button>
-
         </div>
-
       </div>
 
       {/* STATS */}
@@ -2140,9 +2432,7 @@ export default function AdminStudentsPage() {
 
       </section>
 
-      {/* =====================================================
-          RECEIPT SUCCESS
-      ===================================================== */}
+      {/* RECEIPT SUCCESS */}
 
       {lastReceipt && (
         <section className="mt-5 rounded-2xl border border-green-200 bg-green-50 p-4">
@@ -2160,10 +2450,15 @@ export default function AdminStudentsPage() {
               </p>
 
               <p className="mt-1 mb-0 text-[9px] text-green-700">
-                Receipt {lastReceipt.receiptNumber}
+                Receipt{" "}
+                {lastReceipt.receiptNumber}
                 {" · "}
                 {formatCurrency(
                   lastReceipt.amountPaid
+                )}
+                {" · Balance "}
+                {formatCurrency(
+                  lastReceipt.balanceAfterPayment
                 )}
               </p>
 
@@ -2172,22 +2467,95 @@ export default function AdminStudentsPage() {
                 <button
                   type="button"
                   onClick={() =>
-                    generatePaymentReceipt(
+                    setViewingReceipt(
                       lastReceipt
                     )
+                  }
+                  className="st-button st-button-secondary !min-h-[38px] !px-4 text-[10px]"
+                >
+                  <Eye size={14} />
+                  View
+                </button>
+
+                <button
+                  type="button"
+                  onClick={
+                    downloadLastReceipt
                   }
                   className="st-button st-button-primary !min-h-[38px] !px-4 text-[10px]"
                 >
                   <Download size={14} />
-                  Download Receipt
+                  Download
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    const totalPaid =
+                      lastReceipt.payments.reduce(
+                        (sum, item) =>
+                          sum +
+                          Number(
+                            item.amount
+                          ),
+                        0
+                      );
+
+                    const subject =
+                      `Sauti Tamu Payment Receipt ${lastReceipt.receiptNumber}`;
+
+                    const body =
+                      [
+                        `Dear ${lastReceipt.studentName},`,
+                        "",
+                        "Thank you for your payment to Sauti Tamu Piano Center.",
+                        "",
+                        `Receipt No.: ${lastReceipt.receiptNumber}`,
+                        `Programme: ${lastReceipt.programmeName}`,
+                        `Instrument: ${lastReceipt.instrument}`,
+                        "",
+                        `Programme Amount: ${formatCurrency(
+                          lastReceipt.programmeAmount
+                        )}`,
+                        `Latest Payment: ${formatCurrency(
+                          lastReceipt.amountPaid
+                        )}`,
+                        `Total Paid To Date: ${formatCurrency(
+                          totalPaid
+                        )}`,
+                        `Current Balance: ${formatCurrency(
+                          lastReceipt.balanceAfterPayment
+                        )}`,
+                        "",
+                        "Kind regards,",
+                        "Sauti Tamu Piano Center",
+                      ].join(
+                        "\n"
+                      );
+
+                    window.location.href =
+                      `mailto:${encodeURIComponent(
+                        lastReceipt.studentEmail
+                      )}?subject=${encodeURIComponent(
+                        subject
+                      )}&body=${encodeURIComponent(
+                        body
+                      )}`;
+                  }}
+                  className="st-button st-button-secondary !min-h-[38px] !px-4 text-[10px]"
+                >
+                  <Mail size={14} />
+                  Email
                 </button>
 
                 <button
                   type="button"
                   onClick={() =>
-                    setLastReceipt(null)
+                    setLastReceipt(
+                      null
+                    )
                   }
-                  className="st-button st-button-secondary !min-h-[38px] !px-4 text-[10px]"
+                  className="st-button st-button-ghost !min-h-[38px] !px-3 text-[10px]"
                 >
                   Dismiss
                 </button>
@@ -2220,7 +2588,8 @@ export default function AdminStudentsPage() {
 
             <span className="st-badge st-badge-red">
               {stats.paymentAttention}{" "}
-              {stats.paymentAttention === 1
+              {stats.paymentAttention ===
+              1
                 ? "student"
                 : "students"}
             </span>
@@ -2254,9 +2623,17 @@ export default function AdminStudentsPage() {
 
                 if (!next) return null;
 
+                const balance =
+                  getBalance(
+                    record.enrollment,
+                    record.payments
+                  );
+
                 return (
                   <div
-                    key={record.student.id}
+                    key={
+                      record.student.id
+                    }
                     className="st-card p-4"
                   >
 
@@ -2277,7 +2654,8 @@ export default function AdminStudentsPage() {
 
                             <p className="m-0 truncate text-[12px] font-bold text-[var(--st-charcoal-dark)]">
                               {
-                                record.student
+                                record
+                                  .student
                                   .full_name
                               }
                             </p>
@@ -2285,7 +2663,8 @@ export default function AdminStudentsPage() {
                             <p className="mt-1 mb-0 text-[9px] text-[var(--st-gray)]">
                               {record.enrollment
                                 ? instrumentName(
-                                    record.enrollment
+                                    record
+                                      .enrollment
                                       .instrument
                                   )
                                 : "No programme"}
@@ -2320,6 +2699,13 @@ export default function AdminStudentsPage() {
                             <p className="mt-1 mb-0 text-[9px] text-[var(--st-gray)]">
                               {getPaymentFollowUpLabel(
                                 next
+                              )}
+                            </p>
+
+                            <p className="mt-1 mb-0 text-[8px] font-semibold text-[var(--st-gray)]">
+                              Current balance:{" "}
+                              {formatCurrency(
+                                balance
                               )}
                             </p>
 
@@ -2488,7 +2874,8 @@ export default function AdminStudentsPage() {
 
           <p className="mt-1 mb-0 text-[10px] text-[var(--st-gray)]">
             {filteredRecords.length}{" "}
-            {filteredRecords.length === 1
+            {filteredRecords.length ===
+            1
               ? "student"
               : "students"}
           </p>
@@ -2497,14 +2884,11 @@ export default function AdminStudentsPage() {
 
         {loading ? (
           <div className="st-card flex min-h-[260px] items-center justify-center gap-2 text-[10px] text-[var(--st-gray)]">
-
             <RefreshCw
               size={16}
               className="animate-spin"
             />
-
             Loading students...
-
           </div>
         ) : filteredRecords.length ===
           0 ? (
@@ -2519,7 +2903,8 @@ export default function AdminStudentsPage() {
             </p>
 
             <p className="mt-2 mb-0 max-w-[300px] text-[10px] leading-relaxed text-[var(--st-gray)]">
-              Add your first student or try another search/filter.
+              Add your first student or
+              try another search/filter.
             </p>
 
             <button
@@ -2593,7 +2978,8 @@ export default function AdminStudentsPage() {
 
                               <p className="truncate text-[14px] font-bold text-[var(--st-charcoal-dark)]">
                                 {
-                                  record.student
+                                  record
+                                    .student
                                     .full_name
                                 }
                               </p>
@@ -2610,7 +2996,8 @@ export default function AdminStudentsPage() {
                                 </p>
                               ) : (
                                 <p className="mt-1 text-[10px] text-[var(--st-gray)]">
-                                  No programme enrolled
+                                  No programme
+                                  enrolled
                                 </p>
                               )}
 
@@ -2618,12 +3005,14 @@ export default function AdminStudentsPage() {
 
                             <span
                               className={`inline-flex w-fit shrink-0 rounded-full px-3 py-1.5 text-[9px] font-bold uppercase tracking-[0.04em] ${studentStatusClasses(
-                                record.student
+                                record
+                                  .student
                                   .status
                               )}`}
                             >
                               {studentStatusLabel(
-                                record.student
+                                record
+                                  .student
                                   .status
                               )}
                             </span>
@@ -2752,7 +3141,9 @@ export default function AdminStudentsPage() {
                                       </>
                                     ) : (
                                       <p className="mt-1 text-[10px] text-green-700">
-                                        No outstanding scheduled payment
+                                        No outstanding
+                                        scheduled
+                                        payment
                                       </p>
                                     )}
 
@@ -2787,7 +3178,8 @@ export default function AdminStudentsPage() {
 
                               <span className="truncate">
                                 {
-                                  record.student
+                                  record
+                                    .student
                                     .whatsapp_number
                                 }
                               </span>
@@ -2801,7 +3193,8 @@ export default function AdminStudentsPage() {
 
                               <span className="truncate">
                                 {
-                                  record.student
+                                  record
+                                    .student
                                     .email
                                 }
                               </span>
@@ -2833,6 +3226,379 @@ export default function AdminStudentsPage() {
         )}
 
       </section>
+
+      {/* =====================================================
+          RECEIPT VIEWER
+      ===================================================== */}
+
+      {viewingReceipt && (
+        <div className="fixed inset-0 z-[150] flex items-end justify-center bg-black/50 sm:items-center sm:p-5">
+
+          <div className="max-h-[94vh] w-full max-w-[430px] overflow-y-auto rounded-t-3xl bg-white shadow-2xl sm:rounded-3xl">
+
+            <div className="sticky top-0 z-20 border-b border-[var(--st-border)] bg-white px-5 py-4">
+
+              <div className="flex items-center justify-between gap-3">
+
+                <div>
+                  <p className="st-eyebrow">
+                    PAYMENT RECEIPT
+                  </p>
+
+                  <h2 className="mt-1 text-[18px] font-bold text-[var(--st-charcoal-dark)]">
+                    {viewingReceipt.receiptNumber}
+                  </h2>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    setViewingReceipt(
+                      null
+                    )
+                  }
+                  className="st-icon-button"
+                >
+                  <X size={17} />
+                </button>
+
+              </div>
+
+            </div>
+
+            <div className="p-5">
+
+              <div className="rounded-2xl border border-[var(--st-border)] bg-[var(--st-bg-soft)] p-5">
+
+                <div className="text-center">
+
+                  <p className="m-0 text-[20px] font-bold text-[var(--st-red)]">
+                    Sauti Tamu
+                  </p>
+
+                  <p className="mt-1 text-[8px] font-bold tracking-[0.14em] text-[var(--st-charcoal-dark)]">
+                    PIANO CENTER
+                  </p>
+
+                  <div className="mx-auto mt-4 inline-flex rounded-full bg-[var(--st-red)] px-4 py-2 text-[9px] font-bold text-white">
+                    Payment Receipt
+                  </div>
+
+                </div>
+
+                <div className="mt-5 border-t border-[var(--st-border)] pt-4">
+
+                  <p className="m-0 text-[8px] font-bold uppercase tracking-[0.08em] text-[var(--st-gray)]">
+                    Received from
+                  </p>
+
+                  <p className="mt-1 text-[13px] font-bold text-[var(--st-charcoal-dark)]">
+                    {viewingReceipt.studentName}
+                  </p>
+
+                  <p className="mt-1 break-all text-[9px] text-[var(--st-gray)]">
+                    {viewingReceipt.studentEmail}
+                  </p>
+
+                  <p className="mt-1 text-[9px] text-[var(--st-gray)]">
+                    {viewingReceipt.studentPhone}
+                  </p>
+
+                </div>
+
+                <div className="mt-5 border-t border-[var(--st-border)] pt-4">
+
+                  <p className="m-0 text-[8px] font-bold uppercase tracking-[0.08em] text-[var(--st-gray)]">
+                    Programme
+                  </p>
+
+                  <p className="mt-1 text-[11px] font-bold text-[var(--st-charcoal-dark)]">
+                    {viewingReceipt.programmeName}
+                  </p>
+
+                  <p className="mt-1 text-[9px] text-[var(--st-gray)]">
+                    {viewingReceipt.instrument}{" "}
+                    Training
+                  </p>
+
+                </div>
+
+                <div className="mt-5 rounded-xl bg-white p-4">
+
+                  <div className="flex items-center justify-between gap-3">
+
+                    <span className="text-[9px] text-[var(--st-gray)]">
+                      Programme amount
+                    </span>
+
+                    <span className="text-[11px] font-bold text-[var(--st-charcoal-dark)]">
+                      {formatCurrency(
+                        viewingReceipt.programmeAmount
+                      )}
+                    </span>
+
+                  </div>
+
+                </div>
+
+                <div className="mt-5">
+
+                  <p className="m-0 text-[8px] font-bold uppercase tracking-[0.08em] text-[var(--st-gray)]">
+                    Payment progress
+                  </p>
+
+                  <div className="mt-2 overflow-hidden rounded-xl border border-[var(--st-border)] bg-white">
+
+                    {viewingReceipt.payments.map(
+                      (
+                        item,
+                        index
+                      ) => (
+                        <div
+                          key={
+                            item.id
+                          }
+                          className={`flex items-center justify-between gap-3 px-3 py-3 ${
+                            index <
+                            viewingReceipt
+                              .payments
+                              .length -
+                              1
+                              ? "border-b border-[var(--st-border)]"
+                              : ""
+                          }`}
+                        >
+
+                          <div className="min-w-0">
+
+                            <p className="m-0 text-[9px] font-bold text-[var(--st-charcoal-dark)]">
+                              Payment{" "}
+                              {index +
+                                1}
+                              {item.isCurrent
+                                ? " · Latest"
+                                : ""}
+                            </p>
+
+                            <p className="mt-1 text-[8px] text-[var(--st-gray)]">
+                              {formatDate(
+                                item.paymentDate
+                              )}{" "}
+                              ·{" "}
+                              {item.paymentMethod.toUpperCase()}
+                            </p>
+
+                          </div>
+
+                          <p className="m-0 shrink-0 text-[10px] font-bold text-[var(--st-charcoal-dark)]">
+                            {formatCurrency(
+                              item.amount
+                            )}
+                          </p>
+
+                        </div>
+                      )
+                    )}
+
+                  </div>
+
+                </div>
+
+                <div className="mt-4 rounded-xl bg-[var(--st-red)] p-4 text-white">
+
+                  <div className="flex items-center justify-between gap-3">
+
+                    <span className="text-[9px] font-bold">
+                      Current balance
+                    </span>
+
+                    <span className="text-[15px] font-bold">
+                      {formatCurrency(
+                        viewingReceipt.balanceAfterPayment
+                      )}
+                    </span>
+
+                  </div>
+
+                </div>
+
+                <div className="mt-5 border-t border-[var(--st-border)] pt-4">
+
+                  <div className="flex items-center justify-between gap-3">
+
+                    <span className="text-[8px] text-[var(--st-gray)]">
+                      Latest payment
+                    </span>
+
+                    <span className="text-[9px] font-bold text-[var(--st-charcoal-dark)]">
+                      {formatCurrency(
+                        viewingReceipt.amountPaid
+                      )}
+                    </span>
+
+                  </div>
+
+                  <div className="mt-2 flex items-center justify-between gap-3">
+
+                    <span className="text-[8px] text-[var(--st-gray)]">
+                      Payment date
+                    </span>
+
+                    <span className="text-[9px] font-bold text-[var(--st-charcoal-dark)]">
+                      {formatDate(
+                        viewingReceipt.paymentDate
+                      )}
+                    </span>
+
+                  </div>
+
+                  <div className="mt-2 flex items-center justify-between gap-3">
+
+                    <span className="text-[8px] text-[var(--st-gray)]">
+                      Payment method
+                    </span>
+
+                    <span className="text-[9px] font-bold uppercase text-[var(--st-charcoal-dark)]">
+                      {viewingReceipt.paymentMethod}
+                    </span>
+
+                  </div>
+
+                  {viewingReceipt.reference && (
+                    <div className="mt-2 flex items-center justify-between gap-3">
+
+                      <span className="text-[8px] text-[var(--st-gray)]">
+                        Reference
+                      </span>
+
+                      <span className="max-w-[170px] truncate text-[9px] font-bold text-[var(--st-charcoal-dark)]">
+                        {viewingReceipt.reference}
+                      </span>
+
+                    </div>
+                  )}
+
+                </div>
+
+                <div className="mt-5 border-t border-[var(--st-border)] pt-4 text-center">
+
+                  <p className="m-0 text-[8px] text-[var(--st-gray)]">
+                    Thank you for choosing
+                  </p>
+
+                  <p className="mt-1 text-[10px] font-bold text-[var(--st-charcoal-dark)]">
+                    Sauti Tamu Piano Center
+                  </p>
+
+                  <p className="mt-1 text-[8px] text-[var(--st-gray)]">
+                    Junction Trade Center · Nairobi CBD
+                  </p>
+
+                </div>
+
+              </div>
+
+              <div className="mt-4 grid grid-cols-3 gap-2">
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    setViewingReceipt(
+                      null
+                    )
+                  }
+                  className="st-button st-button-secondary w-full !px-2 text-[9px]"
+                >
+                  Close
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    const doc =
+                      generatePaymentReceipt(
+                        viewingReceipt as PaymentReceiptData
+                      );
+
+                    doc.save(
+                      `Sauti-Tamu-Receipt-${viewingReceipt.receiptNumber}.pdf`
+                    );
+                  }}
+                  className="st-button st-button-primary w-full !px-2 text-[9px]"
+                >
+                  <Download size={13} />
+                  Download
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    const totalPaid =
+                      viewingReceipt.payments.reduce(
+                        (sum, item) =>
+                          sum +
+                          Number(
+                            item.amount
+                          ),
+                        0
+                      );
+
+                    const subject =
+                      `Sauti Tamu Payment Receipt ${viewingReceipt.receiptNumber}`;
+
+                    const body =
+                      [
+                        `Dear ${viewingReceipt.studentName},`,
+                        "",
+                        "Thank you for your payment to Sauti Tamu Piano Center.",
+                        "",
+                        `Receipt No.: ${viewingReceipt.receiptNumber}`,
+                        `Programme: ${viewingReceipt.programmeName}`,
+                        `Programme Amount: ${formatCurrency(
+                          viewingReceipt.programmeAmount
+                        )}`,
+                        `Latest Payment: ${formatCurrency(
+                          viewingReceipt.amountPaid
+                        )}`,
+                        `Total Paid To Date: ${formatCurrency(
+                          totalPaid
+                        )}`,
+                        `Current Balance: ${formatCurrency(
+                          viewingReceipt.balanceAfterPayment
+                        )}`,
+                        "",
+                        "Payment details:",
+                        "Paybill: 542 542",
+                        "Account: 466 170",
+                        "",
+                        "Kind regards,",
+                        "Sauti Tamu Piano Center",
+                      ].join(
+                        "\n"
+                      );
+
+                    window.location.href =
+                      `mailto:${encodeURIComponent(
+                        viewingReceipt.studentEmail
+                      )}?subject=${encodeURIComponent(
+                        subject
+                      )}&body=${encodeURIComponent(
+                        body
+                      )}`;
+                  }}
+                  className="st-button st-button-secondary w-full !px-2 text-[9px]"
+                >
+                  <Mail size={13} />
+                  Email
+                </button>
+
+              </div>
+
+            </div>
+
+          </div>
+        </div>
+      )}
 
       {/* =====================================================
           STUDENT DRAWER
@@ -2904,7 +3670,7 @@ export default function AdminStudentsPage() {
                     <div>
 
                       <p className="m-0 text-[9px] font-bold uppercase tracking-[0.12em] text-[var(--st-gray)]">
-                        STUDENT
+                        Student
                       </p>
 
                       <p className="mt-2 text-[22px] font-bold text-[var(--st-charcoal-dark)]">
@@ -3035,7 +3801,7 @@ export default function AdminStudentsPage() {
                   <div className="mt-5">
 
                     <p className="mb-3 text-[9px] font-bold uppercase tracking-[0.1em] text-[var(--st-gray)]">
-                      FINANCIAL SUMMARY
+                      Financial summary
                     </p>
 
                     <div className="grid grid-cols-3 gap-2">
@@ -3067,7 +3833,8 @@ export default function AdminStudentsPage() {
                         <p className="mt-1 text-[13px] font-bold text-green-700">
                           {formatCurrency(
                             getTotalPaid(
-                              selectedStudent.payments
+                              selectedStudent
+                                .payments
                             )
                           )}
                         </p>
@@ -3083,8 +3850,10 @@ export default function AdminStudentsPage() {
                         <p className="mt-1 text-[13px] font-bold text-[var(--st-red)]">
                           {formatCurrency(
                             getBalance(
-                              selectedStudent.enrollment,
-                              selectedStudent.payments
+                              selectedStudent
+                                .enrollment,
+                              selectedStudent
+                                .payments
                             )
                           )}
                         </p>
@@ -3104,7 +3873,7 @@ export default function AdminStudentsPage() {
                     <div className="flex items-center justify-between gap-3">
 
                       <p className="m-0 text-[9px] font-bold uppercase tracking-[0.1em] text-[var(--st-gray)]">
-                        NEXT PAYMENT
+                        Next payment
                       </p>
 
                       <button
@@ -3124,7 +3893,8 @@ export default function AdminStudentsPage() {
                     {(() => {
                       const next =
                         getNextPayment(
-                          selectedStudent.schedules
+                          selectedStudent
+                            .schedules
                         );
 
                       if (!next) {
@@ -3138,7 +3908,9 @@ export default function AdminStudentsPage() {
                               />
 
                               <p className="m-0 text-[10px] font-bold">
-                                No outstanding scheduled payment
+                                No outstanding
+                                scheduled
+                                payment
                               </p>
 
                             </div>
@@ -3210,7 +3982,7 @@ export default function AdminStudentsPage() {
                 <div className="mt-6">
 
                   <p className="mb-3 text-[9px] font-bold uppercase tracking-[0.1em] text-[var(--st-gray)]">
-                    CONTACT
+                    Contact
                   </p>
 
                   <div className="space-y-3">
@@ -3276,20 +4048,22 @@ export default function AdminStudentsPage() {
                   <div className="flex items-center justify-between">
 
                     <p className="m-0 text-[9px] font-bold uppercase tracking-[0.1em] text-[var(--st-gray)]">
-                      PAYMENT HISTORY
+                      Payment history
                     </p>
 
                     <span className="text-[9px] text-[var(--st-gray)]">
                       {
                         selectedStudent
-                          .payments.length
+                          .payments
+                          .length
                       }{" "}
                       payments
                     </span>
 
                   </div>
 
-                  {selectedStudent.payments
+                  {selectedStudent
+                    .payments
                     .length === 0 ? (
                     <div className="mt-3 rounded-xl border border-dashed border-[var(--st-border)] p-5 text-center">
 
@@ -3299,71 +4073,114 @@ export default function AdminStudentsPage() {
                       />
 
                       <p className="mt-2 mb-0 text-[10px] text-[var(--st-gray)]">
-                        No payments recorded yet.
+                        No payments recorded
+                        yet.
                       </p>
 
                     </div>
                   ) : (
                     <div className="mt-3 divide-y divide-[var(--st-border)] rounded-xl border border-[var(--st-border)]">
 
-                      {selectedStudent.payments.map(
-                        (payment) => (
-                          <div
-                            key={
-                              payment.id
-                            }
-                            className="flex items-center justify-between gap-3 p-3"
-                          >
+                      {selectedStudent
+                        .payments
+                        .map(
+                          (
+                            payment
+                          ) => (
+                            <div
+                              key={
+                                payment.id
+                              }
+                              className="flex items-center justify-between gap-3 p-3"
+                            >
 
-                            <div className="min-w-0">
+                              <div className="min-w-0">
 
-                              <p className="m-0 text-[11px] font-bold text-[var(--st-charcoal-dark)]">
-                                {formatCurrency(
-                                  Number(
-                                    payment.amount
-                                  )
-                                )}
-                              </p>
-
-                              <p className="mt-1 text-[9px] text-[var(--st-gray)]">
-                                {formatDate(
-                                  payment.payment_date
-                                )}{" "}
-                                ·{" "}
-                                {payment.payment_method.toUpperCase()}
-                              </p>
-
-                              {payment.reference && (
-                                <p className="mt-1 max-w-[170px] truncate text-[8px] text-[var(--st-gray)]">
-                                  Ref:{" "}
-                                  {
-                                    payment.reference
-                                  }
+                                <p className="m-0 text-[11px] font-bold text-[var(--st-charcoal-dark)]">
+                                  {formatCurrency(
+                                    Number(
+                                      payment.amount
+                                    )
+                                  )}
                                 </p>
-                              )}
+
+                                <p className="mt-1 text-[9px] text-[var(--st-gray)]">
+                                  {formatDate(
+                                    payment.payment_date
+                                  )}{" "}
+                                  ·{" "}
+                                  {payment.payment_method.toUpperCase()}
+                                </p>
+
+                                {payment.reference && (
+                                  <p className="mt-1 max-w-[170px] truncate text-[8px] text-[var(--st-gray)]">
+                                    Ref:{" "}
+                                    {
+                                      payment.reference
+                                    }
+                                  </p>
+                                )}
+
+                              </div>
+
+                              <div className="flex shrink-0 gap-1.5">
+
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    viewReceipt(
+                                      selectedStudent,
+                                      payment
+                                    )
+                                  }
+                                  className="st-icon-button"
+                                  aria-label="View receipt"
+                                  title="View receipt"
+                                >
+                                  <Eye
+                                    size={14}
+                                  />
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    downloadReceipt(
+                                      selectedStudent,
+                                      payment
+                                    )
+                                  }
+                                  className="st-icon-button"
+                                  aria-label="Download receipt"
+                                  title="Download receipt"
+                                >
+                                  <Download
+                                    size={14}
+                                  />
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    emailReceipt(
+                                      selectedStudent,
+                                      payment
+                                    )
+                                  }
+                                  className="st-icon-button"
+                                  aria-label="Email receipt"
+                                  title="Email receipt"
+                                >
+                                  <Mail
+                                    size={14}
+                                  />
+                                </button>
+
+                              </div>
 
                             </div>
-
-                            <button
-                              type="button"
-                              onClick={() =>
-                                downloadReceipt(
-                                  selectedStudent,
-                                  payment
-                                )
-                              }
-                              className="st-button st-button-secondary !min-h-[36px] !px-3 text-[9px]"
-                              aria-label="Download payment receipt"
-                            >
-                              <Download
-                                size={13}
-                              />
-                              Receipt
-                            </button>
-
-                          </div>
-                        )
-                      )}
+                          )
+                        )}
 
                     </div>
                   )}
@@ -3501,7 +4318,8 @@ export default function AdminStudentsPage() {
                     value={paymentAmount}
                     onChange={(event) =>
                       setPaymentAmount(
-                        event.target.value
+                        event.target
+                          .value
                       )
                     }
                     placeholder="e.g. 5000"
@@ -3519,7 +4337,9 @@ export default function AdminStudentsPage() {
                   <div className="relative">
 
                     <select
-                      value={paymentMethod}
+                      value={
+                        paymentMethod
+                      }
                       onChange={(event) =>
                         setPaymentMethod(
                           event.target
@@ -3566,10 +4386,13 @@ export default function AdminStudentsPage() {
 
                   <input
                     type="text"
-                    value={paymentReference}
+                    value={
+                      paymentReference
+                    }
                     onChange={(event) =>
                       setPaymentReference(
-                        event.target.value
+                        event.target
+                          .value
                       )
                     }
                     placeholder="M-Pesa transaction code"
@@ -3579,6 +4402,31 @@ export default function AdminStudentsPage() {
                 </div>
 
               </div>
+
+              {selectedStudent.enrollment && (
+                <div className="mt-4 rounded-xl bg-[var(--st-bg-soft)] p-3">
+
+                  <div className="flex items-center justify-between gap-3">
+
+                    <span className="text-[9px] text-[var(--st-gray)]">
+                      Current balance
+                    </span>
+
+                    <span className="text-[11px] font-bold text-[var(--st-red)]">
+                      {formatCurrency(
+                        getBalance(
+                          selectedStudent
+                            .enrollment,
+                          selectedStudent
+                            .payments
+                        )
+                      )}
+                    </span>
+
+                  </div>
+
+                </div>
+              )}
 
               {error && (
                 <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3">
@@ -3592,7 +4440,9 @@ export default function AdminStudentsPage() {
 
               <button
                 type="button"
-                onClick={recordPayment}
+                onClick={
+                  recordPayment
+                }
                 disabled={
                   updatingId ===
                   selectedStudent
@@ -3647,7 +4497,9 @@ export default function AdminStudentsPage() {
                   </h2>
 
                   <p className="mt-1 text-[10px] text-[var(--st-gray)]">
-                    Register the student, programme and payment plan.
+                    Register the student,
+                    programme and payment
+                    plan.
                   </p>
 
                 </div>
@@ -3697,8 +4549,12 @@ export default function AdminStudentsPage() {
 
                     <input
                       type="text"
-                      value={studentName}
-                      onChange={(event) =>
+                      value={
+                        studentName
+                      }
+                      onChange={(
+                        event
+                      ) =>
                         setStudentName(
                           event.target
                             .value
@@ -3720,8 +4576,12 @@ export default function AdminStudentsPage() {
 
                       <input
                         type="tel"
-                        value={studentWhatsapp}
-                        onChange={(event) =>
+                        value={
+                          studentWhatsapp
+                        }
+                        onChange={(
+                          event
+                        ) =>
                           setStudentWhatsapp(
                             event.target
                               .value
@@ -3741,8 +4601,12 @@ export default function AdminStudentsPage() {
 
                       <input
                         type="email"
-                        value={studentEmail}
-                        onChange={(event) =>
+                        value={
+                          studentEmail
+                        }
+                        onChange={(
+                          event
+                        ) =>
                           setStudentEmail(
                             event.target
                               .value
@@ -3763,8 +4627,12 @@ export default function AdminStudentsPage() {
                     </label>
 
                     <textarea
-                      value={studentNotes}
-                      onChange={(event) =>
+                      value={
+                        studentNotes
+                      }
+                      onChange={(
+                        event
+                      ) =>
                         setStudentNotes(
                           event.target
                             .value
@@ -3866,7 +4734,8 @@ export default function AdminStudentsPage() {
                         </p>
 
                         <p className="mt-1 mb-0 text-[8px] text-[var(--st-gray)]">
-                          Acoustic guitar training
+                          Acoustic guitar
+                          training
                         </p>
 
                       </button>
@@ -3883,8 +4752,12 @@ export default function AdminStudentsPage() {
 
                     <input
                       type="text"
-                      value={programmeName}
-                      onChange={(event) =>
+                      value={
+                        programmeName
+                      }
+                      onChange={(
+                        event
+                      ) =>
                         setProgrammeName(
                           event.target
                             .value
@@ -3912,8 +4785,12 @@ export default function AdminStudentsPage() {
 
                         <input
                           type="date"
-                          value={startDate}
-                          onChange={(event) =>
+                          value={
+                            startDate
+                          }
+                          onChange={(
+                            event
+                          ) =>
                             setStartDate(
                               event.target
                                 .value
@@ -3943,7 +4820,8 @@ export default function AdminStudentsPage() {
                         </p>
 
                         <p className="mt-1 mb-0 text-[8px] text-[var(--st-gray)]">
-                          Automatically calculated
+                          Automatically
+                          calculated
                         </p>
 
                       </div>
@@ -3994,9 +4872,11 @@ export default function AdminStudentsPage() {
                   </h3>
 
                   <p className="mt-1 text-[9px] leading-relaxed text-[var(--st-gray)]">
-                    The student can start with any amount.
-                    The remaining balance can be followed up
-                    through scheduled payments.
+                    The student can start
+                    with any amount. The
+                    remaining balance can be
+                    followed up through
+                    scheduled payments.
                   </p>
 
                 </div>
@@ -4018,8 +4898,12 @@ export default function AdminStudentsPage() {
                       <input
                         type="number"
                         min="0"
-                        value={totalFee}
-                        onChange={(event) =>
+                        value={
+                          totalFee
+                        }
+                        onChange={(
+                          event
+                        ) =>
                           setTotalFee(
                             event.target
                               .value
@@ -4062,8 +4946,12 @@ export default function AdminStudentsPage() {
                       <input
                         type="number"
                         min="0"
-                        value={initialPayment}
-                        onChange={(event) =>
+                        value={
+                          initialPayment
+                        }
+                        onChange={(
+                          event
+                        ) =>
                           setInitialPayment(
                             event.target
                               .value
@@ -4089,7 +4977,9 @@ export default function AdminStudentsPage() {
                             value={
                               initialPaymentMethod
                             }
-                            onChange={(event) =>
+                            onChange={(
+                              event
+                            ) =>
                               setInitialPaymentMethod(
                                 event.target
                                   .value as PaymentMethod
@@ -4141,7 +5031,9 @@ export default function AdminStudentsPage() {
                           value={
                             initialPaymentReference
                           }
-                          onChange={(event) =>
+                          onChange={(
+                            event
+                          ) =>
                             setInitialPaymentReference(
                               event.target
                                 .value
@@ -4209,8 +5101,10 @@ export default function AdminStudentsPage() {
                     </h3>
 
                     <p className="mt-1 text-[9px] leading-relaxed text-[var(--st-gray)]">
-                      Tell the system exactly when and how
-                      much you intend to follow up for next.
+                      Tell the system exactly
+                      when and how much you
+                      intend to follow up for
+                      next.
                     </p>
 
                   </div>
@@ -4238,7 +5132,9 @@ export default function AdminStudentsPage() {
                           value={
                             nextPaymentAmount
                           }
-                          onChange={(event) =>
+                          onChange={(
+                            event
+                          ) =>
                             setNextPaymentAmount(
                               event.target
                                 .value
@@ -4251,7 +5147,8 @@ export default function AdminStudentsPage() {
                       </div>
 
                       <p className="mt-1.5 mb-0 text-[8px] text-[var(--st-gray)]">
-                        Remaining balance available:{" "}
+                        Remaining balance
+                        available:{" "}
                         {formatCurrency(
                           remainingAfterInitial
                         )}
@@ -4279,7 +5176,9 @@ export default function AdminStudentsPage() {
                             value={
                               nextPaymentDueDate
                             }
-                            onChange={(event) =>
+                            onChange={(
+                              event
+                            ) =>
                               setNextPaymentDueDate(
                                 event.target
                                   .value
@@ -4310,7 +5209,9 @@ export default function AdminStudentsPage() {
                             value={
                               nextPaymentFollowUpDate
                             }
-                            onChange={(event) =>
+                            onChange={(
+                              event
+                            ) =>
                               setNextPaymentFollowUpDate(
                                 event.target
                                   .value
@@ -4335,7 +5236,9 @@ export default function AdminStudentsPage() {
                         value={
                           nextPaymentNotes
                         }
-                        onChange={(event) =>
+                        onChange={(
+                          event
+                        ) =>
                           setNextPaymentNotes(
                             event.target
                               .value
@@ -4358,7 +5261,7 @@ export default function AdminStudentsPage() {
               <div className="mt-7 rounded-2xl bg-[var(--st-bg-soft)] p-4">
 
                 <p className="m-0 text-[9px] font-bold uppercase tracking-[0.1em] text-[var(--st-gray)]">
-                  REGISTRATION SUMMARY
+                  Registration summary
                 </p>
 
                 <div className="mt-4 space-y-3">
@@ -4518,8 +5421,9 @@ export default function AdminStudentsPage() {
               </div>
 
               <p className="mt-4 text-center text-[8px] leading-relaxed text-[var(--st-gray)]">
-                Student, programme and payment information
-                will be saved together.
+                Student, programme and
+                payment information will be
+                saved together.
               </p>
 
             </div>
