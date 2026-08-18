@@ -10,11 +10,11 @@ import {
   Clock3,
   Mail,
   MessageCircle,
-  Phone,
   Plus,
+  Receipt,
   RefreshCw,
   Search,
-  User,
+  Phone,
   Users,
   Wallet,
   X,
@@ -107,6 +107,15 @@ type StudentRecord = {
   enrollment: Enrollment | null;
   schedules: PaymentSchedule[];
   payments: Payment[];
+};
+
+type PaymentReceipt = {
+  payment: Payment;
+  student: Student;
+  enrollment: Enrollment | null;
+  totalPaidAfterPayment: number;
+  balanceAfterPayment: number;
+  receiptNumber: string;
 };
 
 type Filter =
@@ -390,6 +399,29 @@ function getPaymentFollowUpLabel(
   return `Due in ${difference} days`;
 }
 
+function generateReceiptNumber(
+  paymentId: string
+) {
+  const date = new Date();
+
+  const datePart =
+    new Intl.DateTimeFormat("en-CA", {
+      timeZone: NAIROBI_TIME_ZONE,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    })
+      .format(date)
+      .replace(/-/g, "");
+
+  const paymentPart = paymentId
+    .replace(/-/g, "")
+    .slice(0, 6)
+    .toUpperCase();
+
+  return `ST-${datePart}-${paymentPart}`;
+}
+
 export default function AdminStudentsPage() {
   const [records, setRecords] =
     useState<StudentRecord[]>([]);
@@ -417,6 +449,9 @@ export default function AdminStudentsPage() {
 
   const [showPaymentForm, setShowPaymentForm] =
     useState(false);
+
+  const [receipt, setReceipt] =
+    useState<PaymentReceipt | null>(null);
 
   const [updatingId, setUpdatingId] =
     useState<string | null>(null);
@@ -513,11 +548,6 @@ export default function AdminStudentsPage() {
         numericNextPayment,
       0
     );
-
-  /*
-   * Automatically suggest the next payment date
-   * whenever a start date is selected.
-   */
 
   useEffect(() => {
     if (!startDate) {
@@ -906,10 +936,6 @@ export default function AdminStudentsPage() {
     const nextAmount =
       Number(nextPaymentAmount) || 0;
 
-    /*
-     * VALIDATION
-     */
-
     if (!name) {
       setAddStudentError(
         "Please enter the student's full name."
@@ -1028,12 +1054,6 @@ export default function AdminStudentsPage() {
       | null = null;
 
     try {
-      /*
-       * =====================================================
-       * 1. CREATE STUDENT
-       * =====================================================
-       */
-
       const {
         data: createdStudent,
         error: studentError,
@@ -1067,12 +1087,6 @@ export default function AdminStudentsPage() {
 
       createdStudentId =
         createdStudent.id;
-
-      /*
-       * =====================================================
-       * 2. CREATE ENROLLMENT
-       * =====================================================
-       */
 
       const {
         data: createdEnrollment,
@@ -1116,12 +1130,6 @@ export default function AdminStudentsPage() {
       createdEnrollmentId =
         createdEnrollment.id;
 
-      /*
-       * =====================================================
-       * 3. RECORD INITIAL PAYMENT
-       * =====================================================
-       */
-
       if (initial > 0) {
         const {
           error: initialPaymentError,
@@ -1158,12 +1166,6 @@ export default function AdminStudentsPage() {
         }
       }
 
-      /*
-       * =====================================================
-       * 4. CREATE NEXT PAYMENT SCHEDULE
-       * =====================================================
-       */
-
       if (
         remainingAfterInitial > 0 &&
         nextAmount > 0
@@ -1198,21 +1200,11 @@ export default function AdminStudentsPage() {
         }
       }
 
-      /*
-       * =====================================================
-       * 5. SUCCESS
-       * =====================================================
-       */
-
       setShowAddStudent(false);
 
       resetAddStudentForm();
 
       await loadStudents(true);
-
-      /*
-       * Open the newly created student.
-       */
 
       const newlyCreatedRecord =
         await getStudentRecord(
@@ -1229,10 +1221,6 @@ export default function AdminStudentsPage() {
         "Add student error:",
         err
       );
-
-      /*
-       * Cleanup partially created records.
-       */
 
       if (createdEnrollmentId) {
         await supabase
@@ -1518,7 +1506,7 @@ export default function AdminStudentsPage() {
 
   /*
    * =========================================================
-   * RECORD PAYMENT
+   * RECORD PAYMENT + GENERATE RECEIPT
    * =========================================================
    */
 
@@ -1633,7 +1621,7 @@ export default function AdminStudentsPage() {
     }
 
     /*
-     * Update current schedule.
+     * UPDATE CURRENT PAYMENT SCHEDULE
      */
 
     if (nextSchedule) {
@@ -1667,7 +1655,10 @@ export default function AdminStudentsPage() {
         newStatus = "paid";
       }
 
-      await supabase
+      const {
+        error:
+          scheduleUpdateError,
+      } = await supabase
         .from("payment_schedule")
         .update({
           status: newStatus,
@@ -1676,29 +1667,78 @@ export default function AdminStudentsPage() {
           "id",
           nextSchedule.id
         );
+
+      if (scheduleUpdateError) {
+        console.error(
+          "Payment schedule update error:",
+          scheduleUpdateError
+        );
+      }
     }
+
+    /*
+     * =====================================================
+     * CREATE RECEIPT DATA
+     * =====================================================
+     */
 
     const newPayment =
       data as Payment;
 
-    setSelectedStudent(
-      (current) =>
-        current
-          ? {
-              ...current,
-              payments: [
-                newPayment,
-                ...current.payments,
-              ],
-            }
-          : current
-    );
+    const totalPaidAfterPayment =
+      getTotalPaid(
+        selectedStudent.payments
+      ) + amount;
+
+    const balanceAfterPayment =
+      Math.max(
+        Number(
+          selectedStudent.enrollment.total_fee
+        ) -
+          totalPaidAfterPayment,
+        0
+      );
+
+    const newReceipt:
+      PaymentReceipt = {
+      payment: newPayment,
+
+      student:
+        selectedStudent.student,
+
+      enrollment:
+        selectedStudent.enrollment,
+
+      totalPaidAfterPayment,
+
+      balanceAfterPayment,
+
+      receiptNumber:
+        generateReceiptNumber(
+          newPayment.id
+        ),
+    };
+
+    /*
+     * RESET PAYMENT FORM
+     */
 
     setPaymentAmount("");
     setPaymentReference("");
     setPaymentMethod("mpesa");
     setShowPaymentForm(false);
+
+    /*
+     * SHOW RECEIPT IMMEDIATELY
+     */
+
+    setReceipt(newReceipt);
+
     setUpdatingId(null);
+
+    /*
+     * REFRESH STUDENT DATA
+     */
 
     await loadStudents(true);
 
@@ -3361,6 +3401,350 @@ export default function AdminStudentsPage() {
         )}
 
       {/* =====================================================
+          PAYMENT RECEIPT
+      ===================================================== */}
+
+      {receipt && (
+        <div className="fixed inset-0 z-[200] flex items-end justify-center bg-black/60 sm:items-center sm:p-5">
+
+          <div className="max-h-[95vh] w-full max-w-[520px] overflow-y-auto rounded-t-3xl bg-white shadow-2xl sm:rounded-3xl">
+
+            {/* RECEIPT HEADER */}
+
+            <div className="sticky top-0 z-20 flex items-center justify-between border-b border-[var(--st-border)] bg-white px-5 py-4 print:hidden">
+
+              <div>
+
+                <p className="st-eyebrow">
+                  PAYMENT RECEIPT
+                </p>
+
+                <h2 className="mt-1 text-[20px] font-bold text-[var(--st-charcoal-dark)]">
+                  Payment received
+                </h2>
+
+              </div>
+
+              <button
+                type="button"
+                onClick={() =>
+                  setReceipt(null)
+                }
+                className="st-icon-button"
+                aria-label="Close receipt"
+              >
+                <X size={17} />
+              </button>
+
+            </div>
+
+            {/* RECEIPT BODY */}
+
+            <div
+              id="payment-receipt"
+              className="bg-white p-6 sm:p-8"
+            >
+
+              {/* BRAND */}
+
+              <div className="border-b-2 border-[var(--st-red)] pb-5">
+
+                <p className="m-0 text-[22px] font-extrabold tracking-tight text-[var(--st-charcoal-dark)]">
+                  SAUTI TAMU
+                </p>
+
+                <p className="mt-1 mb-0 text-[9px] font-bold uppercase tracking-[0.18em] text-[var(--st-red)]">
+                  PIANO CENTER
+                </p>
+
+                <p className="mt-3 mb-0 text-[9px] leading-relaxed text-[var(--st-gray)]">
+                  Junction Trade Center, 4th Floor,
+                  Room F401
+                  <br />
+                  Above Equity Bank Tearoom Branch
+                  <br />
+                  Nairobi CBD, Kenya
+                </p>
+
+              </div>
+
+              {/* RECEIPT INFORMATION */}
+
+              <div className="mt-6 flex items-start justify-between gap-4">
+
+                <div>
+
+                  <p className="m-0 text-[9px] font-bold uppercase tracking-[0.12em] text-[var(--st-gray)]">
+                    OFFICIAL PAYMENT RECEIPT
+                  </p>
+
+                  <p className="mt-2 text-[18px] font-bold text-[var(--st-charcoal-dark)]">
+                    {receipt.receiptNumber}
+                  </p>
+
+                </div>
+
+                <div className="text-right">
+
+                  <p className="m-0 text-[8px] font-bold uppercase tracking-[0.08em] text-[var(--st-gray)]">
+                    Payment date
+                  </p>
+
+                  <p className="mt-1 text-[10px] font-semibold text-[var(--st-charcoal-dark)]">
+                    {formatLongDate(
+                      receipt.payment.payment_date
+                    )}
+                  </p>
+
+                </div>
+
+              </div>
+
+              {/* STUDENT */}
+
+              <div className="mt-7 rounded-2xl bg-[var(--st-bg-soft)] p-4">
+
+                <p className="m-0 text-[8px] font-bold uppercase tracking-[0.1em] text-[var(--st-gray)]">
+                  RECEIVED FROM
+                </p>
+
+                <p className="mt-2 text-[16px] font-bold text-[var(--st-charcoal-dark)]">
+                  {receipt.student.full_name}
+                </p>
+
+                <p className="mt-1 text-[9px] text-[var(--st-gray)]">
+                  {receipt.student.email}
+                </p>
+
+                <p className="mt-1 text-[9px] text-[var(--st-gray)]">
+                  {receipt.student.whatsapp_number}
+                </p>
+
+              </div>
+
+              {/* PAYMENT DETAILS */}
+
+              <div className="mt-6">
+
+                <p className="mb-3 text-[9px] font-bold uppercase tracking-[0.1em] text-[var(--st-gray)]">
+                  PAYMENT DETAILS
+                </p>
+
+                <div className="overflow-hidden rounded-xl border border-[var(--st-border)]">
+
+                  <div className="flex items-center justify-between gap-4 border-b border-[var(--st-border)] p-4">
+
+                    <span className="text-[9px] text-[var(--st-gray)]">
+                      Programme
+                    </span>
+
+                    <span className="max-w-[250px] text-right text-[10px] font-bold text-[var(--st-charcoal-dark)]">
+                      {receipt.enrollment
+                        ? receipt.enrollment
+                            .programme_name
+                        : "Training Programme"}
+                    </span>
+
+                  </div>
+
+                  <div className="flex items-center justify-between gap-4 border-b border-[var(--st-border)] p-4">
+
+                    <span className="text-[9px] text-[var(--st-gray)]">
+                      Instrument
+                    </span>
+
+                    <span className="text-[10px] font-bold text-[var(--st-charcoal-dark)]">
+                      {receipt.enrollment
+                        ? instrumentName(
+                            receipt.enrollment
+                              .instrument
+                          )
+                        : "—"}
+                    </span>
+
+                  </div>
+
+                  <div className="flex items-center justify-between gap-4 border-b border-[var(--st-border)] p-4">
+
+                    <span className="text-[9px] text-[var(--st-gray)]">
+                      Payment method
+                    </span>
+
+                    <span className="text-[10px] font-bold uppercase text-[var(--st-charcoal-dark)]">
+                      {receipt.payment.payment_method}
+                    </span>
+
+                  </div>
+
+                  {receipt.payment.reference && (
+                    <div className="flex items-center justify-between gap-4 border-b border-[var(--st-border)] p-4">
+
+                      <span className="text-[9px] text-[var(--st-gray)]">
+                        Reference
+                      </span>
+
+                      <span className="max-w-[220px] truncate text-right text-[10px] font-bold text-[var(--st-charcoal-dark)]">
+                        {receipt.payment.reference}
+                      </span>
+
+                    </div>
+                  )}
+
+                  <div className="flex items-center justify-between gap-4 bg-[var(--st-bg-soft)] p-4">
+
+                    <span className="text-[10px] font-bold text-[var(--st-charcoal-dark)]">
+                      AMOUNT PAID
+                    </span>
+
+                    <span className="text-[20px] font-extrabold text-[var(--st-red)]">
+                      {formatCurrency(
+                        Number(
+                          receipt.payment.amount
+                        )
+                      )}
+                    </span>
+
+                  </div>
+
+                </div>
+
+              </div>
+
+              {/* ACCOUNT SUMMARY */}
+
+              <div className="mt-6">
+
+                <p className="mb-3 text-[9px] font-bold uppercase tracking-[0.1em] text-[var(--st-gray)]">
+                  ACCOUNT SUMMARY
+                </p>
+
+                <div className="grid grid-cols-3 gap-2">
+
+                  <div className="rounded-xl border border-[var(--st-border)] p-3">
+
+                    <p className="m-0 text-[8px] text-[var(--st-gray)]">
+                      Programme fee
+                    </p>
+
+                    <p className="mt-2 text-[11px] font-bold text-[var(--st-charcoal-dark)]">
+                      {receipt.enrollment
+                        ? formatCurrency(
+                            Number(
+                              receipt.enrollment
+                                .total_fee
+                            )
+                          )
+                        : "—"}
+                    </p>
+
+                  </div>
+
+                  <div className="rounded-xl border border-[var(--st-border)] p-3">
+
+                    <p className="m-0 text-[8px] text-[var(--st-gray)]">
+                      Total paid
+                    </p>
+
+                    <p className="mt-2 text-[11px] font-bold text-green-700">
+                      {formatCurrency(
+                        receipt.totalPaidAfterPayment
+                      )}
+                    </p>
+
+                  </div>
+
+                  <div className="rounded-xl border border-[var(--st-border)] p-3">
+
+                    <p className="m-0 text-[8px] text-[var(--st-gray)]">
+                      Balance
+                    </p>
+
+                    <p className="mt-2 text-[11px] font-bold text-[var(--st-red)]">
+                      {formatCurrency(
+                        receipt.balanceAfterPayment
+                      )}
+                    </p>
+
+                  </div>
+
+                </div>
+
+              </div>
+
+              {/* STATUS */}
+
+              <div className="mt-6 rounded-xl border border-green-100 bg-green-50 p-4">
+
+                <div className="flex items-center gap-2">
+
+                  <CheckCircle2
+                    size={15}
+                    className="shrink-0 text-green-700"
+                  />
+
+                  <p className="m-0 text-[10px] font-bold text-green-700">
+                    Payment successfully recorded
+                  </p>
+
+                </div>
+
+              </div>
+
+              {/* FOOTER */}
+
+              <div className="mt-7 border-t border-[var(--st-border)] pt-5 text-center">
+
+                <p className="m-0 text-[11px] font-bold text-[var(--st-charcoal-dark)]">
+                  Thank you for choosing Sauti Tamu.
+                </p>
+
+                <p className="mt-2 mb-0 text-[8px] leading-relaxed text-[var(--st-gray)]">
+                  This receipt confirms that the payment
+                  above has been recorded in the Sauti Tamu
+                  student account.
+                </p>
+
+                <p className="mt-4 mb-0 text-[8px] text-[var(--st-gray)]">
+                  Sauti Tamu Piano Center · Nairobi, Kenya
+                </p>
+
+              </div>
+
+            </div>
+
+            {/* RECEIPT ACTIONS */}
+
+            <div className="grid grid-cols-2 gap-2 border-t border-[var(--st-border)] bg-white p-5 print:hidden">
+
+              <button
+                type="button"
+                onClick={() =>
+                  window.print()
+                }
+                className="st-button st-button-primary w-full"
+              >
+                <Receipt size={15} />
+                Print / Save PDF
+              </button>
+
+              <button
+                type="button"
+                onClick={() =>
+                  setReceipt(null)
+                }
+                className="st-button st-button-secondary w-full"
+              >
+                Done
+              </button>
+
+            </div>
+
+          </div>
+
+        </div>
+      )}
+
+      {/* =====================================================
           ADD STUDENT MODAL
       ===================================================== */}
 
@@ -3368,8 +3752,6 @@ export default function AdminStudentsPage() {
         <div className="fixed inset-0 z-[110] flex items-end justify-center bg-black/50 sm:items-center sm:p-5">
 
           <div className="max-h-[94vh] w-full max-w-[560px] overflow-y-auto rounded-t-3xl bg-white shadow-2xl sm:rounded-3xl">
-
-            {/* HEADER */}
 
             <div className="sticky top-0 z-20 border-b border-[var(--st-border)] bg-white px-5 py-4">
 
@@ -3410,9 +3792,7 @@ export default function AdminStudentsPage() {
 
             <div className="p-5">
 
-              {/* =================================================
-                  STUDENT INFORMATION
-              ================================================= */}
+              {/* STUDENT INFORMATION */}
 
               <div>
 
@@ -3522,9 +3902,7 @@ export default function AdminStudentsPage() {
 
               </div>
 
-              {/* =================================================
-                  PROGRAMME
-              ================================================= */}
+              {/* PROGRAMME */}
 
               <div className="mt-7 border-t border-[var(--st-border)] pt-7">
 
@@ -3722,9 +4100,7 @@ export default function AdminStudentsPage() {
 
               </div>
 
-              {/* =================================================
-                  FINANCIAL PLAN
-              ================================================= */}
+              {/* FINANCIAL PLAN */}
 
               <div className="mt-7 border-t border-[var(--st-border)] pt-7">
 
@@ -3861,7 +4237,6 @@ export default function AdminStudentsPage() {
                             <option value="other">
                               Other
                             </option>
-
                           </select>
 
                           <ChevronDown
@@ -3902,8 +4277,6 @@ export default function AdminStudentsPage() {
 
                   </div>
 
-                  {/* BALANCE */}
-
                   <div className="grid grid-cols-2 gap-2">
 
                     <div className="rounded-xl border border-[var(--st-border)] p-3">
@@ -3940,9 +4313,7 @@ export default function AdminStudentsPage() {
 
               </div>
 
-              {/* =================================================
-                  NEXT PAYMENT
-              ================================================= */}
+              {/* NEXT PAYMENT */}
 
               {remainingAfterInitial >
                 0 && (
@@ -4103,9 +4474,7 @@ export default function AdminStudentsPage() {
                 </div>
               )}
 
-              {/* =================================================
-                  SUMMARY
-              ================================================= */}
+              {/* SUMMARY */}
 
               <div className="mt-7 rounded-2xl bg-[var(--st-bg-soft)] p-4">
 
@@ -4211,10 +4580,6 @@ export default function AdminStudentsPage() {
 
               </div>
 
-              {/* =================================================
-                  FORM ERROR
-              ================================================= */}
-
               {addStudentError && (
                 <div className="mt-5 flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3">
 
@@ -4229,10 +4594,6 @@ export default function AdminStudentsPage() {
 
                 </div>
               )}
-
-              {/* =================================================
-                  ACTIONS
-              ================================================= */}
 
               <div className="mt-6 grid grid-cols-2 gap-2">
 
@@ -4291,6 +4652,4 @@ export default function AdminStudentsPage() {
     </main>
   );
 }
-                                
-                    
-                         
+    
