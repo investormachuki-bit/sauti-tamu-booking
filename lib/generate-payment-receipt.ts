@@ -2,34 +2,25 @@ import jsPDF from "jspdf";
 
 export type PaymentReceiptData = {
   receiptNumber: string;
-
   studentName: string;
   studentEmail: string;
   studentPhone: string;
-
   programmeName: string;
   instrument: string;
-
   programmeAmount: number;
+  previousBalance: number;
   amountPaid: number;
-  balance: number;
-
+  balanceAfterPayment: number;
   paymentMethod: string;
-  reference?: string | null;
   paymentDate: string;
+  reference?: string | null;
 };
 
-const RECEIPT_WIDTH = 80;
-
-const MARGIN = 6;
-
-const COLORS = {
-  red: "#C51F2A",
-  dark: "#353535",
-  gray: "#777777",
-  lightGray: "#E5E5E5",
-  white: "#FFFFFF",
-};
+const RED = [197, 31, 42] as const;
+const DARK = [53, 53, 53] as const;
+const GRAY = [120, 120, 120] as const;
+const LIGHT = [245, 232, 232] as const;
+const BORDER = [220, 205, 205] as const;
 
 function money(amount: number) {
   return `KES ${new Intl.NumberFormat("en-KE", {
@@ -37,634 +28,498 @@ function money(amount: number) {
   }).format(Number(amount) || 0)}`;
 }
 
-function formatPaymentMethod(method: string) {
-  switch (method) {
-    case "mpesa":
-      return "M-Pesa";
-
-    case "cash":
-      return "Cash";
-
-    case "bank":
-      return "Bank";
-
-    case "card":
-      return "Card";
-
-    case "other":
-      return "Other";
-
-    default:
-      return method
-        ? method.charAt(0).toUpperCase() +
-            method.slice(1)
-        : "—";
-  }
+function drawLine(doc: jsPDF, y: number) {
+  doc.setDrawColor(...BORDER);
+  doc.setLineWidth(0.25);
+  doc.line(8, y, 72, y);
 }
 
-function formatDate(dateString: string) {
-  if (!dateString) {
-    return "—";
-  }
-
-  const date = new Date(
-    `${dateString}T00:00:00+03:00`
-  );
-
-  if (Number.isNaN(date.getTime())) {
-    return dateString;
-  }
-
-  return new Intl.DateTimeFormat("en-KE", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-    timeZone: "Africa/Nairobi",
-  }).format(date);
-}
-
-function addText(
-  pdf: jsPDF,
-  text: string,
+function text(
+  doc: jsPDF,
+  value: string,
   x: number,
   y: number,
-  options?: {
-    size?: number;
-    bold?: boolean;
-    color?: string;
-    align?: "left" | "center" | "right";
-  }
+  size: number,
+  color = DARK,
+  weight: "normal" | "bold" = "normal"
 ) {
-  const size = options?.size ?? 9;
-
-  pdf.setFont(
-    "helvetica",
-    options?.bold ? "bold" : "normal"
-  );
-
-  pdf.setFontSize(size);
-
-  pdf.setTextColor(
-    options?.color ?? COLORS.dark
-  );
-
-  pdf.text(text, x, y, {
-    align: options?.align ?? "left",
-  });
+  doc.setFont("helvetica", weight);
+  doc.setFontSize(size);
+  doc.setTextColor(...color);
+  doc.text(value, x, y);
 }
 
-function drawLine(
-  pdf: jsPDF,
-  y: number
-) {
-  pdf.setDrawColor(COLORS.lightGray);
-
-  pdf.setLineWidth(0.25);
-
-  pdf.line(
-    MARGIN,
-    y,
-    RECEIPT_WIDTH - MARGIN,
-    y
-  );
-}
-
-function drawLabelValue(
-  pdf: jsPDF,
-  label: string,
+function rightText(
+  doc: jsPDF,
   value: string,
+  x: number,
+  y: number,
+  size: number,
+  color = DARK,
+  weight: "normal" | "bold" = "normal"
+) {
+  doc.setFont("helvetica", weight);
+  doc.setFontSize(size);
+  doc.setTextColor(...color);
+  doc.text(value, x, y, { align: "right" });
+}
+
+function sectionLabel(
+  doc: jsPDF,
+  label: string,
   y: number
 ) {
-  addText(
-    pdf,
-    label,
-    MARGIN,
-    y,
-    {
-      size: 7.5,
-      bold: true,
-      color: COLORS.gray,
-    }
-  );
-
-  addText(
-    pdf,
-    value,
-    MARGIN,
-    y + 4,
-    {
-      size: 9,
-      bold: true,
-      color: COLORS.dark,
-    }
-  );
-
-  return y + 10;
+  text(doc, label, 8, y, 7, RED, "bold");
+  return y + 5;
 }
 
 export function generatePaymentReceipt(
   data: PaymentReceiptData
 ) {
   /*
-   * ---------------------------------------------------------
-   * RECEIPT HEIGHT
-   * ---------------------------------------------------------
+   * 80mm receipt width.
    *
-   * We deliberately use a receipt-sized PDF instead of A4.
-   *
-   * 80mm wide.
-   * Height is long enough for the complete receipt.
+   * 190mm height gives the receipt enough vertical space
+   * while keeping it as a proper receipt rather than A4.
    */
-
-  const receiptHeight = 145;
-
-  const pdf = new jsPDF({
+  const doc = new jsPDF({
     orientation: "portrait",
     unit: "mm",
-    format: [
-      RECEIPT_WIDTH,
-      receiptHeight,
-    ],
+    format: [80, 190],
+    compress: true,
   });
 
-  /*
-   * ---------------------------------------------------------
-   * BACKGROUND
-   * ---------------------------------------------------------
-   */
+  doc.setProperties({
+    title: `Sauti Tamu Payment Receipt ${data.receiptNumber}`,
+    subject: "Payment Receipt",
+    author: "Sauti Tamu Piano Center",
+    creator: "Sauti Tamu",
+  });
 
-  pdf.setFillColor(COLORS.white);
+  let y = 10;
 
-  pdf.rect(
-    0,
-    0,
-    RECEIPT_WIDTH,
-    receiptHeight,
+  // =====================================================
+  // HEADER
+  // =====================================================
+
+  text(
+    doc,
+    "SAUTI TAMU",
+    40,
+    y,
+    15,
+    RED,
+    "bold"
+  );
+
+  y += 5;
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(7);
+  doc.setTextColor(...DARK);
+
+  doc.text(
+    "PIANO CENTER",
+    40,
+    y,
+    { align: "center" }
+  );
+
+  y += 7;
+
+  doc.setFillColor(...RED);
+
+  doc.roundedRect(
+    20,
+    y,
+    40,
+    7,
+    1.5,
+    1.5,
     "F"
   );
 
-  let y = 9;
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(7);
+  doc.setTextColor(255, 255, 255);
 
-  /*
-   * ---------------------------------------------------------
-   * BRAND HEADER
-   * ---------------------------------------------------------
-   */
-
-  addText(
-    pdf,
-    "SAUTI TAMU",
-    RECEIPT_WIDTH / 2,
-    y,
-    {
-      size: 16,
-      bold: true,
-      color: COLORS.red,
-      align: "center",
-    }
-  );
-
-  y += 5;
-
-  addText(
-    pdf,
-    "PIANO CENTER",
-    RECEIPT_WIDTH / 2,
-    y,
-    {
-      size: 7,
-      bold: true,
-      color: COLORS.gray,
-      align: "center",
-    }
-  );
-
-  y += 9;
-
-  /*
-   * ---------------------------------------------------------
-   * RECEIPT TITLE
-   * ---------------------------------------------------------
-   */
-
-  addText(
-    pdf,
+  doc.text(
     "PAYMENT RECEIPT",
-    RECEIPT_WIDTH / 2,
-    y,
-    {
-      size: 11,
-      bold: true,
-      color: COLORS.dark,
-      align: "center",
-    }
+    40,
+    y + 4.7,
+    { align: "center" }
   );
 
-  y += 5;
+  y += 12;
 
-  addText(
-    pdf,
+  rightText(
+    doc,
     `Receipt No. ${data.receiptNumber}`,
-    RECEIPT_WIDTH / 2,
+    72,
     y,
-    {
-      size: 7,
-      color: COLORS.gray,
-      align: "center",
-    }
+    6.5,
+    GRAY
   );
 
   y += 7;
 
-  drawLine(pdf, y);
+  drawLine(doc, y);
 
   y += 7;
 
-  /*
-   * ---------------------------------------------------------
-   * RECEIVED FROM
-   * ---------------------------------------------------------
-   */
+  // =====================================================
+  // RECEIVED FROM
+  // =====================================================
 
-  addText(
-    pdf,
+  y = sectionLabel(
+    doc,
     "RECEIVED FROM",
-    MARGIN,
+    y
+  );
+
+  text(
+    doc,
+    data.studentName,
+    8,
     y,
-    {
-      size: 7,
-      bold: true,
-      color: COLORS.red,
-    }
+    10,
+    DARK,
+    "bold"
   );
 
   y += 5;
 
-  addText(
-    pdf,
-    data.studentName || "—",
-    MARGIN,
+  text(
+    doc,
+    data.studentEmail,
+    8,
     y,
-    {
-      size: 10,
-      bold: true,
-      color: COLORS.dark,
-    }
+    7,
+    GRAY
+  );
+
+  y += 4;
+
+  text(
+    doc,
+    data.studentPhone,
+    8,
+    y,
+    7,
+    GRAY
+  );
+
+  y += 8;
+
+  drawLine(doc, y);
+
+  y += 7;
+
+  // =====================================================
+  // PROGRAMME
+  // =====================================================
+
+  y = sectionLabel(
+    doc,
+    "PROGRAMME",
+    y
+  );
+
+  text(
+    doc,
+    data.programmeName,
+    8,
+    y,
+    8,
+    DARK,
+    "bold"
   );
 
   y += 5;
 
-  if (data.studentEmail) {
-    addText(
-      pdf,
-      data.studentEmail,
-      MARGIN,
+  text(
+    doc,
+    `${data.instrument} Training`,
+    8,
+    y,
+    7,
+    GRAY
+  );
+
+  y += 7;
+
+  // =====================================================
+  // PROGRAMME AMOUNT
+  // =====================================================
+
+  doc.setFillColor(...LIGHT);
+
+  doc.roundedRect(
+    8,
+    y - 1,
+    64,
+    9,
+    1.5,
+    1.5,
+    "F"
+  );
+
+  text(
+    doc,
+    "Programme Amount",
+    11,
+    y + 4.8,
+    7,
+    GRAY
+  );
+
+  rightText(
+    doc,
+    money(data.programmeAmount),
+    69,
+    y + 4.8,
+    8,
+    DARK,
+    "bold"
+  );
+
+  y += 14;
+
+  drawLine(doc, y);
+
+  y += 7;
+
+  // =====================================================
+  // PAYMENT SUMMARY
+  // =====================================================
+
+  y = sectionLabel(
+    doc,
+    "PAYMENT SUMMARY",
+    y
+  );
+
+  // Previous balance
+  text(
+    doc,
+    "Previous Balance",
+    8,
+    y,
+    7.5,
+    GRAY
+  );
+
+  rightText(
+    doc,
+    money(data.previousBalance),
+    72,
+    y,
+    7.5,
+    DARK,
+    "bold"
+  );
+
+  y += 6;
+
+  // Current payment
+  text(
+    doc,
+    "Amount Paid Today",
+    8,
+    y,
+    7.5,
+    GRAY
+  );
+
+  rightText(
+    doc,
+    money(data.amountPaid),
+    72,
+    y,
+    7.5,
+    DARK,
+    "bold"
+  );
+
+  y += 8;
+
+  // =====================================================
+  // BALANCE AFTER PAYMENT
+  // =====================================================
+
+  doc.setFillColor(...RED);
+
+  doc.roundedRect(
+    8,
+    y - 2,
+    64,
+    13,
+    1.8,
+    1.8,
+    "F"
+  );
+
+  text(
+    doc,
+    "BALANCE AFTER PAYMENT",
+    11,
+    y + 5.5,
+    7,
+    [255, 255, 255],
+    "bold"
+  );
+
+  rightText(
+    doc,
+    money(data.balanceAfterPayment),
+    69,
+    y + 5.5,
+    9,
+    [255, 255, 255],
+    "bold"
+  );
+
+  y += 19;
+
+  drawLine(doc, y);
+
+  y += 7;
+
+  // =====================================================
+  // PAYMENT INFORMATION
+  // =====================================================
+
+  y = sectionLabel(
+    doc,
+    "PAYMENT INFORMATION",
+    y
+  );
+
+  text(
+    doc,
+    "Payment Method",
+    8,
+    y,
+    7,
+    GRAY
+  );
+
+  rightText(
+    doc,
+    data.paymentMethod.toUpperCase(),
+    72,
+    y,
+    7.5,
+    DARK,
+    "bold"
+  );
+
+  y += 6;
+
+  text(
+    doc,
+    "Payment Date",
+    8,
+    y,
+    7,
+    GRAY
+  );
+
+  rightText(
+    doc,
+    data.paymentDate,
+    72,
+    y,
+    7.5,
+    DARK,
+    "bold"
+  );
+
+  y += 6;
+
+  if (data.reference) {
+    text(
+      doc,
+      "Reference",
+      8,
       y,
-      {
-        size: 7.5,
-        color: COLORS.gray,
-      }
+      7,
+      GRAY
     );
 
-    y += 4;
-  }
-
-  if (data.studentPhone) {
-    addText(
-      pdf,
-      data.studentPhone,
-      MARGIN,
+    rightText(
+      doc,
+      data.reference,
+      72,
       y,
-      {
-        size: 7.5,
-        color: COLORS.gray,
-      }
+      7,
+      DARK,
+      "bold"
     );
 
-    y += 4;
+    y += 6;
   }
 
   y += 3;
 
-  drawLine(pdf, y);
-
-  y += 7;
-
-  /*
-   * ---------------------------------------------------------
-   * PROGRAMME
-   * ---------------------------------------------------------
-   */
-
-  addText(
-    pdf,
-    "PROGRAMME",
-    MARGIN,
-    y,
-    {
-      size: 7,
-      bold: true,
-      color: COLORS.red,
-    }
-  );
-
-  y += 5;
-
-  addText(
-    pdf,
-    data.programmeName || "Training Programme",
-    MARGIN,
-    y,
-    {
-      size: 9,
-      bold: true,
-      color: COLORS.dark,
-    }
-  );
-
-  y += 5;
-
-  addText(
-    pdf,
-    data.instrument
-      ? `${data.instrument} Training`
-      : "Music Training",
-    MARGIN,
-    y,
-    {
-      size: 7.5,
-      color: COLORS.gray,
-    }
-  );
-
-  y += 7;
-
-  drawLine(pdf, y);
-
-  y += 7;
-
-  /*
-   * ---------------------------------------------------------
-   * PAYMENT BREAKDOWN
-   * ---------------------------------------------------------
-   */
-
-  addText(
-    pdf,
-    "PAYMENT DETAILS",
-    MARGIN,
-    y,
-    {
-      size: 7,
-      bold: true,
-      color: COLORS.red,
-    }
-  );
-
-  y += 6;
-
-  /*
-   * Programme amount
-   */
-
-  addText(
-    pdf,
-    "Programme amount",
-    MARGIN,
-    y,
-    {
-      size: 8,
-      color: COLORS.gray,
-    }
-  );
-
-  addText(
-    pdf,
-    money(data.programmeAmount),
-    RECEIPT_WIDTH - MARGIN,
-    y,
-    {
-      size: 8,
-      bold: true,
-      color: COLORS.dark,
-      align: "right",
-    }
-  );
-
-  y += 6;
-
-  /*
-   * Amount paid
-   */
-
-  addText(
-    pdf,
-    "Amount paid",
-    MARGIN,
-    y,
-    {
-      size: 8,
-      color: COLORS.gray,
-    }
-  );
-
-  addText(
-    pdf,
-    money(data.amountPaid),
-    RECEIPT_WIDTH - MARGIN,
-    y,
-    {
-      size: 9,
-      bold: true,
-      color: COLORS.red,
-      align: "right",
-    }
-  );
-
-  y += 6;
-
-  /*
-   * Balance
-   */
-
-  pdf.setFillColor("#FAF3F3");
-
-  pdf.roundedRect(
-    MARGIN,
-    y - 3,
-    RECEIPT_WIDTH - MARGIN * 2,
-    12,
-    2,
-    2,
-    "F"
-  );
-
-  addText(
-    pdf,
-    "BALANCE",
-    MARGIN + 3,
-    y + 4,
-    {
-      size: 8,
-      bold: true,
-      color: COLORS.dark,
-    }
-  );
-
-  addText(
-    pdf,
-    money(data.balance),
-    RECEIPT_WIDTH - MARGIN - 3,
-    y + 4,
-    {
-      size: 10,
-      bold: true,
-      color:
-        data.balance > 0
-          ? COLORS.red
-          : "#5F8F69",
-      align: "right",
-    }
-  );
-
-  y += 17;
-
-  drawLine(pdf, y);
-
-  y += 7;
-
-  /*
-   * ---------------------------------------------------------
-   * PAYMENT INFORMATION
-   * ---------------------------------------------------------
-   */
-
-  addText(
-    pdf,
-    "PAYMENT INFORMATION",
-    MARGIN,
-    y,
-    {
-      size: 7,
-      bold: true,
-      color: COLORS.red,
-    }
-  );
-
-  y += 6;
-
-  y = drawLabelValue(
-    pdf,
-    "Payment method",
-    formatPaymentMethod(
-      data.paymentMethod
-    ),
-    y
-  );
-
-  if (data.reference) {
-    y = drawLabelValue(
-      pdf,
-      "Reference",
-      data.reference,
-      y
-    );
-  }
-
-  y = drawLabelValue(
-    pdf,
-    "Payment date",
-    formatDate(data.paymentDate),
-    y
-  );
-
-  /*
-   * ---------------------------------------------------------
-   * FOOTER
-   * ---------------------------------------------------------
-   */
-
-  y += 2;
-
-  drawLine(pdf, y);
+  drawLine(doc, y);
 
   y += 8;
 
-  addText(
-    pdf,
+  // =====================================================
+  // FOOTER
+  // =====================================================
+
+  text(
+    doc,
     "Thank you for choosing",
-    RECEIPT_WIDTH / 2,
+    40,
     y,
-    {
-      size: 7.5,
-      color: COLORS.gray,
-      align: "center",
-    }
+    7,
+    GRAY
   );
 
-  y += 4;
+  y += 4.5;
 
-  addText(
-    pdf,
+  text(
+    doc,
     "Sauti Tamu Piano Center",
-    RECEIPT_WIDTH / 2,
+    40,
     y,
-    {
-      size: 8.5,
-      bold: true,
-      color: COLORS.dark,
-      align: "center",
-    }
+    8.5,
+    DARK,
+    "bold"
   );
 
-  y += 5;
+  y += 6;
 
-  addText(
-    pdf,
+  text(
+    doc,
     "Junction Trade Center · Nairobi CBD",
-    RECEIPT_WIDTH / 2,
+    40,
     y,
-    {
-      size: 6.5,
-      color: COLORS.gray,
-      align: "center",
-    }
+    6.5,
+    GRAY
   );
 
   y += 4;
 
-  addText(
-    pdf,
+  text(
+    doc,
     "Piano & Acoustic Guitar Training",
-    RECEIPT_WIDTH / 2,
+    40,
     y,
-    {
-      size: 6.5,
-      color: COLORS.gray,
-      align: "center",
-    }
+    6.5,
+    GRAY
   );
 
-  /*
-   * ---------------------------------------------------------
-   * DOWNLOAD
-   * ---------------------------------------------------------
-   */
+  // =====================================================
+  // DOWNLOAD
+  // =====================================================
 
-  const safeName =
-    data.studentName
-      .trim()
-      .replace(/[^a-zA-Z0-9]+/g, "-")
-      .replace(/^-+|-+$/g, "")
-      .toLowerCase() ||
-    "student";
-
-  const safeReceiptNumber =
-    data.receiptNumber
-      .replace(/[^a-zA-Z0-9-]/g, "")
-      .toLowerCase();
-
-  pdf.save(
-    `sauti-tamu-receipt-${safeName}-${safeReceiptNumber}.pdf`
+  doc.save(
+    `Sauti-Tamu-Receipt-${data.receiptNumber}.pdf`
   );
 }
+
+export default generatePaymentReceipt;
