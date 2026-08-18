@@ -10,15 +10,16 @@ import {
   Clock3,
   Mail,
   MessageCircle,
+  Phone,
   Plus,
-  Receipt,
+  Printer,
   RefreshCw,
   Search,
-  Phone,
   Users,
   Wallet,
   X,
   AlertCircle,
+  FileText,
 } from "lucide-react";
 
 import { supabase } from "@/lib/supabase";
@@ -109,13 +110,10 @@ type StudentRecord = {
   payments: Payment[];
 };
 
-type PaymentReceipt = {
+type ReceiptData = {
   payment: Payment;
   student: Student;
   enrollment: Enrollment | null;
-  totalPaidAfterPayment: number;
-  balanceAfterPayment: number;
-  receiptNumber: string;
 };
 
 type Filter =
@@ -399,27 +397,43 @@ function getPaymentFollowUpLabel(
   return `Due in ${difference} days`;
 }
 
-function generateReceiptNumber(
-  paymentId: string
-) {
-  const date = new Date();
+/*
+ * =========================================================
+ * RECEIPT HELPERS
+ * =========================================================
+ */
 
-  const datePart =
-    new Intl.DateTimeFormat("en-CA", {
-      timeZone: NAIROBI_TIME_ZONE,
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-    })
-      .format(date)
-      .replace(/-/g, "");
-
-  const paymentPart = paymentId
+function getReceiptNumber(paymentId: string) {
+  const shortId = paymentId
     .replace(/-/g, "")
-    .slice(0, 6)
+    .slice(0, 8)
     .toUpperCase();
 
-  return `ST-${datePart}-${paymentPart}`;
+  return `ST-${shortId}`;
+}
+
+function paymentMethodLabel(
+  method: PaymentMethod
+) {
+  switch (method) {
+    case "mpesa":
+      return "M-Pesa";
+
+    case "cash":
+      return "Cash";
+
+    case "bank":
+      return "Bank";
+
+    case "card":
+      return "Card";
+
+    case "other":
+      return "Other";
+
+    default:
+      return method;
+  }
 }
 
 export default function AdminStudentsPage() {
@@ -450,11 +464,23 @@ export default function AdminStudentsPage() {
   const [showPaymentForm, setShowPaymentForm] =
     useState(false);
 
-  const [receipt, setReceipt] =
-    useState<PaymentReceipt | null>(null);
-
   const [updatingId, setUpdatingId] =
     useState<string | null>(null);
+
+  /*
+   * =========================================================
+   * RECEIPT STATE
+   * =========================================================
+   */
+
+  const [receiptData, setReceiptData] =
+    useState<ReceiptData | null>(null);
+
+  /*
+   * =========================================================
+   * PAYMENT FORM
+   * =========================================================
+   */
 
   const [paymentAmount, setPaymentAmount] =
     useState("");
@@ -579,6 +605,32 @@ export default function AdminStudentsPage() {
 
   /*
    * =========================================================
+   * RECEIPT ACTIONS
+   * =========================================================
+   */
+
+  function viewReceipt(
+    payment: Payment,
+    student: Student,
+    enrollment: Enrollment | null
+  ) {
+    setReceiptData({
+      payment,
+      student,
+      enrollment,
+    });
+  }
+
+  function printReceipt() {
+    window.print();
+  }
+
+  function closeReceipt() {
+    setReceiptData(null);
+  }
+
+  /*
+   * =========================================================
    * RESET ADD STUDENT FORM
    * =========================================================
    */
@@ -609,12 +661,6 @@ export default function AdminStudentsPage() {
 
     setAddStudentError("");
   }
-
-  /*
-   * =========================================================
-   * CLOSE ADD STUDENT
-   * =========================================================
-   */
 
   function closeAddStudent() {
     if (addingStudent) {
@@ -992,9 +1038,7 @@ export default function AdminStudentsPage() {
       return;
     }
 
-    if (
-      nextAmount < 0
-    ) {
+    if (nextAmount < 0) {
       setAddStudentError(
         "Next payment amount cannot be negative."
       );
@@ -1054,6 +1098,10 @@ export default function AdminStudentsPage() {
       | null = null;
 
     try {
+      /*
+       * 1. STUDENT
+       */
+
       const {
         data: createdStudent,
         error: studentError,
@@ -1087,6 +1135,10 @@ export default function AdminStudentsPage() {
 
       createdStudentId =
         createdStudent.id;
+
+      /*
+       * 2. ENROLLMENT
+       */
 
       const {
         data: createdEnrollment,
@@ -1130,8 +1182,21 @@ export default function AdminStudentsPage() {
       createdEnrollmentId =
         createdEnrollment.id;
 
+      /*
+       * 3. INITIAL PAYMENT
+       *
+       * IMPORTANT:
+       * We select the inserted payment so it can
+       * immediately become a receipt.
+       */
+
+      let createdInitialPayment:
+        | Payment
+        | null = null;
+
       if (initial > 0) {
         const {
+          data: paymentData,
           error: initialPaymentError,
         } = await supabase
           .from("payments")
@@ -1159,12 +1224,33 @@ export default function AdminStudentsPage() {
 
             notes:
               "Initial payment at student registration.",
-          });
+          })
+          .select(
+            `
+              id,
+              student_id,
+              enrollment_id,
+              payment_schedule_id,
+              amount,
+              payment_date,
+              payment_method,
+              reference,
+              notes
+            `
+          )
+          .single();
 
         if (initialPaymentError) {
           throw initialPaymentError;
         }
+
+        createdInitialPayment =
+          paymentData as Payment;
       }
+
+      /*
+       * 4. NEXT PAYMENT SCHEDULE
+       */
 
       if (
         remainingAfterInitial > 0 &&
@@ -1200,6 +1286,10 @@ export default function AdminStudentsPage() {
         }
       }
 
+      /*
+       * 5. SUCCESS
+       */
+
       setShowAddStudent(false);
 
       resetAddStudentForm();
@@ -1215,6 +1305,22 @@ export default function AdminStudentsPage() {
         setSelectedStudent(
           newlyCreatedRecord
         );
+
+        /*
+         * If an initial payment was made,
+         * immediately show its receipt.
+         */
+
+        if (createdInitialPayment) {
+          setReceiptData({
+            payment:
+              createdInitialPayment,
+            student:
+              newlyCreatedRecord.student,
+            enrollment:
+              newlyCreatedRecord.enrollment,
+          });
+        }
       }
     } catch (err) {
       console.error(
@@ -1506,7 +1612,7 @@ export default function AdminStudentsPage() {
 
   /*
    * =========================================================
-   * RECORD PAYMENT + GENERATE RECEIPT
+   * RECORD PAYMENT
    * =========================================================
    */
 
@@ -1621,7 +1727,7 @@ export default function AdminStudentsPage() {
     }
 
     /*
-     * UPDATE CURRENT PAYMENT SCHEDULE
+     * Update current schedule.
      */
 
     if (nextSchedule) {
@@ -1655,10 +1761,7 @@ export default function AdminStudentsPage() {
         newStatus = "paid";
       }
 
-      const {
-        error:
-          scheduleUpdateError,
-      } = await supabase
+      await supabase
         .from("payment_schedule")
         .update({
           status: newStatus,
@@ -1667,77 +1770,32 @@ export default function AdminStudentsPage() {
           "id",
           nextSchedule.id
         );
-
-      if (scheduleUpdateError) {
-        console.error(
-          "Payment schedule update error:",
-          scheduleUpdateError
-        );
-      }
     }
-
-    /*
-     * =====================================================
-     * CREATE RECEIPT DATA
-     * =====================================================
-     */
 
     const newPayment =
       data as Payment;
 
-    const totalPaidAfterPayment =
-      getTotalPaid(
-        selectedStudent.payments
-      ) + amount;
-
-    const balanceAfterPayment =
-      Math.max(
-        Number(
-          selectedStudent.enrollment.total_fee
-        ) -
-          totalPaidAfterPayment,
-        0
-      );
-
-    const newReceipt:
-      PaymentReceipt = {
-      payment: newPayment,
-
-      student:
-        selectedStudent.student,
-
-      enrollment:
-        selectedStudent.enrollment,
-
-      totalPaidAfterPayment,
-
-      balanceAfterPayment,
-
-      receiptNumber:
-        generateReceiptNumber(
-          newPayment.id
-        ),
-    };
-
-    /*
-     * RESET PAYMENT FORM
-     */
+    setSelectedStudent(
+      (current) =>
+        current
+          ? {
+              ...current,
+              payments: [
+                newPayment,
+                ...current.payments,
+              ],
+            }
+          : current
+    );
 
     setPaymentAmount("");
     setPaymentReference("");
     setPaymentMethod("mpesa");
     setShowPaymentForm(false);
-
-    /*
-     * SHOW RECEIPT IMMEDIATELY
-     */
-
-    setReceipt(newReceipt);
-
     setUpdatingId(null);
 
     /*
-     * REFRESH STUDENT DATA
+     * Refresh the database record.
      */
 
     await loadStudents(true);
@@ -1749,6 +1807,18 @@ export default function AdminStudentsPage() {
 
     if (refreshed) {
       setSelectedStudent(refreshed);
+
+      /*
+       * OPEN RECEIPT IMMEDIATELY.
+       */
+
+      setReceiptData({
+        payment: newPayment,
+        student:
+          refreshed.student,
+        enrollment:
+          refreshed.enrollment,
+      });
     }
   }
 
@@ -2335,11 +2405,6 @@ export default function AdminStudentsPage() {
                 const nextPayment =
                   getNextPayment(
                     record.schedules
-                  );
-
-                const totalPaid =
-                  getTotalPaid(
-                    record.payments
                   );
 
                 const balance =
@@ -3107,36 +3172,60 @@ export default function AdminStudentsPage() {
                             key={
                               payment.id
                             }
-                            className="flex items-center justify-between gap-4 p-3"
+                            className="p-3"
                           >
 
-                            <div>
+                            <div className="flex items-center justify-between gap-3">
 
-                              <p className="m-0 text-[11px] font-bold text-[var(--st-charcoal-dark)]">
-                                {formatCurrency(
-                                  Number(
-                                    payment.amount
-                                  )
+                              <div className="min-w-0">
+
+                                <p className="m-0 text-[11px] font-bold text-[var(--st-charcoal-dark)]">
+                                  {formatCurrency(
+                                    Number(
+                                      payment.amount
+                                    )
+                                  )}
+                                </p>
+
+                                <p className="mt-1 text-[9px] text-[var(--st-gray)]">
+                                  {formatDate(
+                                    payment.payment_date
+                                  )}{" "}
+                                  ·{" "}
+                                  {paymentMethodLabel(
+                                    payment.payment_method
+                                  )}
+                                </p>
+
+                                {payment.reference && (
+                                  <p className="mt-1 text-[8px] text-[var(--st-gray)]">
+                                    Ref:{" "}
+                                    {
+                                      payment.reference
+                                    }
+                                  </p>
                                 )}
-                              </p>
 
-                              <p className="mt-1 text-[9px] text-[var(--st-gray)]">
-                                {formatDate(
-                                  payment.payment_date
-                                )}{" "}
-                                ·{" "}
-                                {payment.payment_method.toUpperCase()}
-                              </p>
+                              </div>
+
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  viewReceipt(
+                                    payment,
+                                    selectedStudent.student,
+                                    selectedStudent.enrollment
+                                  )
+                                }
+                                className="st-button st-button-secondary !min-h-[36px] !px-3 text-[9px]"
+                              >
+                                <FileText
+                                  size={13}
+                                />
+                                Receipt
+                              </button>
 
                             </div>
-
-                            {payment.reference && (
-                              <span className="max-w-[120px] truncate text-[8px] text-[var(--st-gray)]">
-                                {
-                                  payment.reference
-                                }
-                              </span>
-                            )}
 
                           </div>
                         )
@@ -3399,350 +3488,6 @@ export default function AdminStudentsPage() {
 
           </div>
         )}
-
-      {/* =====================================================
-          PAYMENT RECEIPT
-      ===================================================== */}
-
-      {receipt && (
-        <div className="fixed inset-0 z-[200] flex items-end justify-center bg-black/60 sm:items-center sm:p-5">
-
-          <div className="max-h-[95vh] w-full max-w-[520px] overflow-y-auto rounded-t-3xl bg-white shadow-2xl sm:rounded-3xl">
-
-            {/* RECEIPT HEADER */}
-
-            <div className="sticky top-0 z-20 flex items-center justify-between border-b border-[var(--st-border)] bg-white px-5 py-4 print:hidden">
-
-              <div>
-
-                <p className="st-eyebrow">
-                  PAYMENT RECEIPT
-                </p>
-
-                <h2 className="mt-1 text-[20px] font-bold text-[var(--st-charcoal-dark)]">
-                  Payment received
-                </h2>
-
-              </div>
-
-              <button
-                type="button"
-                onClick={() =>
-                  setReceipt(null)
-                }
-                className="st-icon-button"
-                aria-label="Close receipt"
-              >
-                <X size={17} />
-              </button>
-
-            </div>
-
-            {/* RECEIPT BODY */}
-
-            <div
-              id="payment-receipt"
-              className="bg-white p-6 sm:p-8"
-            >
-
-              {/* BRAND */}
-
-              <div className="border-b-2 border-[var(--st-red)] pb-5">
-
-                <p className="m-0 text-[22px] font-extrabold tracking-tight text-[var(--st-charcoal-dark)]">
-                  SAUTI TAMU
-                </p>
-
-                <p className="mt-1 mb-0 text-[9px] font-bold uppercase tracking-[0.18em] text-[var(--st-red)]">
-                  PIANO CENTER
-                </p>
-
-                <p className="mt-3 mb-0 text-[9px] leading-relaxed text-[var(--st-gray)]">
-                  Junction Trade Center, 4th Floor,
-                  Room F401
-                  <br />
-                  Above Equity Bank Tearoom Branch
-                  <br />
-                  Nairobi CBD, Kenya
-                </p>
-
-              </div>
-
-              {/* RECEIPT INFORMATION */}
-
-              <div className="mt-6 flex items-start justify-between gap-4">
-
-                <div>
-
-                  <p className="m-0 text-[9px] font-bold uppercase tracking-[0.12em] text-[var(--st-gray)]">
-                    OFFICIAL PAYMENT RECEIPT
-                  </p>
-
-                  <p className="mt-2 text-[18px] font-bold text-[var(--st-charcoal-dark)]">
-                    {receipt.receiptNumber}
-                  </p>
-
-                </div>
-
-                <div className="text-right">
-
-                  <p className="m-0 text-[8px] font-bold uppercase tracking-[0.08em] text-[var(--st-gray)]">
-                    Payment date
-                  </p>
-
-                  <p className="mt-1 text-[10px] font-semibold text-[var(--st-charcoal-dark)]">
-                    {formatLongDate(
-                      receipt.payment.payment_date
-                    )}
-                  </p>
-
-                </div>
-
-              </div>
-
-              {/* STUDENT */}
-
-              <div className="mt-7 rounded-2xl bg-[var(--st-bg-soft)] p-4">
-
-                <p className="m-0 text-[8px] font-bold uppercase tracking-[0.1em] text-[var(--st-gray)]">
-                  RECEIVED FROM
-                </p>
-
-                <p className="mt-2 text-[16px] font-bold text-[var(--st-charcoal-dark)]">
-                  {receipt.student.full_name}
-                </p>
-
-                <p className="mt-1 text-[9px] text-[var(--st-gray)]">
-                  {receipt.student.email}
-                </p>
-
-                <p className="mt-1 text-[9px] text-[var(--st-gray)]">
-                  {receipt.student.whatsapp_number}
-                </p>
-
-              </div>
-
-              {/* PAYMENT DETAILS */}
-
-              <div className="mt-6">
-
-                <p className="mb-3 text-[9px] font-bold uppercase tracking-[0.1em] text-[var(--st-gray)]">
-                  PAYMENT DETAILS
-                </p>
-
-                <div className="overflow-hidden rounded-xl border border-[var(--st-border)]">
-
-                  <div className="flex items-center justify-between gap-4 border-b border-[var(--st-border)] p-4">
-
-                    <span className="text-[9px] text-[var(--st-gray)]">
-                      Programme
-                    </span>
-
-                    <span className="max-w-[250px] text-right text-[10px] font-bold text-[var(--st-charcoal-dark)]">
-                      {receipt.enrollment
-                        ? receipt.enrollment
-                            .programme_name
-                        : "Training Programme"}
-                    </span>
-
-                  </div>
-
-                  <div className="flex items-center justify-between gap-4 border-b border-[var(--st-border)] p-4">
-
-                    <span className="text-[9px] text-[var(--st-gray)]">
-                      Instrument
-                    </span>
-
-                    <span className="text-[10px] font-bold text-[var(--st-charcoal-dark)]">
-                      {receipt.enrollment
-                        ? instrumentName(
-                            receipt.enrollment
-                              .instrument
-                          )
-                        : "—"}
-                    </span>
-
-                  </div>
-
-                  <div className="flex items-center justify-between gap-4 border-b border-[var(--st-border)] p-4">
-
-                    <span className="text-[9px] text-[var(--st-gray)]">
-                      Payment method
-                    </span>
-
-                    <span className="text-[10px] font-bold uppercase text-[var(--st-charcoal-dark)]">
-                      {receipt.payment.payment_method}
-                    </span>
-
-                  </div>
-
-                  {receipt.payment.reference && (
-                    <div className="flex items-center justify-between gap-4 border-b border-[var(--st-border)] p-4">
-
-                      <span className="text-[9px] text-[var(--st-gray)]">
-                        Reference
-                      </span>
-
-                      <span className="max-w-[220px] truncate text-right text-[10px] font-bold text-[var(--st-charcoal-dark)]">
-                        {receipt.payment.reference}
-                      </span>
-
-                    </div>
-                  )}
-
-                  <div className="flex items-center justify-between gap-4 bg-[var(--st-bg-soft)] p-4">
-
-                    <span className="text-[10px] font-bold text-[var(--st-charcoal-dark)]">
-                      AMOUNT PAID
-                    </span>
-
-                    <span className="text-[20px] font-extrabold text-[var(--st-red)]">
-                      {formatCurrency(
-                        Number(
-                          receipt.payment.amount
-                        )
-                      )}
-                    </span>
-
-                  </div>
-
-                </div>
-
-              </div>
-
-              {/* ACCOUNT SUMMARY */}
-
-              <div className="mt-6">
-
-                <p className="mb-3 text-[9px] font-bold uppercase tracking-[0.1em] text-[var(--st-gray)]">
-                  ACCOUNT SUMMARY
-                </p>
-
-                <div className="grid grid-cols-3 gap-2">
-
-                  <div className="rounded-xl border border-[var(--st-border)] p-3">
-
-                    <p className="m-0 text-[8px] text-[var(--st-gray)]">
-                      Programme fee
-                    </p>
-
-                    <p className="mt-2 text-[11px] font-bold text-[var(--st-charcoal-dark)]">
-                      {receipt.enrollment
-                        ? formatCurrency(
-                            Number(
-                              receipt.enrollment
-                                .total_fee
-                            )
-                          )
-                        : "—"}
-                    </p>
-
-                  </div>
-
-                  <div className="rounded-xl border border-[var(--st-border)] p-3">
-
-                    <p className="m-0 text-[8px] text-[var(--st-gray)]">
-                      Total paid
-                    </p>
-
-                    <p className="mt-2 text-[11px] font-bold text-green-700">
-                      {formatCurrency(
-                        receipt.totalPaidAfterPayment
-                      )}
-                    </p>
-
-                  </div>
-
-                  <div className="rounded-xl border border-[var(--st-border)] p-3">
-
-                    <p className="m-0 text-[8px] text-[var(--st-gray)]">
-                      Balance
-                    </p>
-
-                    <p className="mt-2 text-[11px] font-bold text-[var(--st-red)]">
-                      {formatCurrency(
-                        receipt.balanceAfterPayment
-                      )}
-                    </p>
-
-                  </div>
-
-                </div>
-
-              </div>
-
-              {/* STATUS */}
-
-              <div className="mt-6 rounded-xl border border-green-100 bg-green-50 p-4">
-
-                <div className="flex items-center gap-2">
-
-                  <CheckCircle2
-                    size={15}
-                    className="shrink-0 text-green-700"
-                  />
-
-                  <p className="m-0 text-[10px] font-bold text-green-700">
-                    Payment successfully recorded
-                  </p>
-
-                </div>
-
-              </div>
-
-              {/* FOOTER */}
-
-              <div className="mt-7 border-t border-[var(--st-border)] pt-5 text-center">
-
-                <p className="m-0 text-[11px] font-bold text-[var(--st-charcoal-dark)]">
-                  Thank you for choosing Sauti Tamu.
-                </p>
-
-                <p className="mt-2 mb-0 text-[8px] leading-relaxed text-[var(--st-gray)]">
-                  This receipt confirms that the payment
-                  above has been recorded in the Sauti Tamu
-                  student account.
-                </p>
-
-                <p className="mt-4 mb-0 text-[8px] text-[var(--st-gray)]">
-                  Sauti Tamu Piano Center · Nairobi, Kenya
-                </p>
-
-              </div>
-
-            </div>
-
-            {/* RECEIPT ACTIONS */}
-
-            <div className="grid grid-cols-2 gap-2 border-t border-[var(--st-border)] bg-white p-5 print:hidden">
-
-              <button
-                type="button"
-                onClick={() =>
-                  window.print()
-                }
-                className="st-button st-button-primary w-full"
-              >
-                <Receipt size={15} />
-                Print / Save PDF
-              </button>
-
-              <button
-                type="button"
-                onClick={() =>
-                  setReceipt(null)
-                }
-                className="st-button st-button-secondary w-full"
-              >
-                Done
-              </button>
-
-            </div>
-
-          </div>
-
-        </div>
-      )}
 
       {/* =====================================================
           ADD STUDENT MODAL
@@ -4198,81 +3943,81 @@ export default function AdminStudentsPage() {
 
                     {numericInitialPayment >
                       0 && (
-                      <div className="mt-3">
+                      <>
+                        <div className="mt-3">
 
-                        <label className="mb-2 block text-[8px] font-bold uppercase tracking-[0.08em] text-[var(--st-gray)]">
-                          Payment method
-                        </label>
+                          <label className="mb-2 block text-[8px] font-bold uppercase tracking-[0.08em] text-[var(--st-gray)]">
+                            Payment method
+                          </label>
 
-                        <div className="relative">
+                          <div className="relative">
 
-                          <select
-                            value={
-                              initialPaymentMethod
-                            }
-                            onChange={(event) =>
-                              setInitialPaymentMethod(
-                                event.target
-                                  .value as PaymentMethod
-                              )
-                            }
-                            className="w-full appearance-none rounded-xl border border-[var(--st-border)] bg-white px-4 py-3.5 text-[10px] font-semibold outline-none focus:border-[var(--st-red)]"
-                          >
-                            <option value="mpesa">
-                              M-Pesa
-                            </option>
+                            <select
+                              value={
+                                initialPaymentMethod
+                              }
+                              onChange={(event) =>
+                                setInitialPaymentMethod(
+                                  event.target
+                                    .value as PaymentMethod
+                                )
+                              }
+                              className="w-full appearance-none rounded-xl border border-[var(--st-border)] bg-white px-4 py-3.5 text-[10px] font-semibold outline-none focus:border-[var(--st-red)]"
+                            >
+                              <option value="mpesa">
+                                M-Pesa
+                              </option>
 
-                            <option value="cash">
-                              Cash
-                            </option>
+                              <option value="cash">
+                                Cash
+                              </option>
 
-                            <option value="bank">
-                              Bank
-                            </option>
+                              <option value="bank">
+                                Bank
+                              </option>
 
-                            <option value="card">
-                              Card
-                            </option>
+                              <option value="card">
+                                Card
+                              </option>
 
-                            <option value="other">
-                              Other
-                            </option>
-                          </select>
+                              <option value="other">
+                                Other
+                              </option>
 
-                          <ChevronDown
-                            size={14}
-                            className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-[var(--st-gray)]"
-                          />
+                            </select>
+
+                            <ChevronDown
+                              size={14}
+                              className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-[var(--st-gray)]"
+                            />
+
+                          </div>
 
                         </div>
 
-                      </div>
-                    )}
+                        <div className="mt-3">
 
-                    {numericInitialPayment >
-                      0 && (
-                      <div className="mt-3">
+                          <label className="mb-2 block text-[8px] font-bold uppercase tracking-[0.08em] text-[var(--st-gray)]">
+                            Reference
+                          </label>
 
-                        <label className="mb-2 block text-[8px] font-bold uppercase tracking-[0.08em] text-[var(--st-gray)]">
-                          Reference
-                        </label>
+                          <input
+                            type="text"
+                            value={
+                              initialPaymentReference
+                            }
+                            onChange={(event) =>
+                              setInitialPaymentReference(
+                                event.target
+                                  .value
+                              )
+                            }
+                            placeholder="M-Pesa code / receipt number"
+                            className="w-full rounded-xl border border-[var(--st-border)] bg-white px-4 py-3 text-[10px] outline-none focus:border-[var(--st-red)]"
+                          />
 
-                        <input
-                          type="text"
-                          value={
-                            initialPaymentReference
-                          }
-                          onChange={(event) =>
-                            setInitialPaymentReference(
-                              event.target
-                                .value
-                            )
-                          }
-                          placeholder="M-Pesa code / receipt number"
-                          className="w-full rounded-xl border border-[var(--st-border)] bg-white px-4 py-3 text-[10px] outline-none focus:border-[var(--st-red)]"
-                        />
-
-                      </div>
+                        </div>
+                      </>
                     )}
 
                   </div>
@@ -4649,7 +4394,371 @@ export default function AdminStudentsPage() {
         </div>
       )}
 
+      {/* =====================================================
+          RECEIPT MODAL
+      ===================================================== */}
+
+      {receiptData && (
+        <div className="fixed inset-0 z-[200] flex items-end justify-center bg-black/60 sm:items-center sm:p-5">
+
+          <div className="flex max-h-[96vh] w-full max-w-[620px] flex-col overflow-hidden rounded-t-3xl bg-white shadow-2xl sm:rounded-3xl">
+
+            {/* RECEIPT HEADER */}
+
+            <div className="flex shrink-0 items-center justify-between gap-4 border-b border-[var(--st-border)] bg-white px-5 py-4">
+
+              <div>
+
+                <p className="st-eyebrow">
+                  PAYMENT RECEIPT
+                </p>
+
+                <h2 className="mt-1 text-[18px] font-bold text-[var(--st-charcoal-dark)]">
+                  Receipt{" "}
+                  {getReceiptNumber(
+                    receiptData.payment.id
+                  )}
+                </h2>
+
+              </div>
+
+              <button
+                type="button"
+                onClick={
+                  closeReceipt
+                }
+                className="st-icon-button"
+                aria-label="Close receipt"
+              >
+                <X size={17} />
+              </button>
+
+            </div>
+
+            {/* RECEIPT BODY */}
+
+            <div className="overflow-y-auto bg-[#f8f8f8] p-4 sm:p-6">
+
+              <div
+                id="payment-receipt"
+                className="mx-auto max-w-[560px] bg-white p-7 shadow-sm sm:p-9"
+              >
+
+                {/* BRAND */}
+
+                <div className="flex items-start justify-between gap-6 border-b border-[var(--st-border)] pb-6">
+
+                  <div>
+
+                    <div className="flex items-center gap-3">
+
+                      <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-[var(--st-red)] text-sm font-extrabold text-white">
+                        ST
+                      </div>
+
+                      <div>
+
+                        <p className="m-0 text-[18px] font-extrabold tracking-tight text-[var(--st-charcoal-dark)]">
+                          Sauti Tamu
+                        </p>
+
+                        <p className="mt-1 mb-0 text-[8px] font-bold uppercase tracking-[0.18em] text-[var(--st-gray)]">
+                          Piano Center
+                        </p>
+
+                      </div>
+
+                    </div>
+
+                    <p className="mt-4 mb-0 text-[9px] leading-relaxed text-[var(--st-gray)]">
+                      Junction Trade Center
+                      <br />
+                      4th Floor, Room F401
+                      <br />
+                      Above Equity Bank Tearoom Branch
+                      <br />
+                      Nairobi CBD, Kenya
+                    </p>
+
+                  </div>
+
+                  <div className="text-right">
+
+                    <p className="m-0 text-[8px] font-bold uppercase tracking-[0.12em] text-[var(--st-gray)]">
+                      RECEIPT
+                    </p>
+
+                    <p className="mt-2 mb-0 text-[12px] font-bold text-[var(--st-red)]">
+                      {getReceiptNumber(
+                        receiptData.payment.id
+                      )}
+                    </p>
+
+                    <p className="mt-2 mb-0 text-[9px] text-[var(--st-gray)]">
+                      {formatDate(
+                        receiptData.payment
+                          .payment_date
+                      )}
+                    </p>
+
+                  </div>
+
+                </div>
+
+                {/* RECEIVED FROM */}
+
+                <div className="mt-7">
+
+                  <p className="m-0 text-[8px] font-bold uppercase tracking-[0.12em] text-[var(--st-gray)]">
+                    RECEIVED FROM
+                  </p>
+
+                  <p className="mt-2 text-[18px] font-bold text-[var(--st-charcoal-dark)]">
+                    {
+                      receiptData.student
+                        .full_name
+                    }
+                  </p>
+
+                  <div className="mt-2 grid grid-cols-1 gap-1 sm:grid-cols-2">
+
+                    <p className="m-0 text-[9px] text-[var(--st-gray)]">
+                      {
+                        receiptData.student
+                          .email
+                      }
+                    </p>
+
+                    <p className="m-0 text-[9px] text-[var(--st-gray)] sm:text-right">
+                      {
+                        receiptData.student
+                          .whatsapp_number
+                      }
+                    </p>
+
+                  </div>
+
+                </div>
+
+                {/* PAYMENT DETAILS */}
+
+                <div className="mt-7 overflow-hidden rounded-xl border border-[var(--st-border)]">
+
+                  <div className="grid grid-cols-2 border-b border-[var(--st-border)] bg-[var(--st-bg-soft)]">
+
+                    <div className="p-4">
+
+                      <p className="m-0 text-[8px] font-bold uppercase tracking-[0.08em] text-[var(--st-gray)]">
+                        PAYMENT METHOD
+                      </p>
+
+                      <p className="mt-2 text-[12px] font-bold text-[var(--st-charcoal-dark)]">
+                        {paymentMethodLabel(
+                          receiptData
+                            .payment
+                            .payment_method
+                        )}
+                      </p>
+
+                    </div>
+
+                    <div className="border-l border-[var(--st-border)] p-4">
+
+                      <p className="m-0 text-[8px] font-bold uppercase tracking-[0.08em] text-[var(--st-gray)]">
+                        PAYMENT DATE
+                      </p>
+
+                      <p className="mt-2 text-[12px] font-bold text-[var(--st-charcoal-dark)]">
+                        {formatLongDate(
+                          receiptData
+                            .payment
+                            .payment_date
+                        )}
+                      </p>
+
+                    </div>
+
+                  </div>
+
+                  <div className="p-5">
+
+                    <p className="m-0 text-[8px] font-bold uppercase tracking-[0.08em] text-[var(--st-gray)]">
+                      DESCRIPTION
+                    </p>
+
+                    <p className="mt-2 text-[12px] font-semibold text-[var(--st-charcoal-dark)]">
+                      {receiptData.enrollment
+                        ? `${instrumentName(
+                            receiptData
+                              .enrollment
+                              .instrument
+                          )} — ${
+                            receiptData
+                              .enrollment
+                              .programme_name
+                          }`
+                        : "Training programme payment"}
+                    </p>
+
+                    {receiptData.payment.reference && (
+                      <div className="mt-4">
+
+                        <p className="m-0 text-[8px] font-bold uppercase tracking-[0.08em] text-[var(--st-gray)]">
+                          TRANSACTION REFERENCE
+                        </p>
+
+                        <p className="mt-1 text-[10px] font-semibold text-[var(--st-charcoal-dark)]">
+                          {
+                            receiptData
+                              .payment
+                              .reference
+                          }
+                        </p>
+
+                      </div>
+                    )}
+
+                  </div>
+
+                </div>
+
+                {/* AMOUNT */}
+
+                <div className="mt-6 rounded-2xl bg-[var(--st-red)] p-5 text-white">
+
+                  <div className="flex items-end justify-between gap-4">
+
+                    <div>
+
+                      <p className="m-0 text-[8px] font-bold uppercase tracking-[0.12em] opacity-80">
+                        AMOUNT PAID
+                      </p>
+
+                      <p className="mt-2 mb-0 text-[30px] font-extrabold leading-none">
+                        {formatCurrency(
+                          Number(
+                            receiptData
+                              .payment
+                              .amount
+                          )
+                        )}
+                      </p>
+
+                    </div>
+
+                    <CheckCircle2
+                      size={30}
+                      strokeWidth={2}
+                    />
+
+                  </div>
+
+                </div>
+
+                {/* PROGRAMME INFO */}
+
+                {receiptData.enrollment && (
+                  <div className="mt-6 grid grid-cols-2 gap-3">
+
+                    <div className="rounded-xl border border-[var(--st-border)] p-4">
+
+                      <p className="m-0 text-[8px] font-bold uppercase tracking-[0.08em] text-[var(--st-gray)]">
+                        PROGRAMME FEE
+                      </p>
+
+                      <p className="mt-2 text-[12px] font-bold text-[var(--st-charcoal-dark)]">
+                        {formatCurrency(
+                          Number(
+                            receiptData
+                              .enrollment
+                              .total_fee
+                          )
+                        )}
+                      </p>
+
+                    </div>
+
+                    <div className="rounded-xl border border-[var(--st-border)] p-4">
+
+                      <p className="m-0 text-[8px] font-bold uppercase tracking-[0.08em] text-[var(--st-gray)]">
+                        PAYMENT STATUS
+                      </p>
+
+                      <p className="mt-2 text-[12px] font-bold text-green-700">
+                        Payment received
+                      </p>
+
+                    </div>
+
+                  </div>
+                )}
+
+                {/* THANK YOU */}
+
+                <div className="mt-7 border-t border-[var(--st-border)] pt-5 text-center">
+
+                  <p className="m-0 text-[12px] font-bold text-[var(--st-charcoal-dark)]">
+                    Thank you for choosing Sauti Tamu.
+                  </p>
+
+                  <p className="mt-2 mb-0 text-[9px] leading-relaxed text-[var(--st-gray)]">
+                    Please keep this receipt for your records.
+                    <br />
+                    This receipt was generated electronically.
+                  </p>
+
+                </div>
+
+                {/* RECEIPT FOOTER */}
+
+                <div className="mt-6 text-center">
+
+                  <p className="m-0 text-[8px] font-bold uppercase tracking-[0.14em] text-[var(--st-red)]">
+                    SAUTI TAMU PIANO CENTER
+                  </p>
+
+                  <p className="mt-1 mb-0 text-[8px] text-[var(--st-gray)]">
+                    Junction Trade Center · Nairobi CBD
+                  </p>
+
+                </div>
+
+              </div>
+
+            </div>
+
+            {/* RECEIPT ACTIONS */}
+
+            <div className="flex shrink-0 gap-2 border-t border-[var(--st-border)] bg-white p-4">
+
+              <button
+                type="button"
+                onClick={
+                  closeReceipt
+                }
+                className="st-button st-button-secondary flex-1"
+              >
+                Close
+              </button>
+
+              <button
+                type="button"
+                onClick={
+                  printReceipt
+                }
+                className="st-button st-button-primary flex-1"
+              >
+                <Printer size={15} />
+                Print / Save PDF
+              </button>
+
+            </div>
+
+          </div>
+
+        </div>
+      )}
+
     </main>
   );
 }
-    
