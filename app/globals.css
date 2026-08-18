@@ -584,7 +584,6 @@ img {
     backdrop-filter: blur(2px);
   }
 
-  /* Show sidebar close button ONLY on mobile */
   .st-sidebar-brand .st-icon-button {
     display: inline-flex;
   }
@@ -651,5 +650,57 @@ img {
 
   .st-user-details {
     display: none;
+  }
+}
+
+/* =========================================================
+   PRINT — PAYMENT RECEIPT
+   ========================================================= */
+
+@media print {
+  /* Hide the entire application */
+  body {
+    background: #ffffff !important;
+  }
+
+  body * {
+    visibility: hidden !important;
+  }
+
+  /* Show only the receipt */
+  #payment-receipt,
+  #payment-receipt * {
+    visibility: visible !important;
+  }
+
+  /* Position receipt as the printable document */
+  #payment-receipt {
+    position: absolute !important;
+    top: 0 !important;
+    left: 0 !important;
+
+    width: 100% !important;
+    max-width: 100% !important;
+
+    margin: 0 !important;
+    padding: 30px !important;
+
+    background: #ffffff !important;
+
+    border: none !important;
+    border-radius: 0 !important;
+
+    box-shadow: none !important;
+  }
+
+  /* Remove screen-only elements */
+  .print\:hidden {
+    display: none !important;
+  }
+
+  /* A4 page */
+  @page {
+    size: A4;
+    margin: 12mm;
   }
 }
