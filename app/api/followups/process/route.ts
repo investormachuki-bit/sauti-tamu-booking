@@ -26,17 +26,13 @@ function formatTime(dateString: string) {
   }).format(new Date(dateString));
 }
 
-function getInstrumentName(
-  instrument: string
-) {
+function getInstrumentName(instrument: string) {
   return instrument.toLowerCase() === "piano"
     ? "Piano"
     : "Guitar";
 }
 
-function getReminderTitle(
-  taskType: string
-) {
+function getReminderTitle(taskType: string) {
   switch (taskType) {
     case "trial_reminder_7d":
       return "Your trial lesson is coming up in 7 days";
@@ -47,8 +43,8 @@ function getReminderTitle(
     case "trial_reminder_24h":
       return "Your trial lesson is tomorrow";
 
-    case "trial_reminder_12h":
-      return "Your trial lesson is coming up in 12 hours";
+    case "trial_reminder_6h":
+      return "Your trial lesson is coming up in 6 hours";
 
     case "trial_reminder_1h":
       return "Your trial lesson starts in 1 hour";
@@ -58,9 +54,7 @@ function getReminderTitle(
   }
 }
 
-function getReminderLabel(
-  taskType: string
-) {
+function getReminderLabel(taskType: string) {
   switch (taskType) {
     case "trial_reminder_7d":
       return "7-DAY REMINDER";
@@ -71,8 +65,8 @@ function getReminderLabel(
     case "trial_reminder_24h":
       return "24-HOUR REMINDER";
 
-    case "trial_reminder_12h":
-      return "12-HOUR REMINDER";
+    case "trial_reminder_6h":
+      return "6-HOUR REMINDER";
 
     case "trial_reminder_1h":
       return "1-HOUR REMINDER";
@@ -82,32 +76,20 @@ function getReminderLabel(
   }
 }
 
-export async function GET(
-  request: NextRequest
-) {
+export async function GET(request: NextRequest) {
   return processFollowups(request);
 }
 
-export async function POST(
-  request: NextRequest
-) {
+export async function POST(request: NextRequest) {
   return processFollowups(request);
 }
 
-async function processFollowups(
-  request: NextRequest
-) {
+async function processFollowups(request: NextRequest) {
   try {
     /*
      * --------------------------------------------------
      * SECURITY
      * --------------------------------------------------
-     *
-     * This endpoint will eventually be called by a
-     * scheduler/cron service.
-     *
-     * We protect it with a secret so random visitors
-     * cannot trigger emails.
      */
 
     const cronSecret =
@@ -129,14 +111,10 @@ async function processFollowups(
     }
 
     const authorization =
-      request.headers.get(
-        "authorization"
-      );
+      request.headers.get("authorization");
 
     const providedSecret =
-      authorization?.startsWith(
-        "Bearer "
-      )
+      authorization?.startsWith("Bearer ")
         ? authorization.substring(7)
         : null;
 
@@ -155,7 +133,7 @@ async function processFollowups(
 
     /*
      * --------------------------------------------------
-     * CONFIGURATION
+     * EMAIL CONFIGURATION
      * --------------------------------------------------
      */
 
@@ -178,11 +156,6 @@ async function processFollowups(
      * --------------------------------------------------
      * FIND DUE EMAIL REMINDERS
      * --------------------------------------------------
-     *
-     * We deliberately limit this batch.
-     *
-     * If something goes wrong, the processor won't try
-     * to send hundreds of emails in a single request.
      */
 
     const now =
@@ -212,7 +185,7 @@ async function processFollowups(
         "trial_reminder_7d",
         "trial_reminder_3d",
         "trial_reminder_24h",
-        "trial_reminder_12h",
+        "trial_reminder_6h",
         "trial_reminder_1h",
       ])
       .order("due_at", {
@@ -258,9 +231,7 @@ async function processFollowups(
 
     const results: Array<{
       taskId: string;
-      status:
-        | "sent"
-        | "failed";
+      status: "sent" | "failed";
       error?: string;
     }> = [];
 
@@ -285,16 +256,10 @@ async function processFollowups(
               whatsapp_number
             `
           )
-          .eq(
-            "id",
-            task.lead_id
-          )
+          .eq("id", task.lead_id)
           .single();
 
-        if (
-          leadError ||
-          !lead
-        ) {
+        if (leadError || !lead) {
           throw new Error(
             "Lead could not be found."
           );
@@ -311,7 +276,7 @@ async function processFollowups(
 
         /*
          * ------------------------------------------------
-         * LOAD BOOKING + LESSON SLOT
+         * LOAD BOOKING
          * ------------------------------------------------
          */
 
@@ -335,8 +300,7 @@ async function processFollowups(
         if (task.booking_id) {
           const {
             data: bookingData,
-            error:
-              bookingError,
+            error: bookingError,
           } = await supabaseServer
             .from("bookings")
             .select(
@@ -347,10 +311,7 @@ async function processFollowups(
                 slot_id
               `
             )
-            .eq(
-              "id",
-              task.booking_id
-            )
+            .eq("id", task.booking_id)
             .single();
 
           if (
@@ -362,39 +323,29 @@ async function processFollowups(
             );
           }
 
-          booking =
-            bookingData;
+          booking = bookingData;
 
           /*
-           * If the booking has been cancelled,
-           * don't send the reminder.
+           * Cancelled / no-show bookings should
+           * never receive future reminders.
            */
 
           if (
-            booking.status ===
-              "cancelled" ||
-            booking.status ===
-              "no_show"
+            booking.status === "cancelled" ||
+            booking.status === "no_show"
           ) {
             await supabaseServer
-              .from(
-                "follow_up_tasks"
-              )
+              .from("follow_up_tasks")
               .update({
-                status:
-                  "cancelled",
+                status: "cancelled",
                 updated_at:
                   new Date().toISOString(),
               })
-              .eq(
-                "id",
-                task.id
-              );
+              .eq("id", task.id);
 
             results.push({
               taskId: task.id,
-              status:
-                "failed",
+              status: "failed",
               error:
                 "Booking is cancelled or marked as no-show.",
             });
@@ -402,14 +353,15 @@ async function processFollowups(
             continue;
           }
 
+          /*
+           * Load lesson slot.
+           */
+
           const {
             data: slotData,
-            error:
-              slotError,
+            error: slotError,
           } = await supabaseServer
-            .from(
-              "lesson_slots"
-            )
+            .from("lesson_slots")
             .select(
               `
                 id,
@@ -497,8 +449,6 @@ async function processFollowups(
 
                 <div style="max-width:620px;margin:0 auto;background:#ffffff;border-radius:18px;overflow:hidden;">
 
-                  <!-- HEADER -->
-
                   <div style="background:#C62828;color:#ffffff;padding:28px 30px;">
 
                     <div style="font-size:14px;font-weight:800;letter-spacing:2px;">
@@ -510,8 +460,6 @@ async function processFollowups(
                     </div>
 
                   </div>
-
-                  <!-- CONTENT -->
 
                   <div style="padding:32px;">
 
@@ -532,8 +480,6 @@ async function processFollowups(
                       free ${instrumentName} trial lesson
                       at Sauti Tamu Piano Center.
                     </p>
-
-                    <!-- LESSON CARD -->
 
                     <div style="margin-top:26px;background:#f7f7f7;border-radius:16px;padding:22px;">
 
@@ -559,8 +505,6 @@ async function processFollowups(
 
                     </div>
 
-                    <!-- LOCATION -->
-
                     <div style="margin-top:22px;padding:20px;border:1px solid #eeeeee;border-radius:14px;">
 
                       <div style="font-size:10px;font-weight:700;letter-spacing:1px;color:#C62828;">
@@ -580,8 +524,6 @@ async function processFollowups(
 
                     </div>
 
-                    <!-- REMINDER -->
-
                     <div style="margin-top:22px;background:#fff7f7;border-radius:14px;padding:18px;">
 
                       <div style="font-size:12px;font-weight:700;color:#1F2933;">
@@ -595,8 +537,6 @@ async function processFollowups(
                       </div>
 
                     </div>
-
-                    <!-- FOOTER -->
 
                     <div style="margin-top:30px;padding-top:20px;border-top:1px solid #eeeeee;font-size:11px;line-height:1.6;color:#999999;">
                       Sauti Tamu Piano Center<br/>
@@ -632,12 +572,9 @@ async function processFollowups(
          */
 
         const {
-          error:
-            updateError,
+          error: updateError,
         } = await supabaseServer
-          .from(
-            "follow_up_tasks"
-          )
+          .from("follow_up_tasks")
           .update({
             status: "sent",
             sent_at:
@@ -645,24 +582,10 @@ async function processFollowups(
             updated_at:
               new Date().toISOString(),
           })
-          .eq(
-            "id",
-            task.id
-          )
-          .eq(
-            "status",
-            "pending"
-          );
+          .eq("id", task.id)
+          .eq("status", "pending");
 
         if (updateError) {
-          /*
-           * The email was sent, but we could not update
-           * the database.
-           *
-           * This is important because a retry could
-           * potentially send the email again.
-           */
-
           console.error(
             "Task status update failed after email was sent:",
             updateError
@@ -677,17 +600,10 @@ async function processFollowups(
 
         results.push({
           taskId: task.id,
-          status:
-            "sent",
+          status: "sent",
         });
 
       } catch (error) {
-        /*
-         * ------------------------------------------------
-         * FAILURE
-         * ------------------------------------------------
-         */
-
         const errorMessage =
           error instanceof Error
             ? error.message
@@ -698,53 +614,29 @@ async function processFollowups(
           error
         );
 
-        /*
-         * Leave the task as pending.
-         *
-         * This allows the next scheduler run to retry it.
-         */
-
         await supabaseServer
-          .from(
-            "follow_up_tasks"
-          )
+          .from("follow_up_tasks")
           .update({
             updated_at:
               new Date().toISOString(),
           })
-          .eq(
-            "id",
-            task.id
-          );
+          .eq("id", task.id);
 
         failed++;
 
         results.push({
           taskId: task.id,
-          status:
-            "failed",
-          error:
-            errorMessage,
+          status: "failed",
+          error: errorMessage,
         });
       }
     }
 
-    /*
-     * --------------------------------------------------
-     * FINAL RESPONSE
-     * --------------------------------------------------
-     */
-
     return NextResponse.json({
       success: true,
-
-      processed:
-        tasks.length,
-
+      processed: tasks.length,
       sent,
-
       failed,
-
       results,
     });
 
