@@ -124,9 +124,6 @@ type Filter =
  * =========================================================
  * RECEIPT HISTORY TYPE
  * =========================================================
- *
- * Kept locally so this page can pass progressive payment
- * history to the receipt generator.
  */
 
 type ReceiptHistoryItem = {
@@ -449,21 +446,8 @@ function createReceiptNumber(
 }
 
 /*
- * Build the receipt using payment history up to the
- * selected payment.
- *
- * Example:
- *
- * Payment 1:
- * Programme 26,850
- * Payment 1  2,000
- * Balance   24,850
- *
- * Payment 2:
- * Programme 26,850
- * Payment 1  2,000
- * Payment 2  5,000
- * Balance   19,850
+ * Build receipt using payment history up to
+ * the selected payment.
  */
 
 function buildReceiptData(
@@ -499,9 +483,9 @@ function buildReceiptData(
   });
 
   /*
-   * Make sure the current payment is included.
-   * This matters immediately after recording a payment.
+   * Make sure current payment is included.
    */
+
   if (
     !paymentsChronological.some(
       (item) =>
@@ -544,9 +528,9 @@ function buildReceiptData(
     );
 
   /*
-   * Only show payments up to the payment represented
-   * by this receipt.
+   * Only show payments up to this receipt.
    */
+
   const paymentsUpToCurrent =
     paymentsChronological.slice(
       0,
@@ -1744,6 +1728,26 @@ export default function AdminStudentsPage() {
     return receipt;
   }
 
+  /*
+   * =========================================================
+   * UPDATED RECEIPT DOWNLOAD
+   * =========================================================
+   *
+   * IMPORTANT:
+   *
+   * generatePaymentReceipt() now returns void.
+   * It creates and saves the PDF internally.
+   *
+   * Therefore:
+   *
+   * WRONG:
+   * const doc = generatePaymentReceipt(...);
+   * doc.save(...);
+   *
+   * CORRECT:
+   * generatePaymentReceipt(...);
+   */
+
   function downloadReceipt(
     record: StudentRecord,
     payment: Payment
@@ -1756,17 +1760,8 @@ export default function AdminStudentsPage() {
 
     if (!receipt) return;
 
-    /*
-     * generatePaymentReceipt returns the jsPDF
-     * document. It does not save automatically.
-     */
-    const doc =
-      generatePaymentReceipt(
-        receipt as PaymentReceiptData
-      );
-
-    doc.save(
-      `Sauti-Tamu-Receipt-${receipt.receiptNumber}.pdf`
+    generatePaymentReceipt(
+      receipt as PaymentReceiptData
     );
   }
 
@@ -1790,13 +1785,8 @@ export default function AdminStudentsPage() {
   function downloadLastReceipt() {
     if (!lastReceipt) return;
 
-    const doc =
-      generatePaymentReceipt(
-        lastReceipt as PaymentReceiptData
-      );
-
-    doc.save(
-      `Sauti-Tamu-Receipt-${lastReceipt.receiptNumber}.pdf`
+    generatePaymentReceipt(
+      lastReceipt as PaymentReceiptData
     );
   }
 
@@ -2039,9 +2029,10 @@ export default function AdminStudentsPage() {
       data as Payment;
 
     /*
-     * Build the receipt immediately using the
+     * Build receipt immediately using
      * OLD history + NEW payment.
      */
+
     const recordForReceipt: StudentRecord =
       {
         ...selectedStudent,
@@ -3512,16 +3503,13 @@ export default function AdminStudentsPage() {
                   Close
                 </button>
 
+                {/* UPDATED: generator downloads internally */}
+
                 <button
                   type="button"
                   onClick={() => {
-                    const doc =
-                      generatePaymentReceipt(
-                        viewingReceipt as PaymentReceiptData
-                      );
-
-                    doc.save(
-                      `Sauti-Tamu-Receipt-${viewingReceipt.receiptNumber}.pdf`
+                    generatePaymentReceipt(
+                      viewingReceipt as PaymentReceiptData
                     );
                   }}
                   className="st-button st-button-primary w-full !px-2 text-[9px]"
