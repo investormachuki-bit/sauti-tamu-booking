@@ -1,4 +1,5 @@
 import jsPDF from "jspdf";
+import { supabase } from "@/lib/supabase";
 
 export type PaymentReceiptItem = {
   label: string;
@@ -20,33 +21,12 @@ export type PaymentReceiptData = {
 
   programmeAmount: number;
 
-  /*
-   * Every payment made up to and including
-   * the payment represented by this receipt.
-   *
-   * This allows the receipt to show:
-   *
-   * Programme amount
-   * 1st payment
-   * 2nd payment
-   * 3rd payment
-   * Balance
-   */
   paymentHistory?: PaymentReceiptItem[];
 
-  /*
-   * The balance before the current payment.
-   */
   previousBalance: number;
 
-  /*
-   * The payment being receipted now.
-   */
   amountPaid: number;
 
-  /*
-   * Balance remaining after the current payment.
-   */
   balanceAfterPayment: number;
 
   paymentMethod: string;
@@ -55,16 +35,42 @@ export type PaymentReceiptData = {
   reference?: string | null;
 };
 
+type ReceiptBusinessSettings = {
+  business_name: string;
+  phone: string | null;
+  whatsapp_number: string | null;
+  email: string | null;
+  website: string | null;
+
+  logo_url: string | null;
+  stamp_url: string | null;
+
+  receipt_business_name: string;
+
+  receipt_show_logo: boolean;
+  receipt_show_stamp: boolean;
+
+  receipt_footer: string;
+
+  currency: string;
+
+  payment_instructions: string | null;
+};
+
+type ReceiptBookingSettings = {
+  address: string | null;
+};
+
+/*
+ * =========================================================
+ * BRAND COLORS
+ * =========================================================
+ */
+
 const RED: readonly [number, number, number] = [
   197,
   31,
   42,
-];
-
-const RED_DARK: readonly [number, number, number] = [
-  168,
-  23,
-  34,
 ];
 
 const DARK: readonly [number, number, number] = [
@@ -109,11 +115,11 @@ const PALE_GREEN: readonly [number, number, number] = [
   238,
 ];
 
-function money(amount: number) {
-  return `KES ${new Intl.NumberFormat("en-KE", {
-    maximumFractionDigits: 0,
-  }).format(Number(amount) || 0)}`;
-}
+/*
+ * =========================================================
+ * HELPERS
+ * =========================================================
+ */
 
 function safeText(value: unknown) {
   if (
@@ -126,10 +132,31 @@ function safeText(value: unknown) {
   return String(value);
 }
 
+function money(
+  amount: number,
+  currency = "KES"
+) {
+  const formatted =
+    new Intl.NumberFormat(
+      "en-KE",
+      {
+        maximumFractionDigits: 0,
+      }
+    ).format(
+      Number(amount) || 0
+    );
+
+  return `${currency} ${formatted}`;
+}
+
 function drawLine(
   doc: jsPDF,
   y: number,
-  color: readonly [number, number, number] = LIGHT_GRAY,
+  color: readonly [
+    number,
+    number,
+    number
+  ] = LIGHT_GRAY,
   lineWidth = 0.25
 ) {
   doc.setDrawColor(
@@ -138,7 +165,9 @@ function drawLine(
     color[2]
   );
 
-  doc.setLineWidth(lineWidth);
+  doc.setLineWidth(
+    lineWidth
+  );
 
   doc.line(
     8,
@@ -154,16 +183,27 @@ function setText(
   x: number,
   y: number,
   size: number,
-  color: readonly [number, number, number] = DARK,
-  weight: "normal" | "bold" = "normal",
-  align: "left" | "center" | "right" = "left"
+  color: readonly [
+    number,
+    number,
+    number
+  ] = DARK,
+  weight:
+    | "normal"
+    | "bold" = "normal",
+  align:
+    | "left"
+    | "center"
+    | "right" = "left"
 ) {
   doc.setFont(
     "helvetica",
     weight
   );
 
-  doc.setFontSize(size);
+  doc.setFontSize(
+    size
+  );
 
   doc.setTextColor(
     color[0],
@@ -204,6 +244,7 @@ function drawPaymentRow(
   item: PaymentReceiptItem,
   index: number,
   y: number,
+  currency: string,
   highlight = false
 ) {
   const rowHeight = 8;
@@ -236,17 +277,26 @@ function drawPaymentRow(
     10,
     y,
     7.2,
-    highlight ? GREEN : GRAY,
-    highlight ? "bold" : "normal"
+    highlight
+      ? GREEN
+      : GRAY,
+    highlight
+      ? "bold"
+      : "normal"
   );
 
   setText(
     doc,
-    money(item.amount),
+    money(
+      item.amount,
+      currency
+    ),
     70,
     y,
     7.4,
-    highlight ? GREEN : DARK,
+    highlight
+      ? GREEN
+      : DARK,
     "bold",
     "right"
   );
@@ -254,74 +304,566 @@ function drawPaymentRow(
   return y + rowHeight;
 }
 
-export function generatePaymentReceipt(
+/*
+ * =========================================================
+ * STORAGE IMAGE HELPERS
+ * =========================================================
+ */
+
+/**
+ * Converts a signed/public image URL into a data URI
+ * that jsPDF can safely embed in the PDF.
+ */
+async function imageUrlToDataUrl(
+  url: string
+): Promise<string | null> {
+  try {
+    const response =
+      await fetch(url);
+
+    if (!response.ok) {
+      console.error(
+        "Could not fetch receipt image:",
+        response.status
+      );
+
+      return null;
+    }
+
+    const blob =
+      await response.blob();
+
+    return await new Promise(
+      (resolve) => {
+        const reader =
+          new FileReader();
+
+        reader.onloadend = () => {
+          resolve(
+            typeof reader.result ===
+              "string"
+              ? reader.result
+              : null
+          );
+        };
+
+        reader.onerror = () =>
+          resolve(null);
+
+        reader.readAsDataURL(
+          blob
+        );
+      }
+    );
+  } catch (error) {
+    console.error(
+      "Image conversion error:",
+      error
+    );
+
+    return null;
+  }
+}
+
+/**
+ * Gets a signed URL for an asset stored in the
+ * private business-assets bucket.
+ */
+async function getBusinessAssetUrl(
+  path: string | null
+) {
+  if (!path) {
+    return null;
+  }
+
+  /*
+   * Support older records where a complete URL
+   * may already have been stored.
+   */
+  if (
+    path.startsWith(
+      "http://"
+    ) ||
+    path.startsWith(
+      "https://"
+    )
+  ) {
+    return path;
+  }
+
+  const {
+    data,
+    error,
+  } =
+    await supabase.storage
+      .from(
+        "business-assets"
+      )
+      .createSignedUrl(
+        path,
+        60 * 10
+      );
+
+  if (error) {
+    console.error(
+      "Receipt asset signed URL error:",
+      error
+    );
+
+    return null;
+  }
+
+  return (
+    data?.signedUrl ??
+    null
+  );
+}
+
+/*
+ * =========================================================
+ * LOAD RECEIPT SETTINGS
+ * =========================================================
+ */
+
+async function loadReceiptSettings() {
+  const [
+    businessResult,
+    bookingResult,
+  ] = await Promise.all([
+    supabase
+      .from(
+        "business_settings"
+      )
+      .select(
+        `
+          business_name,
+          phone,
+          whatsapp_number,
+          email,
+          website,
+          logo_url,
+          stamp_url,
+          receipt_business_name,
+          receipt_show_logo,
+          receipt_show_stamp,
+          receipt_footer,
+          currency,
+          payment_instructions
+        `
+      )
+      .eq("id", true)
+      .maybeSingle(),
+
+    supabase
+      .from(
+        "booking_settings"
+      )
+      .select(
+        "address"
+      )
+      .limit(1)
+      .maybeSingle(),
+  ]);
+
+  if (businessResult.error) {
+    throw businessResult.error;
+  }
+
+  if (bookingResult.error) {
+    throw bookingResult.error;
+  }
+
+  const business =
+    (businessResult.data ??
+      null) as ReceiptBusinessSettings | null;
+
+  const booking =
+    (bookingResult.data ??
+      null) as ReceiptBookingSettings | null;
+
+  /*
+   * Safe fallbacks.
+   */
+  const settings: ReceiptBusinessSettings =
+    business ?? {
+      business_name:
+        "Sauti Tamu Piano Center",
+
+      phone: null,
+      whatsapp_number: null,
+      email: null,
+      website: null,
+
+      logo_url: null,
+      stamp_url: null,
+
+      receipt_business_name:
+        "Sauti Tamu Piano Center",
+
+      receipt_show_logo: true,
+      receipt_show_stamp: true,
+
+      receipt_footer:
+        "Thank you for choosing Sauti Tamu Piano Center.",
+
+      currency: "KES",
+
+      payment_instructions:
+        null,
+    };
+
+  const address =
+    booking?.address ??
+    "Junction Trade Center, 4th Floor, Room F401, Nairobi CBD";
+
+  return {
+    business: settings,
+    address,
+  };
+}
+
+/*
+ * =========================================================
+ * TEXT WRAPPING
+ * =========================================================
+ */
+
+function drawWrappedText(
+  doc: jsPDF,
+  text: string,
+  x: number,
+  y: number,
+  maxWidth: number,
+  size: number,
+  color: readonly [
+    number,
+    number,
+    number
+  ] = GRAY,
+  weight:
+    | "normal"
+    | "bold" = "normal",
+  lineHeight = 3.5,
+  align:
+    | "left"
+    | "center"
+    | "right" = "left"
+) {
+  doc.setFont(
+    "helvetica",
+    weight
+  );
+
+  doc.setFontSize(
+    size
+  );
+
+  const lines =
+    doc.splitTextToSize(
+      safeText(text),
+      maxWidth
+    );
+
+  lines.forEach(
+    (
+      line: string,
+      index: number
+    ) => {
+      setText(
+        doc,
+        line,
+        x,
+        y +
+          index *
+            lineHeight,
+        size,
+        color,
+        weight,
+        align
+      );
+    }
+  );
+
+  return (
+    y +
+    lines.length *
+      lineHeight
+  );
+}
+
+/*
+ * =========================================================
+ * RECEIPT GENERATOR
+ * =========================================================
+ */
+
+export async function generatePaymentReceipt(
   data: PaymentReceiptData
 ) {
   /*
    * =========================================================
+   * LOAD CURRENT BUSINESS SETTINGS
+   * =========================================================
+   */
+
+  const {
+    business,
+    address,
+  } =
+    await loadReceiptSettings();
+
+  const currency =
+    business.currency ||
+    "KES";
+
+  /*
+   * =========================================================
+   * LOAD LOGO + STAMP
+   * =========================================================
+   */
+
+  let logoDataUrl:
+    | string
+    | null = null;
+
+  let stampDataUrl:
+    | string
+    | null = null;
+
+  if (
+    business.receipt_show_logo &&
+    business.logo_url
+  ) {
+    const logoUrl =
+      await getBusinessAssetUrl(
+        business.logo_url
+      );
+
+    if (logoUrl) {
+      logoDataUrl =
+        await imageUrlToDataUrl(
+          logoUrl
+        );
+    }
+  }
+
+  if (
+    business.receipt_show_stamp &&
+    business.stamp_url
+  ) {
+    const stampUrl =
+      await getBusinessAssetUrl(
+        business.stamp_url
+      );
+
+    if (stampUrl) {
+      stampDataUrl =
+        await imageUrlToDataUrl(
+          stampUrl
+        );
+    }
+  }
+
+  /*
+   * =========================================================
    * RECEIPT SIZE
    * =========================================================
-   *
-   * 80mm wide receipt.
-   *
-   * We deliberately use a longer receipt height so that
-   * multiple payments can be displayed without being cut off.
-   *
-   * This is NOT A4.
    */
 
-  const doc = new jsPDF({
-    orientation: "portrait",
-    unit: "mm",
-    format: [80, 220],
-    compress: true,
-  });
+  const history =
+    data.paymentHistory ??
+    [];
+
+  /*
+   * Give receipts enough room for payment history,
+   * contact information and optional payment instructions.
+   */
+  const estimatedHeight =
+    Math.max(
+      220,
+      220 +
+        Math.max(
+          0,
+          history.length - 3
+        ) *
+          8
+    );
+
+  const doc =
+    new jsPDF({
+      orientation:
+        "portrait",
+      unit: "mm",
+      format: [
+        80,
+        estimatedHeight,
+      ],
+      compress: true,
+    });
 
   doc.setProperties({
-    title: `Sauti Tamu Payment Receipt ${data.receiptNumber}`,
-    subject: "Payment Receipt",
-    author: "Sauti Tamu Piano Center",
-    creator: "Sauti Tamu",
+    title: `${business.receipt_business_name} Payment Receipt ${data.receiptNumber}`,
+    subject:
+      "Payment Receipt",
+    author:
+      business.receipt_business_name,
+    creator:
+      "Sauti Tamu",
   });
 
-  let y = 9;
+  let y = 7;
 
   /*
    * =========================================================
-   * HEADER
+   * BUSINESS HEADER
    * =========================================================
    */
 
-  setText(
-    doc,
-    "Sauti Tamu",
-    40,
-    y,
-    15,
-    RED,
-    "bold",
-    "center"
-  );
+  if (logoDataUrl) {
+    try {
+      doc.addImage(
+        logoDataUrl,
+        "AUTO",
+        27,
+        y,
+        26,
+        16,
+        undefined,
+        "FAST"
+      );
 
-  y += 5;
-
-  setText(
-    doc,
-    "Piano Center",
-    40,
-    y,
-    7,
-    DARK,
-    "bold",
-    "center"
-  );
-
-  y += 7;
+      y += 19;
+    } catch (error) {
+      console.error(
+        "Could not add logo to receipt:",
+        error
+      );
+    }
+  }
 
   /*
-   * Receipt title.
-   *
-   * Natural capitalization rather than all caps.
+   * Business name.
+   */
+
+  const businessName =
+    business.receipt_business_name ||
+    business.business_name ||
+    "Sauti Tamu Piano Center";
+
+  const businessNameLines =
+    doc.splitTextToSize(
+      businessName,
+      64
+    );
+
+  businessNameLines.forEach(
+    (
+      line: string,
+      index: number
+    ) => {
+      setText(
+        doc,
+        line,
+        40,
+        y +
+          index * 4.5,
+        11,
+        RED,
+        "bold",
+        "center"
+      );
+    }
+  );
+
+  y +=
+    businessNameLines.length *
+      4.5 +
+    2;
+
+  /*
+   * Contact information.
+   */
+
+  const contactParts =
+    [
+      business.phone,
+      business.whatsapp_number &&
+      business.whatsapp_number !==
+        business.phone
+        ? `WhatsApp ${business.whatsapp_number}`
+        : null,
+      business.email,
+    ].filter(Boolean);
+
+  if (
+    contactParts.length >
+    0
+  ) {
+    y =
+      drawWrappedText(
+        doc,
+        contactParts.join(
+          " · "
+        ),
+        40,
+        y,
+        64,
+        5.8,
+        GRAY,
+        "normal",
+        3,
+        "center"
+      );
+  }
+
+  if (
+    business.website
+  ) {
+    y += 1;
+
+    y =
+      drawWrappedText(
+        doc,
+        business.website,
+        40,
+        y,
+        64,
+        5.8,
+        GRAY,
+        "normal",
+        3,
+        "center"
+      );
+  }
+
+  /*
+   * Address from booking settings.
+   */
+
+  if (address) {
+    y += 1;
+
+    y =
+      drawWrappedText(
+        doc,
+        address,
+        40,
+        y,
+        64,
+        3.2,
+        GRAY,
+        "normal",
+        3,
+        "center"
+      );
+  }
+
+  y += 3;
+
+  /*
+   * =========================================================
+   * RECEIPT TITLE
+   * =========================================================
    */
 
   doc.setFillColor(
@@ -331,9 +873,9 @@ export function generatePaymentReceipt(
   );
 
   doc.roundedRect(
-    20,
+    19,
     y,
-    40,
+    42,
     7,
     1.5,
     1.5,
@@ -366,7 +908,10 @@ export function generatePaymentReceipt(
 
   y += 6;
 
-  drawLine(doc, y);
+  drawLine(
+    doc,
+    y
+  );
 
   y += 7;
 
@@ -376,11 +921,12 @@ export function generatePaymentReceipt(
    * =========================================================
    */
 
-  y = sectionLabel(
-    doc,
-    "Received from",
-    y
-  );
+  y =
+    sectionLabel(
+      doc,
+      "Received from",
+      y
+    );
 
   setText(
     doc,
@@ -394,36 +940,46 @@ export function generatePaymentReceipt(
 
   y += 4.5;
 
-  /*
-   * Email may be long, so shrink it slightly.
-   */
+  if (
+    data.studentEmail
+  ) {
+    y =
+      drawWrappedText(
+        doc,
+        data.studentEmail,
+        8,
+        y,
+        64,
+        6.2,
+        GRAY,
+        "normal",
+        3.5
+      );
+  }
 
-  const email =
-    safeText(data.studentEmail);
+  if (
+    data.studentPhone
+  ) {
+    y += 1;
 
-  setText(
+    setText(
+      doc,
+      data.studentPhone,
+      8,
+      y,
+      6.5,
+      GRAY
+    );
+
+    y += 4;
+  }
+
+  y += 3;
+
+  drawLine(
     doc,
-    email,
-    8,
-    y,
-    6.5,
-    GRAY
+    y
   );
-
-  y += 4;
-
-  setText(
-    doc,
-    safeText(data.studentPhone),
-    8,
-    y,
-    6.5,
-    GRAY
-  );
-
-  y += 7;
-
-  drawLine(doc, y);
 
   y += 7;
 
@@ -433,23 +989,27 @@ export function generatePaymentReceipt(
    * =========================================================
    */
 
-  y = sectionLabel(
-    doc,
-    "Programme",
-    y
-  );
+  y =
+    sectionLabel(
+      doc,
+      "Programme",
+      y
+    );
 
-  setText(
-    doc,
-    data.programmeName,
-    8,
-    y,
-    8,
-    DARK,
-    "bold"
-  );
+  y =
+    drawWrappedText(
+      doc,
+      data.programmeName,
+      8,
+      y,
+      64,
+      8,
+      DARK,
+      "bold",
+      4
+    );
 
-  y += 5;
+  y += 1;
 
   setText(
     doc,
@@ -495,7 +1055,10 @@ export function generatePaymentReceipt(
 
   setText(
     doc,
-    money(data.programmeAmount),
+    money(
+      data.programmeAmount,
+      currency
+    ),
     69,
     y + 4.8,
     8,
@@ -506,7 +1069,10 @@ export function generatePaymentReceipt(
 
   y += 14;
 
-  drawLine(doc, y);
+  drawLine(
+    doc,
+    y
+  );
 
   y += 7;
 
@@ -516,60 +1082,59 @@ export function generatePaymentReceipt(
    * =========================================================
    */
 
-  y = sectionLabel(
-    doc,
-    "Payment Progress",
-    y
-  );
+  y =
+    sectionLabel(
+      doc,
+      "Payment Progress",
+      y
+    );
 
-  /*
-   * If payment history is supplied, show ALL payments.
-   *
-   * Example:
-   *
-   * 1st Payment             KES 5,000
-   * 2nd Payment             KES 5,000
-   * 3rd Payment             KES 3,000
-   */
-
-  const history =
-    data.paymentHistory ??
-    [];
-
-  if (history.length > 0) {
+  if (
+    history.length >
+    0
+  ) {
     history.forEach(
-      (payment, index) => {
+      (
+        payment,
+        index
+      ) => {
         const isCurrent =
           index ===
-          history.length - 1;
+          history.length -
+            1;
 
-        y = drawPaymentRow(
-          doc,
-          payment,
-          index,
-          y,
-          isCurrent
-        );
+        y =
+          drawPaymentRow(
+            doc,
+            payment,
+            index,
+            y,
+            currency,
+            isCurrent
+          );
       }
     );
   } else {
-    /*
-     * Backward-compatible fallback.
-     */
-
-    y = drawPaymentRow(
-      doc,
-      {
-        label: "Payment made",
-        amount: data.amountPaid,
-        date: data.paymentDate,
-        method: data.paymentMethod,
-        reference: data.reference,
-      },
-      0,
-      y,
-      true
-    );
+    y =
+      drawPaymentRow(
+        doc,
+        {
+          label:
+            "Payment made",
+          amount:
+            data.amountPaid,
+          date:
+            data.paymentDate,
+          method:
+            data.paymentMethod,
+          reference:
+            data.reference,
+        },
+        0,
+        y,
+        currency,
+        true
+      );
   }
 
   y += 2;
@@ -578,15 +1143,6 @@ export function generatePaymentReceipt(
    * =========================================================
    * BALANCE CALCULATION
    * =========================================================
-   */
-
-  /*
-   * Previous balance is what the student owed before
-   * today's payment.
-   *
-   * Current payment is deducted from it.
-   *
-   * The final balance is the balance AFTER this receipt.
    */
 
   const previousBalance =
@@ -612,11 +1168,6 @@ export function generatePaymentReceipt(
       0
     );
 
-  /*
-   * Prefer the explicitly supplied balance from
-   * the payment record.
-   */
-
   const balanceAfter =
     Number.isFinite(
       Number(
@@ -639,7 +1190,10 @@ export function generatePaymentReceipt(
 
   y += 2;
 
-  drawLine(doc, y);
+  drawLine(
+    doc,
+    y
+  );
 
   y += 6;
 
@@ -654,7 +1208,10 @@ export function generatePaymentReceipt(
 
   setText(
     doc,
-    money(previousBalance),
+    money(
+      previousBalance,
+      currency
+    ),
     72,
     y,
     7.2,
@@ -676,7 +1233,10 @@ export function generatePaymentReceipt(
 
   setText(
     doc,
-    money(currentPayment),
+    money(
+      currentPayment,
+      currency
+    ),
     72,
     y,
     7.2,
@@ -721,7 +1281,10 @@ export function generatePaymentReceipt(
 
   setText(
     doc,
-    money(balanceAfter),
+    money(
+      balanceAfter,
+      currency
+    ),
     69,
     y + 5.5,
     9,
@@ -732,7 +1295,10 @@ export function generatePaymentReceipt(
 
   y += 19;
 
-  drawLine(doc, y);
+  drawLine(
+    doc,
+    y
+  );
 
   y += 7;
 
@@ -742,11 +1308,12 @@ export function generatePaymentReceipt(
    * =========================================================
    */
 
-  y = sectionLabel(
-    doc,
-    "Payment Information",
-    y
-  );
+  y =
+    sectionLabel(
+      doc,
+      "Payment Information",
+      y
+    );
 
   setText(
     doc,
@@ -757,16 +1324,20 @@ export function generatePaymentReceipt(
     GRAY
   );
 
-  setText(
-    doc,
+  const method =
     safeText(
       data.paymentMethod
     )
+      .toLowerCase()
       .replace(
         /^./,
         (char) =>
           char.toUpperCase()
-      ),
+      );
+
+  setText(
+    doc,
+    method,
     72,
     y,
     7.2,
@@ -801,7 +1372,9 @@ export function generatePaymentReceipt(
 
   y += 6;
 
-  if (data.reference) {
+  if (
+    data.reference
+  ) {
     setText(
       doc,
       "Reference",
@@ -811,17 +1384,15 @@ export function generatePaymentReceipt(
       GRAY
     );
 
-    /*
-     * Long M-Pesa references are allowed to fit
-     * inside the receipt.
-     */
-
     let reference =
       safeText(
         data.reference
       );
 
-    if (reference.length > 22) {
+    if (
+      reference.length >
+      22
+    ) {
       reference =
         reference.slice(
           0,
@@ -843,9 +1414,84 @@ export function generatePaymentReceipt(
     y += 6;
   }
 
+  /*
+   * =========================================================
+   * PAYMENT INSTRUCTIONS
+   * =========================================================
+   */
+
+  if (
+    business.payment_instructions
+  ) {
+    y += 3;
+
+    drawLine(
+      doc,
+      y
+    );
+
+    y += 6;
+
+    y =
+      sectionLabel(
+        doc,
+        "Payment Instructions",
+        y
+      );
+
+    y =
+      drawWrappedText(
+        doc,
+        business.payment_instructions,
+        8,
+        y,
+        64,
+        6,
+        GRAY,
+        "normal",
+        3.5
+      );
+  }
+
+  /*
+   * =========================================================
+   * E-STAMP
+   * =========================================================
+   */
+
+  if (
+    business.receipt_show_stamp &&
+    stampDataUrl
+  ) {
+    y += 4;
+
+    try {
+      doc.addImage(
+        stampDataUrl,
+        "AUTO",
+        51,
+        y,
+        20,
+        14,
+        undefined,
+        "FAST"
+      );
+
+      y += 16;
+    } catch (error) {
+      console.error(
+        "Could not add receipt stamp:",
+        error
+      );
+    }
+  }
+
   y += 3;
 
-  drawLine(doc, y);
+  drawLine(
+    doc,
+    y
+  );
 
   y += 8;
 
@@ -855,22 +1501,31 @@ export function generatePaymentReceipt(
    * =========================================================
    */
 
+  if (
+    business.receipt_footer
+  ) {
+    y =
+      drawWrappedText(
+        doc,
+        business.receipt_footer,
+        40,
+        y,
+        64,
+        6.5,
+        GRAY,
+        "normal",
+        3.5,
+        "center"
+      );
+
+    y += 3;
+  }
+
   setText(
     doc,
-    "Thank you for choosing",
-    40,
-    y,
-    7,
-    GRAY,
-    "normal",
-    "center"
-  );
-
-  y += 4.5;
-
-  setText(
-    doc,
-    "Sauti Tamu Piano Center",
+    business.receipt_business_name ||
+      business.business_name ||
+      "Sauti Tamu Piano Center",
     40,
     y,
     8.5,
@@ -879,31 +1534,38 @@ export function generatePaymentReceipt(
     "center"
   );
 
-  y += 6;
+  y += 5;
 
-  setText(
-    doc,
-    "Junction Trade Center · Nairobi CBD",
-    40,
-    y,
-    6.3,
-    GRAY,
-    "normal",
-    "center"
-  );
+  /*
+   * Small business contact footer.
+   */
 
-  y += 4;
+  const footerContact =
+    [
+      business.phone,
+      business.email,
+    ].filter(Boolean);
 
-  setText(
-    doc,
-    "Piano & Acoustic Guitar Training",
-    40,
-    y,
-    6.3,
-    GRAY,
-    "normal",
-    "center"
-  );
+  if (
+    footerContact.length >
+    0
+  ) {
+    y =
+      drawWrappedText(
+        doc,
+        footerContact.join(
+          " · "
+        ),
+        40,
+        y,
+        64,
+        5.5,
+        GRAY,
+        "normal",
+        3,
+        "center"
+      );
+  }
 
   /*
    * =========================================================
@@ -912,7 +1574,7 @@ export function generatePaymentReceipt(
    */
 
   doc.save(
-    `Sauti-Tamu-Receipt-${data.receiptNumber}.pdf`
+    `${business.receipt_business_name || business.business_name || "Payment"}-Receipt-${data.receiptNumber}.pdf`
   );
 }
 
