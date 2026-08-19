@@ -70,102 +70,88 @@ type BookingRecord = {
   slot: LessonSlot | null;
 };
 
-const NAIROBI_TIME_ZONE =
-  "Africa/Nairobi";
+type Student = {
+  id: string;
+  lead_id: string;
+  full_name: string;
+  email: string;
+  whatsapp_number: string;
+  status: string;
+};
 
-function getNairobiDateKey(
-  date: Date
-) {
-  return new Intl.DateTimeFormat(
-    "en-CA",
-    {
-      timeZone: NAIROBI_TIME_ZONE,
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-    }
-  ).format(date);
+type FollowUpTaskType =
+  | "post_trial_follow_up"
+  | "trial_reschedule_follow_up";
+
+const NAIROBI_TIME_ZONE = "Africa/Nairobi";
+
+/*
+ * =========================================================
+ * DATE / TIME HELPERS
+ * =========================================================
+ */
+
+function getNairobiDateKey(date: Date) {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: NAIROBI_TIME_ZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(date);
 }
 
 function getNairobiStartOfToday() {
-  const today =
-    getNairobiDateKey(new Date());
+  const today = getNairobiDateKey(new Date());
 
-  return new Date(
-    `${today}T00:00:00+03:00`
-  );
+  return new Date(`${today}T00:00:00+03:00`);
 }
 
 function getNairobiEndOfToday() {
-  const today =
-    getNairobiDateKey(new Date());
+  const today = getNairobiDateKey(new Date());
 
-  const date = new Date(
-    `${today}T00:00:00+03:00`
-  );
+  const date = new Date(`${today}T00:00:00+03:00`);
 
-  date.setDate(
-    date.getDate() + 1
-  );
+  date.setDate(date.getDate() + 1);
 
   return date;
 }
 
-function formatDate(
-  dateString: string
-) {
-  return new Intl.DateTimeFormat(
-    "en-KE",
-    {
-      timeZone: NAIROBI_TIME_ZONE,
-      weekday: "short",
-      day: "numeric",
-      month: "short",
-      year: "numeric",
-    }
-  ).format(new Date(dateString));
+function formatDate(dateString: string) {
+  return new Intl.DateTimeFormat("en-KE", {
+    timeZone: NAIROBI_TIME_ZONE,
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  }).format(new Date(dateString));
 }
 
-function formatLongDate(
-  dateString: string
-) {
-  return new Intl.DateTimeFormat(
-    "en-KE",
-    {
-      timeZone: NAIROBI_TIME_ZONE,
-      weekday: "long",
-      day: "numeric",
-      month: "long",
-      year: "numeric",
-    }
-  ).format(new Date(dateString));
+function formatLongDate(dateString: string) {
+  return new Intl.DateTimeFormat("en-KE", {
+    timeZone: NAIROBI_TIME_ZONE,
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  }).format(new Date(dateString));
 }
 
-function formatTime(
-  dateString: string
-) {
-  return new Intl.DateTimeFormat(
-    "en-KE",
-    {
-      timeZone: NAIROBI_TIME_ZONE,
-      hour: "numeric",
-      minute: "2-digit",
-    }
-  ).format(new Date(dateString));
+function formatTime(dateString: string) {
+  return new Intl.DateTimeFormat("en-KE", {
+    timeZone: NAIROBI_TIME_ZONE,
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(new Date(dateString));
 }
 
 function formatTimeRange(
   startsAt: string,
   endsAt: string
 ) {
-  return `${formatTime(
-    startsAt
-  )} – ${formatTime(endsAt)}`;
+  return `${formatTime(startsAt)} – ${formatTime(endsAt)}`;
 }
 
-function initials(
-  name: string
-) {
+function initials(name: string) {
   return name
     .trim()
     .split(/\s+/)
@@ -175,9 +161,13 @@ function initials(
     .toUpperCase();
 }
 
-function prettyStatus(
-  status: BookingStatus
-) {
+/*
+ * =========================================================
+ * STATUS HELPERS
+ * =========================================================
+ */
+
+function prettyStatus(status: BookingStatus) {
   switch (status) {
     case "confirmed":
       return "Confirmed";
@@ -196,9 +186,7 @@ function prettyStatus(
   }
 }
 
-function statusClasses(
-  status: BookingStatus
-) {
+function statusClasses(status: BookingStatus) {
   switch (status) {
     case "confirmed":
       return "bg-green-50 text-green-700";
@@ -217,9 +205,7 @@ function statusClasses(
   }
 }
 
-function statusIcon(
-  status: BookingStatus
-) {
+function statusIcon(status: BookingStatus) {
   switch (status) {
     case "confirmed":
       return <CheckCircle2 size={12} />;
@@ -264,17 +250,15 @@ export default function AdminBookingsPage() {
 
   const [filter, setFilter] =
     useState<
-      "all" |
-      "confirmed" |
-      "completed" |
-      "cancelled" |
-      "no_show"
+      | "all"
+      | "confirmed"
+      | "completed"
+      | "cancelled"
+      | "no_show"
     >("all");
 
   const [selectedBooking, setSelectedBooking] =
-    useState<BookingRecord | null>(
-      null
-    );
+    useState<BookingRecord | null>(null);
 
   const [updatingId, setUpdatingId] =
     useState<string | null>(null);
@@ -285,9 +269,7 @@ export default function AdminBookingsPage() {
    * =========================================================
    */
 
-  async function loadBookings(
-    silent = false
-  ) {
+  async function loadBookings(silent = false) {
     if (silent) {
       setRefreshing(true);
     } else {
@@ -663,16 +645,23 @@ export default function AdminBookingsPage() {
    * =========================================================
    * FIND / CREATE STUDENT
    *
-   * Booked = this lead has now become a student.
+   * "Booked" means the learner has decided to proceed.
    *
-   * We first look for an existing student linked to
-   * the lead. This prevents duplicate student records.
+   * This function:
+   *
+   * 1. Looks for an existing student by lead_id.
+   * 2. Reuses that student if found.
+   * 3. Synchronizes contact information.
+   * 4. Creates a student if none exists.
+   *
+   * It DOES NOT create enrollment here.
+   * Enrollment remains a separate step in Students.
    * =========================================================
    */
 
   async function ensureStudentFromLead(
     record: BookingRecord
-  ) {
+  ): Promise<Student> {
     const lead =
       record.lead;
 
@@ -683,7 +672,7 @@ export default function AdminBookingsPage() {
     }
 
     /*
-     * First check by lead_id.
+     * Check existing student by lead.
      */
 
     const {
@@ -711,11 +700,16 @@ export default function AdminBookingsPage() {
       throw existingLeadError;
     }
 
+    /*
+     * Existing student.
+     */
+
     if (existingByLead) {
-      /*
-       * Keep the student information aligned with the
-       * lead if the lead's contact details have changed.
-       */
+      const nextStatus =
+        existingByLead.status ===
+        "inactive"
+          ? "active"
+          : existingByLead.status;
 
       const {
         data: updatedStudent,
@@ -730,10 +724,7 @@ export default function AdminBookingsPage() {
           whatsapp_number:
             lead.whatsapp_number,
           status:
-            existingByLead.status ===
-            "inactive"
-              ? "active"
-              : existingByLead.status,
+            nextStatus,
         })
         .eq(
           "id",
@@ -755,15 +746,11 @@ export default function AdminBookingsPage() {
         throw updateStudentError;
       }
 
-      return updatedStudent;
+      return updatedStudent as Student;
     }
 
     /*
-     * Create a student directly from the lead.
-     *
-     * No enrollment is created here because the current
-     * Students module treats the programme/enrollment as
-     * a separate registration step.
+     * Create new student.
      */
 
     const {
@@ -772,14 +759,16 @@ export default function AdminBookingsPage() {
     } = await supabase
       .from("students")
       .insert({
-        lead_id: lead.id,
+        lead_id:
+          lead.id,
         full_name:
           lead.full_name,
         email:
           lead.email,
         whatsapp_number:
           lead.whatsapp_number,
-        status: "active",
+        status:
+          "active",
         notes:
           `Converted from trial booking ${record.booking.id}.`,
       })
@@ -799,30 +788,40 @@ export default function AdminBookingsPage() {
       throw studentError;
     }
 
-    return newStudent;
+    return newStudent as Student;
   }
 
   /*
    * =========================================================
-   * FIND OPEN FOLLOW-UP
+   * FIND OPEN FOLLOW-UP OF A SPECIFIC TYPE
    *
-   * Prevents clicking Attended/Missed twice from creating
-   * duplicate follow-up tasks for the same booking.
+   * This is deliberately more precise than checking only
+   * booking_id.
+   *
+   * A registration follow-up and reschedule follow-up
+   * are different business events.
    * =========================================================
    */
 
   async function hasOpenFollowUp(
-    bookingId: string
+    bookingId: string,
+    taskType: FollowUpTaskType
   ) {
     const {
       data,
       error,
     } = await supabase
       .from("follow_up_tasks")
-      .select("id, status")
+      .select(
+        "id, status, task_type"
+      )
       .eq(
         "booking_id",
         bookingId
+      )
+      .eq(
+        "task_type",
+        taskType
       )
       .in("status", [
         "pending",
@@ -862,7 +861,8 @@ export default function AdminBookingsPage() {
 
     const alreadyExists =
       await hasOpenFollowUp(
-        booking.id
+        booking.id,
+        "post_trial_follow_up"
       );
 
     if (alreadyExists) {
@@ -887,18 +887,24 @@ export default function AdminBookingsPage() {
     } = await supabase
       .from("follow_up_tasks")
       .insert({
-        lead_id: lead.id,
+        lead_id:
+          lead.id,
         booking_id:
           booking.id,
         task_type:
           "post_trial_follow_up",
-        due_at: dueAt,
-        status: "pending",
-        channel: null,
+        due_at:
+          dueAt,
+        status:
+          "pending",
+        channel:
+          null,
         message_template:
           `Trial attended — follow up with ${lead.full_name} regarding registration after the ${booking.instrument} trial on ${lessonText}.`,
-        sent_at: null,
-        completed_at: null,
+        sent_at:
+          null,
+        completed_at:
+          null,
       });
 
     if (error) {
@@ -929,7 +935,8 @@ export default function AdminBookingsPage() {
 
     const alreadyExists =
       await hasOpenFollowUp(
-        booking.id
+        booking.id,
+        "trial_reschedule_follow_up"
       );
 
     if (alreadyExists) {
@@ -941,19 +948,24 @@ export default function AdminBookingsPage() {
     } = await supabase
       .from("follow_up_tasks")
       .insert({
-        lead_id: lead.id,
+        lead_id:
+          lead.id,
         booking_id:
           booking.id,
         task_type:
           "trial_reschedule_follow_up",
         due_at:
           new Date().toISOString(),
-        status: "pending",
-        channel: null,
+        status:
+          "pending",
+        channel:
+          null,
         message_template:
           `Missed trial — contact ${lead.full_name} to reschedule their ${booking.instrument} trial lesson.`,
-        sent_at: null,
-        completed_at: null,
+        sent_at:
+          null,
+        completed_at:
+          null,
       });
 
     if (error) {
@@ -963,26 +975,28 @@ export default function AdminBookingsPage() {
 
   /*
    * =========================================================
-   * BOOKED
+   * MARK ATTENDED
    *
-   * 1. Create/reuse student.
-   * 2. Mark trial as completed/attended.
-   * 3. Clear cancelled timestamp.
-   * 4. Open Students module.
+   * This means:
+   *
+   * "The learner actually came for the trial."
+   *
+   * It does NOT automatically create a student.
+   *
+   * It creates a follow-up asking staff to convert the
+   * learner after the trial.
    * =========================================================
    */
 
-  async function markBooked(
+  async function markAttended(
     record: BookingRecord
   ) {
     const booking =
       record.booking;
 
     if (
-      booking.status ===
-        "cancelled" ||
-      booking.status ===
-        "no_show"
+      booking.status !==
+      "confirmed"
     ) {
       return;
     }
@@ -994,6 +1008,121 @@ export default function AdminBookingsPage() {
     setError("");
 
     try {
+      const now =
+        new Date().toISOString();
+
+      const updatedBooking =
+        await updateBooking(
+          booking.id,
+          {
+            status:
+              "completed",
+            attended_at:
+              booking.attended_at ??
+              now,
+            completed_at:
+              booking.completed_at ??
+              now,
+            cancelled_at:
+              null,
+          }
+        );
+
+      const updatedRecord: BookingRecord =
+        {
+          ...record,
+          booking:
+            updatedBooking,
+        };
+
+      await createRegistrationFollowUp(
+        updatedRecord
+      );
+
+      setRecords((current) =>
+        current.map(
+          (item) =>
+            item.booking.id ===
+            booking.id
+              ? updatedRecord
+              : item
+        )
+      );
+
+      setSelectedBooking(
+        null
+      );
+    } catch (err) {
+      console.error(
+        "Attended action error:",
+        err
+      );
+
+      setError(
+        err &&
+        typeof err ===
+          "object" &&
+        "message" in err
+          ? String(
+              (
+                err as {
+                  message: string;
+                }
+              ).message
+            )
+          : "We couldn't mark this trial as attended."
+      );
+    } finally {
+      setUpdatingId(null);
+    }
+  }
+
+  /*
+   * =========================================================
+   * BOOKED / REGISTERED
+   *
+   * This means:
+   *
+   * "The learner has decided to become a student."
+   *
+   * We:
+   *
+   * 1. Create/reuse student.
+   * 2. Mark trial completed.
+   * 3. Record attendance if missing.
+   * 4. Open Students.
+   *
+   * Enrollment/programme/payment remains in Students.
+   * =========================================================
+   */
+
+  async function markBooked(
+    record: BookingRecord
+  ) {
+    const booking =
+      record.booking;
+
+    if (
+      booking.status !==
+      "confirmed" &&
+      booking.status !==
+      "completed"
+    ) {
+      return;
+    }
+
+    setUpdatingId(
+      booking.id
+    );
+
+    setError("");
+
+    try {
+      /*
+       * Create/reuse student first.
+       *
+       * If this fails, booking remains untouched.
+       */
       await ensureStudentFromLead(
         record
       );
@@ -1040,12 +1169,10 @@ export default function AdminBookingsPage() {
       );
 
       /*
-       * Open the Student Register.
-       *
-       * The student record has already been created and
-       * linked to the lead, so it will appear there.
+       * The student is now available in the Students
+       * module where programme/enrollment/payment can
+       * continue.
        */
-
       router.push(
         "/admin/students"
       );
@@ -1076,115 +1203,7 @@ export default function AdminBookingsPage() {
 
   /*
    * =========================================================
-   * ATTENDED
-   *
-   * 1. Mark booking completed.
-   * 2. Record attendance.
-   * 3. Create post-trial registration follow-up.
-   * =========================================================
-   */
-
-  async function markAttended(
-    record: BookingRecord
-  ) {
-    const booking =
-      record.booking;
-
-    if (
-      booking.status ===
-        "cancelled" ||
-      booking.status ===
-        "no_show"
-    ) {
-      return;
-    }
-
-    setUpdatingId(
-      booking.id
-    );
-
-    setError("");
-
-    try {
-      const now =
-        new Date().toISOString();
-
-      const updatedBooking =
-        await updateBooking(
-          booking.id,
-          {
-            status:
-              "completed",
-            attended_at:
-              booking.attended_at ??
-              now,
-            completed_at:
-              booking.completed_at ??
-              now,
-            cancelled_at:
-              null,
-          }
-        );
-
-      await createRegistrationFollowUp(
-        {
-          ...record,
-          booking:
-            updatedBooking,
-        }
-      );
-
-      const updatedRecord: BookingRecord =
-        {
-          ...record,
-          booking:
-            updatedBooking,
-        };
-
-      setRecords((current) =>
-        current.map(
-          (item) =>
-            item.booking.id ===
-            booking.id
-              ? updatedRecord
-              : item
-        )
-      );
-
-      setSelectedBooking(
-        null
-      );
-    } catch (err) {
-      console.error(
-        "Attended action error:",
-        err
-      );
-
-      setError(
-        err &&
-        typeof err ===
-          "object" &&
-        "message" in err
-          ? String(
-              (
-                err as {
-                  message: string;
-                }
-              ).message
-            )
-          : "We couldn't mark this trial as attended."
-      );
-    } finally {
-      setUpdatingId(null);
-    }
-  }
-
-  /*
-   * =========================================================
    * MISSED TRIAL
-   *
-   * 1. Mark booking no_show.
-   * 2. Create reschedule follow-up.
    * =========================================================
    */
 
@@ -1195,10 +1214,8 @@ export default function AdminBookingsPage() {
       record.booking;
 
     if (
-      booking.status ===
-        "cancelled" ||
-      booking.status ===
-        "no_show"
+      booking.status !==
+      "confirmed"
     ) {
       return;
     }
@@ -1225,20 +1242,16 @@ export default function AdminBookingsPage() {
           }
         );
 
-      await createRescheduleFollowUp(
-        {
-          ...record,
-          booking:
-            updatedBooking,
-        }
-      );
-
       const updatedRecord: BookingRecord =
         {
           ...record,
           booking:
             updatedBooking,
         };
+
+      await createRescheduleFollowUp(
+        updatedRecord
+      );
 
       setRecords((current) =>
         current.map(
@@ -1287,15 +1300,16 @@ export default function AdminBookingsPage() {
   function callLearner(
     record: BookingRecord
   ) {
-    if (
-      !record.lead
-        ?.whatsapp_number
-    ) {
+    const phone =
+      record.lead
+        ?.whatsapp_number;
+
+    if (!phone) {
       return;
     }
 
     window.location.href =
-      `tel:${record.lead.whatsapp_number}`;
+      `tel:${phone}`;
   }
 
   /*
@@ -1804,7 +1818,7 @@ export default function AdminBookingsPage() {
                       </div>
 
                       {/* =================================================
-                          FOUR TRIAL WORKFLOW BUTTONS
+                          TRIAL OUTCOME
                       ================================================= */}
 
                       <div className="mt-5 border-t border-[var(--st-border)] pt-4">
@@ -2029,7 +2043,8 @@ export default function AdminBookingsPage() {
                 <p className="mt-2 mb-0 text-[22px] font-bold capitalize text-[var(--st-charcoal-dark)]">
                   {
                     selectedBooking
-                      .booking.instrument
+                      .booking
+                      .instrument
                   }
                 </p>
 
@@ -2266,7 +2281,7 @@ export default function AdminBookingsPage() {
               </div>
 
               {/* =================================================
-                  FOUR ACTIONS IN DRAWER
+                  TRIAL OUTCOME ACTIONS
               ================================================= */}
 
               {selectedBooking.booking
@@ -2279,6 +2294,8 @@ export default function AdminBookingsPage() {
                   </p>
 
                   <div className="grid grid-cols-2 gap-2">
+
+                    {/* BOOKED */}
 
                     <button
                       type="button"
@@ -2311,6 +2328,8 @@ export default function AdminBookingsPage() {
                       Booked
                     </button>
 
+                    {/* CALL */}
+
                     <button
                       type="button"
                       disabled={
@@ -2328,6 +2347,8 @@ export default function AdminBookingsPage() {
                       <Phone size={14} />
                       Call
                     </button>
+
+                    {/* ATTENDED */}
 
                     <button
                       type="button"
@@ -2351,6 +2372,8 @@ export default function AdminBookingsPage() {
                         Attended
                       </span>
                     </button>
+
+                    {/* MISSED */}
 
                     <button
                       type="button"
