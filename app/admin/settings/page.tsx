@@ -26,9 +26,17 @@ import {
   Receipt,
   ShieldCheck,
   ExternalLink,
+  ChevronDown,
+  Plus,
+  X,
+  Sparkles,
 } from "lucide-react";
 
 import { supabase } from "@/lib/supabase";
+
+/* =========================================================
+   TYPES
+========================================================= */
 
 type DaySchedule = {
   day: string;
@@ -114,6 +122,10 @@ type BusinessSettings = {
   updated_at?: string;
 };
 
+/* =========================================================
+   DEFAULTS
+========================================================= */
+
 const defaultSchedule: DaySchedule[] = [
   {
     day: "Monday",
@@ -178,9 +190,7 @@ const defaultSettings: BookingSettings = {
   availability_days: 14,
 
   booking_title: "FREE TRIAL LESSONS BOOKING",
-
   appointment_name: "Trial Lesson Booking",
-
   timezone: "Africa/Nairobi",
 
   description_intro:
@@ -198,16 +208,12 @@ const defaultSettings: BookingSettings = {
   ],
 
   offer_enabled: true,
-
-  offer_title:
-    "This Week's Special Offer Ksh 18,850/=",
-
+  offer_title: "This Week's Special Offer Ksh 18,850/=",
   offer_price: "18850",
-
   offer_regular_price: "26850",
 
   offer_description:
-    "Students who book, attend their FREE Trial Lesson this week, and enroll on the same day qualify for our special course fee of Ksh 18,850/= instead of the regular Ksh 26,850/=. ",
+    "Students who book, attend their FREE Trial Lesson this week, and enroll on the same day qualify for our special course fee of Ksh 18,850/= instead of the regular Ksh 26,850/=",
 
   what_to_bring_title: "Please Bring",
 
@@ -249,39 +255,30 @@ const defaultSettings: BookingSettings = {
     "Please arrive 10 minutes before your scheduled time.",
 
   minimum_notice_hours: 2,
-
   maximum_days_ahead: 14,
 
   reminder_24h_enabled: true,
-
   reminder_2h_enabled: true,
-
   follow_up_enabled: true,
 };
 
 const defaultBusinessSettings: BusinessSettings = {
   id: true,
 
-  business_name:
-    "Sauti Tamu Piano Center",
+  business_name: "Sauti Tamu Piano Center",
 
   phone: "",
-
   whatsapp_number: "",
-
   email: "",
-
   website: "",
 
   logo_url: null,
-
   stamp_url: null,
 
   receipt_business_name:
     "Sauti Tamu Piano Center",
 
   receipt_show_logo: true,
-
   receipt_show_stamp: true,
 
   receipt_footer:
@@ -292,80 +289,57 @@ const defaultBusinessSettings: BusinessSettings = {
   payment_instructions: "",
 };
 
-function timeToMinutes(time: string) {
-  const [hours, minutes] = time
-    .split(":")
-    .map(Number);
+/* =========================================================
+   HELPERS
+========================================================= */
 
+function timeToMinutes(time: string) {
+  const [hours, minutes] = time.split(":").map(Number);
   return hours * 60 + minutes;
 }
 
-function addDays(
-  date: Date,
-  days: number
-) {
+function addDays(date: Date, days: number) {
   const result = new Date(date);
-
-  result.setDate(
-    result.getDate() + days
-  );
-
+  result.setDate(result.getDate() + days);
   return result;
 }
 
 function formatTime(time: string) {
-  const [hour, minute] = time
-    .split(":")
-    .map(Number);
+  const [hour, minute] = time.split(":").map(Number);
 
-  const suffix =
-    hour >= 12 ? "PM" : "AM";
+  const suffix = hour >= 12 ? "PM" : "AM";
 
   const displayHour =
-    hour % 12 === 0
-      ? 12
-      : hour % 12;
+    hour % 12 === 0 ? 12 : hour % 12;
 
-  return `${displayHour}:${String(
-    minute
-  ).padStart(2, "0")} ${suffix}`;
+  return `${displayHour}:${String(minute).padStart(
+    2,
+    "0"
+  )} ${suffix}`;
 }
 
-function arrayToText(
-  items: string[]
-) {
+function arrayToText(items: string[]) {
   return items.join("\n");
 }
 
-function textToArray(
-  value: string
-) {
+function textToArray(value: string) {
   return value
     .split("\n")
-    .map((item) =>
-      item.trim()
-    )
+    .map((item) => item.trim())
     .filter(Boolean);
 }
 
-function getFileExtension(
-  file: File
-) {
-  const extension =
-    file.name
-      .split(".")
-      .pop()
-      ?.toLowerCase();
+function getFileExtension(file: File) {
+  const extension = file.name
+    .split(".")
+    .pop()
+    ?.toLowerCase();
 
   if (
     extension &&
-    [
-      "png",
-      "jpg",
-      "jpeg",
-      "webp",
-      "svg",
-    ].includes(extension)
+    ["png", "jpg", "jpeg", "webp", "svg"].includes(
+      extension
+    )
   ) {
     return extension;
   }
@@ -373,11 +347,230 @@ function getFileExtension(
   return "png";
 }
 
+/* =========================================================
+   SMALL UI COMPONENTS
+========================================================= */
+
+function Field({
+  label,
+  help,
+  children,
+  className = "",
+}: {
+  label: string;
+  help?: string;
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <div className={className}>
+      <label className="mb-2 block text-[11px] font-semibold text-[#272727]">
+        {label}
+      </label>
+
+      {children}
+
+      {help && (
+        <p className="mt-2 text-[9px] leading-relaxed text-[#999]">
+          {help}
+        </p>
+      )}
+    </div>
+  );
+}
+
+function Input(
+  props: React.InputHTMLAttributes<HTMLInputElement>
+) {
+  return (
+    <input
+      {...props}
+      className={`h-11 w-full rounded-xl border border-[#e8e5e5] bg-white px-3.5 text-[12px] text-[#292929] outline-none transition focus:border-[#c91f2b] focus:ring-2 focus:ring-[#c91f2b]/10 disabled:bg-[#f7f7f7] ${
+        props.className || ""
+      }`}
+    />
+  );
+}
+
+function Textarea(
+  props: React.TextareaHTMLAttributes<HTMLTextAreaElement>
+) {
+  return (
+    <textarea
+      {...props}
+      className={`w-full resize-y rounded-xl border border-[#e8e5e5] bg-white px-3.5 py-3 text-[12px] leading-relaxed text-[#292929] outline-none transition focus:border-[#c91f2b] focus:ring-2 focus:ring-[#c91f2b]/10 ${
+        props.className || ""
+      }`}
+    />
+  );
+}
+
+function Select(
+  props: React.SelectHTMLAttributes<HTMLSelectElement>
+) {
+  return (
+    <select
+      {...props}
+      className={`h-11 w-full appearance-none rounded-xl border border-[#e8e5e5] bg-white px-3.5 text-[12px] text-[#292929] outline-none transition focus:border-[#c91f2b] focus:ring-2 focus:ring-[#c91f2b]/10 ${
+        props.className || ""
+      }`}
+    />
+  );
+}
+
+function Toggle({
+  enabled,
+  onClick,
+}: {
+  enabled: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={enabled ? "Disable" : "Enable"}
+      className={`relative h-7 w-12 shrink-0 rounded-full transition ${
+        enabled ? "bg-[#c91f2b]" : "bg-[#d7d4d4]"
+      }`}
+    >
+      <span
+        className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow transition-transform ${
+          enabled ? "translate-x-6" : "translate-x-1"
+        }`}
+      />
+    </button>
+  );
+}
+
+function Section({
+  icon: Icon,
+  eyebrow,
+  title,
+  description,
+  children,
+  id,
+  action,
+}: {
+  icon: React.ElementType;
+  eyebrow?: string;
+  title: string;
+  description?: string;
+  children: React.ReactNode;
+  id?: string;
+  action?: React.ReactNode;
+}) {
+  return (
+    <section
+      id={id}
+      className="scroll-mt-24 overflow-hidden rounded-2xl border border-[#e9e5e5] bg-white shadow-[0_2px_12px_rgba(0,0,0,0.025)]"
+    >
+      <div className="flex items-start justify-between gap-4 border-b border-[#eeeaea] px-5 py-5 sm:px-6">
+        <div className="flex min-w-0 items-start gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#fdf1f2] text-[#c91f2b]">
+            <Icon size={18} />
+          </div>
+
+          <div className="min-w-0">
+            {eyebrow && (
+              <p className="mb-1 text-[8px] font-bold uppercase tracking-[0.16em] text-[#b0aaaa]">
+                {eyebrow}
+              </p>
+            )}
+
+            <h2 className="text-[15px] font-bold text-[#242424]">
+              {title}
+            </h2>
+
+            {description && (
+              <p className="mt-1 max-w-[650px] text-[10px] leading-relaxed text-[#999]">
+                {description}
+              </p>
+            )}
+          </div>
+        </div>
+
+        {action}
+      </div>
+
+      {children}
+    </section>
+  );
+}
+
+function ListEditor({
+  items,
+  onChange,
+  placeholder,
+}: {
+  items: string[];
+  onChange: (items: string[]) => void;
+  placeholder: string;
+}) {
+  function updateItem(index: number, value: string) {
+    onChange(
+      items.map((item, i) =>
+        i === index ? value : item
+      )
+    );
+  }
+
+  function removeItem(index: number) {
+    onChange(items.filter((_, i) => i !== index));
+  }
+
+  function addItem() {
+    onChange([...items, ""]);
+  }
+
+  return (
+    <div className="space-y-2.5">
+      {items.map((item, index) => (
+        <div
+          key={index}
+          className="flex items-center gap-2"
+        >
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#f7f5f5] text-[9px] font-bold text-[#aaa]">
+            {String(index + 1).padStart(2, "0")}
+          </div>
+
+          <Input
+            value={item}
+            onChange={(e) =>
+              updateItem(index, e.target.value)
+            }
+            placeholder={placeholder}
+          />
+
+          <button
+            type="button"
+            onClick={() => removeItem(index)}
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[#aaa] transition hover:bg-[#fdf1f2] hover:text-[#c91f2b]"
+          >
+            <X size={14} />
+          </button>
+        </div>
+      ))}
+
+      <button
+        type="button"
+        onClick={addItem}
+        className="mt-2 flex h-9 items-center gap-2 rounded-lg border border-dashed border-[#dcd7d7] px-3 text-[10px] font-semibold text-[#777] transition hover:border-[#c91f2b] hover:text-[#c91f2b]"
+      >
+        <Plus size={13} />
+        Add item
+      </button>
+    </div>
+  );
+}
+
+/* =========================================================
+   MAIN PAGE
+========================================================= */
+
 export default function SettingsPage() {
   const [settings, setSettings] =
-    useState<BookingSettings>(
-      defaultSettings
-    );
+    useState<BookingSettings>(defaultSettings);
 
   const [business, setBusiness] =
     useState<BusinessSettings>(
@@ -385,15 +578,10 @@ export default function SettingsPage() {
     );
 
   const [schedule, setSchedule] =
-    useState<DaySchedule[]>(
-      defaultSchedule
-    );
+    useState<DaySchedule[]>(defaultSchedule);
 
-  const [piano, setPiano] =
-    useState(true);
-
-  const [guitar, setGuitar] =
-    useState(true);
+  const [piano, setPiano] = useState(true);
+  const [guitar, setGuitar] = useState(true);
 
   const [loadingSettings, setLoadingSettings] =
     useState(true);
@@ -419,17 +607,12 @@ export default function SettingsPage() {
   const [stampPreview, setStampPreview] =
     useState<string | null>(null);
 
-  const [message, setMessage] =
-    useState("");
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
 
-  const [error, setError] =
-    useState("");
-
-  /*
-   * =========================================================
-   * LOAD ALL SETTINGS
-   * =========================================================
-   */
+  /* =======================================================
+     LOAD
+  ======================================================= */
 
   useEffect(() => {
     loadSettings();
@@ -457,67 +640,52 @@ export default function SettingsPage() {
           .maybeSingle(),
       ]);
 
-      if (bookingResult.error) {
+      if (bookingResult.error)
         throw bookingResult.error;
-      }
 
-      if (businessResult.error) {
+      if (businessResult.error)
         throw businessResult.error;
-      }
 
       if (bookingResult.data) {
-        const data =
-          bookingResult.data;
+        const data = bookingResult.data;
 
-        setSettings(
-          (current) => ({
-            ...current,
-            ...data,
+        setSettings((current) => ({
+          ...current,
+          ...data,
+          description_visit_items:
+            Array.isArray(
+              data.description_visit_items
+            )
+              ? data.description_visit_items
+              : current.description_visit_items,
 
-            description_visit_items:
-              Array.isArray(
-                data.description_visit_items
-              )
-                ? data.description_visit_items
-                : current.description_visit_items,
+          what_to_bring_items:
+            Array.isArray(
+              data.what_to_bring_items
+            )
+              ? data.what_to_bring_items
+              : current.what_to_bring_items,
 
-            what_to_bring_items:
-              Array.isArray(
-                data.what_to_bring_items
-              )
-                ? data.what_to_bring_items
-                : current.what_to_bring_items,
-
-            program_items:
-              Array.isArray(
-                data.program_items
-              )
-                ? data.program_items
-                : current.program_items,
-          })
-        );
+          program_items:
+            Array.isArray(data.program_items)
+              ? data.program_items
+              : current.program_items,
+        }));
       }
 
       if (businessResult.data) {
-        setBusiness(
-          (current) => ({
-            ...current,
-            ...businessResult.data,
-          })
-        );
+        setBusiness((current) => ({
+          ...current,
+          ...businessResult.data,
+        }));
 
         await refreshAssetPreviews(
-          businessResult.data
-            .logo_url,
-          businessResult.data
-            .stamp_url
+          businessResult.data.logo_url,
+          businessResult.data.stamp_url
         );
       }
     } catch (err) {
-      console.error(
-        "Settings load error:",
-        err
-      );
+      console.error(err);
 
       setError(
         err instanceof Error
@@ -529,23 +697,14 @@ export default function SettingsPage() {
     }
   }
 
-  /*
-   * =========================================================
-   * ASSET PREVIEWS
-   * =========================================================
-   */
+  /* =======================================================
+     ASSETS
+  ======================================================= */
 
   async function getSignedAssetUrl(
     path: string | null
   ) {
-    if (!path) {
-      return null;
-    }
-
-    /*
-     * If an older implementation stored a complete URL,
-     * don't try to treat it as a Storage path.
-     */
+    if (!path) return null;
 
     if (
       path.startsWith("http://") ||
@@ -554,22 +713,13 @@ export default function SettingsPage() {
       return path;
     }
 
-    const {
-      data,
-      error: signedUrlError,
-    } = await supabase.storage
-      .from("business-assets")
-      .createSignedUrl(
-        path,
-        60 * 60
-      );
+    const { data, error } =
+      await supabase.storage
+        .from("business-assets")
+        .createSignedUrl(path, 3600);
 
-    if (signedUrlError) {
-      console.error(
-        "Signed URL error:",
-        signedUrlError
-      );
-
+    if (error) {
+      console.error(error);
       return null;
     }
 
@@ -580,32 +730,205 @@ export default function SettingsPage() {
     logoPath: string | null,
     stampPath: string | null
   ) {
-    const [
-      logoUrl,
-      stampUrl,
-    ] = await Promise.all([
-      getSignedAssetUrl(
-        logoPath
-      ),
-      getSignedAssetUrl(
-        stampPath
-      ),
-    ]);
+    const [logo, stamp] =
+      await Promise.all([
+        getSignedAssetUrl(logoPath),
+        getSignedAssetUrl(stampPath),
+      ]);
 
-    setLogoPreview(
-      logoUrl
-    );
-
-    setStampPreview(
-      stampUrl
-    );
+    setLogoPreview(logo);
+    setStampPreview(stamp);
   }
 
-  /*
-   * =========================================================
-   * BUSINESS SETTINGS UPDATE
-   * =========================================================
-   */
+  async function uploadBusinessAsset(
+    file: File,
+    type: "logo" | "stamp"
+  ) {
+    if (!file) return;
+
+    const isLogo = type === "logo";
+
+    if (isLogo)
+      setUploadingLogo(true);
+    else
+      setUploadingStamp(true);
+
+    setMessage("");
+    setError("");
+
+    try {
+      if (!file.type.startsWith("image/")) {
+        throw new Error(
+          "Please select an image file."
+        );
+      }
+
+      if (file.size > 5 * 1024 * 1024) {
+        throw new Error(
+          "Image must be smaller than 5 MB."
+        );
+      }
+
+      const extension =
+        getFileExtension(file);
+
+      const path =
+        `${type}-${Date.now()}.${extension}`;
+
+      const { error: uploadError } =
+        await supabase.storage
+          .from("business-assets")
+          .upload(path, file, {
+            cacheControl: "3600",
+            upsert: false,
+            contentType: file.type,
+          });
+
+      if (uploadError)
+        throw uploadError;
+
+      const oldPath = isLogo
+        ? business.logo_url
+        : business.stamp_url;
+
+      if (
+        oldPath &&
+        !oldPath.startsWith("http://") &&
+        !oldPath.startsWith("https://")
+      ) {
+        await supabase.storage
+          .from("business-assets")
+          .remove([oldPath]);
+      }
+
+      const changes = isLogo
+        ? { logo_url: path }
+        : { stamp_url: path };
+
+      setBusiness((current) => ({
+        ...current,
+        ...changes,
+      }));
+
+      const { error: databaseError } =
+        await supabase
+          .from("business_settings")
+          .update({
+            ...changes,
+            updated_at:
+              new Date().toISOString(),
+          })
+          .eq("id", true);
+
+      if (databaseError) {
+        await supabase.storage
+          .from("business-assets")
+          .remove([path]);
+
+        throw databaseError;
+      }
+
+      const signed =
+        await getSignedAssetUrl(path);
+
+      if (isLogo)
+        setLogoPreview(signed);
+      else
+        setStampPreview(signed);
+
+      setMessage(
+        isLogo
+          ? "Business logo uploaded."
+          : "Official e-stamp uploaded."
+      );
+    } catch (err) {
+      console.error(err);
+
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Unable to upload image."
+      );
+    } finally {
+      if (isLogo)
+        setUploadingLogo(false);
+      else
+        setUploadingStamp(false);
+    }
+  }
+
+  async function removeBusinessAsset(
+    type: "logo" | "stamp"
+  ) {
+    const isLogo = type === "logo";
+
+    const path = isLogo
+      ? business.logo_url
+      : business.stamp_url;
+
+    if (!path) return;
+
+    setMessage("");
+    setError("");
+
+    try {
+      if (
+        !path.startsWith("http://") &&
+        !path.startsWith("https://")
+      ) {
+        const { error } =
+          await supabase.storage
+            .from("business-assets")
+            .remove([path]);
+
+        if (error) throw error;
+      }
+
+      const changes = isLogo
+        ? { logo_url: null }
+        : { stamp_url: null };
+
+      const { error } =
+        await supabase
+          .from("business_settings")
+          .update({
+            ...changes,
+            updated_at:
+              new Date().toISOString(),
+          })
+          .eq("id", true);
+
+      if (error) throw error;
+
+      setBusiness((current) => ({
+        ...current,
+        ...changes,
+      }));
+
+      if (isLogo)
+        setLogoPreview(null);
+      else
+        setStampPreview(null);
+
+      setMessage(
+        isLogo
+          ? "Business logo removed."
+          : "Official e-stamp removed."
+      );
+    } catch (err) {
+      console.error(err);
+
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Unable to remove image."
+      );
+    }
+  }
+
+  /* =======================================================
+     UPDATE
+  ======================================================= */
 
   function updateBusiness<
     K extends keyof BusinessSettings
@@ -613,19 +936,11 @@ export default function SettingsPage() {
     key: K,
     value: BusinessSettings[K]
   ) {
-    setBusiness(
-      (current) => ({
-        ...current,
-        [key]: value,
-      })
-    );
+    setBusiness((current) => ({
+      ...current,
+      [key]: value,
+    }));
   }
-
-  /*
-   * =========================================================
-   * BOOKING SETTINGS UPDATE
-   * =========================================================
-   */
 
   function updateSetting<
     K extends keyof BookingSettings
@@ -633,19 +948,15 @@ export default function SettingsPage() {
     key: K,
     value: BookingSettings[K]
   ) {
-    setSettings(
-      (current) => ({
-        ...current,
-        [key]: value,
-      })
-    );
+    setSettings((current) => ({
+      ...current,
+      [key]: value,
+    }));
   }
 
-  /*
-   * =========================================================
-   * SAVE BUSINESS SETTINGS
-   * =========================================================
-   */
+  /* =======================================================
+     SAVE BUSINESS
+  ======================================================= */
 
   async function saveBusinessSettings() {
     setSavingBusiness(true);
@@ -658,26 +969,19 @@ export default function SettingsPage() {
           business.business_name,
 
         phone:
-          business.phone ||
-          null,
+          business.phone || null,
 
         whatsapp_number:
-          business.whatsapp_number ||
-          null,
+          business.whatsapp_number || null,
 
         email:
-          business.email ||
-          null,
+          business.email || null,
 
         website:
-          business.website ||
-          null,
+          business.website || null,
 
-        logo_url:
-          business.logo_url,
-
-        stamp_url:
-          business.stamp_url,
+        logo_url: business.logo_url,
+        stamp_url: business.stamp_url,
 
         receipt_business_name:
           business.receipt_business_name,
@@ -691,8 +995,7 @@ export default function SettingsPage() {
         receipt_footer:
           business.receipt_footer,
 
-        currency:
-          business.currency,
+        currency: business.currency,
 
         payment_instructions:
           business.payment_instructions ||
@@ -702,25 +1005,19 @@ export default function SettingsPage() {
           new Date().toISOString(),
       };
 
-      const {
-        error: saveError,
-      } = await supabase
-        .from("business_settings")
-        .update(payload)
-        .eq("id", true);
+      const { error } =
+        await supabase
+          .from("business_settings")
+          .update(payload)
+          .eq("id", true);
 
-      if (saveError) {
-        throw saveError;
-      }
+      if (error) throw error;
 
       setMessage(
-        "Business and receipt settings saved successfully."
+        "Business settings saved successfully."
       );
     } catch (err) {
-      console.error(
-        "Business settings save error:",
-        err
-      );
+      console.error(err);
 
       setError(
         err instanceof Error
@@ -732,11 +1029,9 @@ export default function SettingsPage() {
     }
   }
 
-  /*
-   * =========================================================
-   * SAVE BOOKING SETTINGS
-   * =========================================================
-   */
+  /* =======================================================
+     SAVE BOOKING
+  ======================================================= */
 
   async function saveBookingSettings() {
     setSavingSettings(true);
@@ -845,18 +1140,15 @@ export default function SettingsPage() {
           new Date().toISOString(),
       };
 
-      const {
-        data: existing,
-        error: findError,
-      } = await supabase
-        .from("booking_settings")
-        .select("id")
-        .limit(1)
-        .maybeSingle();
+      const { data: existing, error: findError } =
+        await supabase
+          .from("booking_settings")
+          .select("id")
+          .limit(1)
+          .maybeSingle();
 
-      if (findError) {
+      if (findError)
         throw findError;
-      }
 
       let saveError;
 
@@ -865,421 +1157,93 @@ export default function SettingsPage() {
           await supabase
             .from("booking_settings")
             .update(payload)
-            .eq(
-              "id",
-              existing.id
-            );
+            .eq("id", existing.id);
 
-        saveError =
-          result.error;
+        saveError = result.error;
       } else {
         const result =
           await supabase
             .from("booking_settings")
             .insert(payload);
 
-        saveError =
-          result.error;
+        saveError = result.error;
       }
 
-      if (saveError) {
+      if (saveError)
         throw saveError;
-      }
 
       setMessage(
-        "Booking page settings saved successfully."
+        "Booking settings saved successfully."
       );
     } catch (err) {
-      console.error(
-        "Save settings error:",
-        err
-      );
+      console.error(err);
 
       setError(
         err instanceof Error
           ? err.message
-          : "Unable to save settings."
+          : "Unable to save booking settings."
       );
     } finally {
       setSavingSettings(false);
     }
   }
 
-  /*
-   * =========================================================
-   * UPLOAD BUSINESS ASSET
-   * =========================================================
-   */
+  /* =======================================================
+     WEEKLY SLOTS
+  ======================================================= */
 
-  async function uploadBusinessAsset(
-    file: File,
-    type: "logo" | "stamp"
-  ) {
-    if (!file) {
-      return;
-    }
+  const weeklySlotCount = useMemo(() => {
+    let count = 0;
 
-    const isLogo =
-      type === "logo";
+    schedule.forEach((day) => {
+      if (!day.enabled) return;
 
-    if (isLogo) {
-      setUploadingLogo(true);
-    } else {
-      setUploadingStamp(true);
-    }
+      const start =
+        timeToMinutes(day.start);
 
-    setMessage("");
-    setError("");
+      const end =
+        timeToMinutes(day.end);
 
-    try {
-      if (
-        !file.type.startsWith("image/")
-      ) {
-        throw new Error(
-          "Please select an image file."
-        );
-      }
-
-      /*
-       * Keep the files reasonably controlled.
-       * 5 MB is more than enough for a logo or stamp.
-       */
-
-      if (
-        file.size >
-        5 * 1024 * 1024
-      ) {
-        throw new Error(
-          "Image must be smaller than 5 MB."
-        );
-      }
-
-      const extension =
-        getFileExtension(file);
-
-      const path =
-        `${type}-${Date.now()}.${extension}`;
-
-      const {
-        error: uploadError,
-      } = await supabase.storage
-        .from("business-assets")
-        .upload(
-          path,
-          file,
-          {
-            cacheControl:
-              "3600",
-            upsert: false,
-            contentType:
-              file.type,
-          }
-        );
-
-      if (uploadError) {
-        throw uploadError;
-      }
-
-      /*
-       * Delete the old asset after the new asset
-       * has uploaded successfully.
-       */
-
-      const oldPath =
-        isLogo
-          ? business.logo_url
-          : business.stamp_url;
-
-      if (
-        oldPath &&
-        !oldPath.startsWith(
-          "http://"
-        ) &&
-        !oldPath.startsWith(
-          "https://"
+      const slots = Math.max(
+        0,
+        Math.floor(
+          (end - start) /
+            settings.booking_duration_minutes
         )
-      ) {
-        await supabase.storage
-          .from(
-            "business-assets"
-          )
-          .remove([
-            oldPath,
-          ]);
-      }
-
-      const changes =
-        isLogo
-          ? {
-              logo_url: path,
-            }
-          : {
-              stamp_url: path,
-            };
-
-      setBusiness(
-        (current) => ({
-          ...current,
-          ...changes,
-        })
       );
 
-      const {
-        error: databaseError,
-      } = await supabase
-        .from("business_settings")
-        .update({
-          ...changes,
-          updated_at:
-            new Date().toISOString(),
-        })
-        .eq("id", true);
+      const instruments =
+        Number(piano) +
+        Number(guitar);
 
-      if (databaseError) {
-        /*
-         * If the database update fails, remove the newly
-         * uploaded file so we don't leave an orphan asset.
-         */
+      count +=
+        slots * instruments;
+    });
 
-        await supabase.storage
-          .from(
-            "business-assets"
-          )
-          .remove([
-            path,
-          ]);
-
-        throw databaseError;
-      }
-
-      const signedUrl =
-        await getSignedAssetUrl(
-          path
-        );
-
-      if (isLogo) {
-        setLogoPreview(
-          signedUrl
-        );
-      } else {
-        setStampPreview(
-          signedUrl
-        );
-      }
-
-      setMessage(
-        isLogo
-          ? "Business logo uploaded successfully."
-          : "Official e-stamp uploaded successfully."
-      );
-    } catch (err) {
-      console.error(
-        "Asset upload error:",
-        err
-      );
-
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Unable to upload image."
-      );
-    } finally {
-      if (isLogo) {
-        setUploadingLogo(false);
-      } else {
-        setUploadingStamp(false);
-      }
-    }
-  }
-
-  /*
-   * =========================================================
-   * DELETE BUSINESS ASSET
-   * =========================================================
-   */
-
-  async function removeBusinessAsset(
-    type: "logo" | "stamp"
-  ) {
-    const isLogo =
-      type === "logo";
-
-    const path =
-      isLogo
-        ? business.logo_url
-        : business.stamp_url;
-
-    if (!path) {
-      return;
-    }
-
-    setMessage("");
-    setError("");
-
-    try {
-      if (
-        !path.startsWith(
-          "http://"
-        ) &&
-        !path.startsWith(
-          "https://"
-        )
-      ) {
-        const {
-          error: storageError,
-        } = await supabase.storage
-          .from(
-            "business-assets"
-          )
-          .remove([
-            path,
-          ]);
-
-        if (storageError) {
-          throw storageError;
-        }
-      }
-
-      const changes =
-        isLogo
-          ? {
-              logo_url: null,
-            }
-          : {
-              stamp_url: null,
-            };
-
-      const {
-        error: databaseError,
-      } = await supabase
-        .from("business_settings")
-        .update({
-          ...changes,
-          updated_at:
-            new Date().toISOString(),
-        })
-        .eq("id", true);
-
-      if (databaseError) {
-        throw databaseError;
-      }
-
-      setBusiness(
-        (current) => ({
-          ...current,
-          ...changes,
-        })
-      );
-
-      if (isLogo) {
-        setLogoPreview(null);
-      } else {
-        setStampPreview(null);
-      }
-
-      setMessage(
-        isLogo
-          ? "Business logo removed."
-          : "Official e-stamp removed."
-      );
-    } catch (err) {
-      console.error(
-        "Asset removal error:",
-        err
-      );
-
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Unable to remove image."
-      );
-    }
-  }
-
-  /*
-   * =========================================================
-   * WEEKLY SLOT COUNT
-   * =========================================================
-   */
-
-  const weeklySlotCount =
-    useMemo(() => {
-      let count = 0;
-
-      schedule.forEach(
-        (day) => {
-          if (!day.enabled) {
-            return;
-          }
-
-          const start =
-            timeToMinutes(
-              day.start
-            );
-
-          const end =
-            timeToMinutes(
-              day.end
-            );
-
-          const hourlySlots =
-            Math.max(
-              0,
-              Math.floor(
-                (end - start) /
-                  60
-              )
-            );
-
-          const instruments =
-            Number(piano) +
-            Number(guitar);
-
-          count +=
-            hourlySlots *
-            instruments;
-        }
-      );
-
-      return count;
-    }, [
-      schedule,
-      piano,
-      guitar,
-    ]);
-
-  /*
-   * =========================================================
-   * UPDATE DAY
-   * =========================================================
-   */
+    return count;
+  }, [
+    schedule,
+    piano,
+    guitar,
+    settings.booking_duration_minutes,
+  ]);
 
   function updateDay(
     index: number,
     changes: Partial<DaySchedule>
   ) {
-    setSchedule(
-      (current) =>
-        current.map(
-          (
-            day,
-            dayIndex
-          ) =>
-            dayIndex === index
-              ? {
-                  ...day,
-                  ...changes,
-                }
-              : day
-        )
+    setSchedule((current) =>
+      current.map((day, i) =>
+        i === index
+          ? { ...day, ...changes }
+          : day
+      )
     );
   }
 
-  /*
-   * =========================================================
-   * GENERATE FOUR WEEKS
-   * =========================================================
-   */
+  /* =======================================================
+     GENERATE AVAILABILITY
+  ======================================================= */
 
   async function generateFourWeeks() {
     setGenerating(true);
@@ -1291,29 +1255,19 @@ export default function SettingsPage() {
         "piano" | "guitar"
       > = [];
 
-      if (piano) {
-        instruments.push(
-          "piano"
-        );
-      }
+      if (piano)
+        instruments.push("piano");
 
-      if (guitar) {
-        instruments.push(
-          "guitar"
-        );
-      }
+      if (guitar)
+        instruments.push("guitar");
 
-      if (
-        instruments.length ===
-        0
-      ) {
+      if (!instruments.length) {
         throw new Error(
           "Select at least one instrument."
         );
       }
 
-      const today =
-        new Date();
+      const today = new Date();
 
       today.setHours(
         0,
@@ -1323,10 +1277,7 @@ export default function SettingsPage() {
       );
 
       const endDate =
-        addDays(
-          today,
-          28
-        );
+        addDays(today, 28);
 
       const {
         data: existingSlots,
@@ -1345,16 +1296,12 @@ export default function SettingsPage() {
           endDate.toISOString()
         );
 
-      if (fetchError) {
+      if (fetchError)
         throw fetchError;
-      }
 
       const existingKeys =
         new Set(
-          (
-            existingSlots ??
-            []
-          ).map(
+          (existingSlots ?? []).map(
             (slot) =>
               `${slot.instrument}|${new Date(
                 slot.starts_at
@@ -1372,15 +1319,9 @@ export default function SettingsPage() {
       }[] = [];
 
       for (
-        let current =
-          new Date(today);
-        current <
-        endDate;
-        current =
-          addDays(
-            current,
-            1
-          )
+        let current = new Date(today);
+        current < endDate;
+        current = addDays(current, 1)
       ) {
         const dayIndex =
           current.getDay();
@@ -1391,15 +1332,10 @@ export default function SettingsPage() {
             : dayIndex - 1;
 
         const daySchedule =
-          schedule[
-            scheduleIndex
-          ];
+          schedule[scheduleIndex];
 
-        if (
-          !daySchedule?.enabled
-        ) {
+        if (!daySchedule?.enabled)
           continue;
-        }
 
         const startMinutes =
           timeToMinutes(
@@ -1412,28 +1348,20 @@ export default function SettingsPage() {
           );
 
         for (
-          let minutes =
-            startMinutes;
-          minutes <
-          endMinutes;
-          minutes += 60
+          let minutes = startMinutes;
+          minutes < endMinutes;
+          minutes +=
+            settings.booking_duration_minutes
         ) {
           const hour =
-            Math.floor(
-              minutes / 60
-            );
+            Math.floor(minutes / 60);
 
           const minute =
             minutes % 60;
 
-          for (
-            const instrument of
-              instruments
-          ) {
+          for (const instrument of instruments) {
             const startsAt =
-              new Date(
-                current
-              );
+              new Date(current);
 
             startsAt.setHours(
               hour,
@@ -1443,9 +1371,7 @@ export default function SettingsPage() {
             );
 
             const endsAt =
-              new Date(
-                startsAt
-              );
+              new Date(startsAt);
 
             endsAt.setMinutes(
               endsAt.getMinutes() +
@@ -1456,12 +1382,9 @@ export default function SettingsPage() {
               `${instrument}|${startsAt.getTime()}`;
 
             if (
-              existingKeys.has(
-                key
-              )
-            ) {
+              existingKeys.has(key)
+            )
               continue;
-            }
 
             newSlots.push({
               instrument,
@@ -1469,21 +1392,15 @@ export default function SettingsPage() {
                 startsAt.toISOString(),
               ends_at:
                 endsAt.toISOString(),
-              is_available:
-                true,
+              is_available: true,
             });
 
-            existingKeys.add(
-              key
-            );
+            existingKeys.add(key);
           }
         }
       }
 
-      if (
-        newSlots.length ===
-        0
-      ) {
+      if (!newSlots.length) {
         setMessage(
           "Availability is already generated for the next 4 weeks."
         );
@@ -1491,43 +1408,31 @@ export default function SettingsPage() {
         return;
       }
 
-      const batchSize =
-        100;
-
       for (
         let index = 0;
-        index <
-        newSlots.length;
-        index +=
-          batchSize
+        index < newSlots.length;
+        index += 100
       ) {
         const batch =
           newSlots.slice(
             index,
-            index +
-              batchSize
+            index + 100
           );
 
-        const {
-          error: insertError,
-        } = await supabase
-          .from(
-            "lesson_slots"
-          )
-          .insert(batch);
+        const { error } =
+          await supabase
+            .from("lesson_slots")
+            .insert(batch);
 
-        if (insertError) {
-          throw insertError;
-        }
+        if (error)
+          throw error;
       }
 
       setMessage(
         `${newSlots.length} new trial slots generated for the next 4 weeks.`
       );
     } catch (err) {
-      console.error(
-        err
-      );
+      console.error(err);
 
       setError(
         err instanceof Error
@@ -1539,614 +1444,513 @@ export default function SettingsPage() {
     }
   }
 
-  /*
-   * =========================================================
-   * LOADING
-   * =========================================================
-   */
+  /* =======================================================
+     LOADING
+  ======================================================= */
 
   if (loadingSettings) {
     return (
       <main className="st-content">
-        <div className="st-card flex min-h-[300px] items-center justify-center gap-2">
-          <Loader2
-            size={18}
-            className="animate-spin text-[var(--st-red)]"
-          />
-
-          <span className="text-[11px] text-[var(--st-gray)]">
+        <div className="flex min-h-[360px] items-center justify-center">
+          <div className="flex items-center gap-2 text-[11px] text-[#999]">
+            <Loader2
+              size={17}
+              className="animate-spin text-[#c91f2b]"
+            />
             Loading settings...
-          </span>
+          </div>
         </div>
       </main>
     );
   }
 
+  /* =======================================================
+     UI
+  ======================================================= */
+
   return (
-    <main className="st-content">
+    <main className="st-content pb-28">
 
-      {/* =====================================================
+      {/* ===================================================
           HEADER
-      ===================================================== */}
+      =================================================== */}
 
-      <div className="mb-7 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+      <div className="mb-5">
 
-        <div>
-          <p className="st-eyebrow">
-            SYSTEM
-          </p>
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
 
-          <h1 className="st-page-title mt-2">
-            Settings
-          </h1>
+          <div>
+            <div className="flex items-center gap-2">
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#fdf1f2] text-[#c91f2b]">
+                <Settings size={15} />
+              </div>
 
-          <p className="st-page-description">
-            Manage your business identity,
-            booking experience, documents,
-            availability and automated
-            communication.
-          </p>
-        </div>
+              <span className="text-[9px] font-bold uppercase tracking-[0.16em] text-[#b2aaaa]">
+                Administration
+              </span>
+            </div>
 
-        <div className="flex flex-col gap-2 sm:flex-row">
+            <h1 className="mt-3 text-[28px] font-bold tracking-[-0.03em] text-[#242424] sm:text-[32px]">
+              Settings
+            </h1>
 
-          <button
-            type="button"
-            onClick={
-              saveBusinessSettings
-            }
-            disabled={
-              savingBusiness
-            }
-            className="st-button st-button-secondary w-full sm:w-auto"
-          >
-            {savingBusiness ? (
-              <>
+            <p className="mt-1 max-w-[650px] text-[11px] leading-relaxed text-[#999]">
+              Configure Sauti Tamu's business identity,
+              booking experience, customer content,
+              availability and communications.
+            </p>
+          </div>
+
+          <div className="hidden gap-2 lg:flex">
+
+            <button
+              type="button"
+              onClick={
+                saveBusinessSettings
+              }
+              disabled={
+                savingBusiness
+              }
+              className="flex h-10 items-center gap-2 rounded-xl border border-[#dedada] bg-white px-4 text-[10px] font-bold text-[#333] shadow-sm transition hover:border-[#c91f2b] hover:text-[#c91f2b]"
+            >
+              {savingBusiness ? (
                 <Loader2
                   size={14}
                   className="animate-spin"
                 />
-                Saving...
-              </>
-            ) : (
-              <>
-                <Building2
-                  size={14}
-                />
-                Save business
-              </>
-            )}
-          </button>
+              ) : (
+                <Building2 size={14} />
+              )}
 
-          <button
-            type="button"
-            onClick={
-              saveBookingSettings
-            }
-            disabled={
-              savingSettings
-            }
-            className="st-button st-button-primary w-full sm:w-auto"
-          >
-            {savingSettings ? (
-              <>
+              Save business
+            </button>
+
+            <button
+              type="button"
+              onClick={
+                saveBookingSettings
+              }
+              disabled={
+                savingSettings
+              }
+              className="flex h-10 items-center gap-2 rounded-xl bg-[#c91f2b] px-4 text-[10px] font-bold text-white shadow-sm transition hover:bg-[#ad1823]"
+            >
+              {savingSettings ? (
                 <Loader2
                   size={14}
                   className="animate-spin"
                 />
-                Saving...
-              </>
-            ) : (
-              <>
+              ) : (
                 <Save size={14} />
-                Save booking
-              </>
-            )}
-          </button>
+              )}
+
+              Save booking
+            </button>
+
+          </div>
 
         </div>
+
+        {/* =================================================
+            QUICK NAV
+        ================================================= */}
+
+        <div className="mt-5 flex gap-1 overflow-x-auto rounded-xl border border-[#e9e5e5] bg-white p-1 shadow-sm">
+
+          {[
+            ["#business", "Business"],
+            ["#booking", "Booking"],
+            ["#content", "Content"],
+            ["#offer", "Offer"],
+            ["#location", "Location"],
+            ["#availability", "Availability"],
+            ["#automation", "Automation"],
+          ].map(([href, label]) => (
+            <a
+              key={href}
+              href={href}
+              className="shrink-0 rounded-lg px-3 py-2 text-[9px] font-semibold text-[#777] transition hover:bg-[#fdf1f2] hover:text-[#c91f2b]"
+            >
+              {label}
+            </a>
+          ))}
+
+        </div>
+      </div>
+
+      {/* ===================================================
+          BUSINESS
+      =================================================== */}
+
+      <div id="business">
+
+        <Section
+          icon={Building2}
+          eyebrow="BUSINESS"
+          title="Business identity"
+          description="The core identity used across the administration system and future documents."
+        >
+          <div className="grid grid-cols-1 gap-5 p-5 sm:p-6 lg:grid-cols-2">
+
+            <Field label="Business name">
+              <Input
+                value={
+                  business.business_name
+                }
+                onChange={(e) =>
+                  updateBusiness(
+                    "business_name",
+                    e.target.value
+                  )
+                }
+              />
+            </Field>
+
+            <Field label="Phone">
+              <div className="relative">
+                <Phone
+                  size={14}
+                  className="absolute left-3 top-1/2 -translate-y-1/2 text-[#aaa]"
+                />
+
+                <Input
+                  value={
+                    business.phone
+                  }
+                  onChange={(e) =>
+                    updateBusiness(
+                      "phone",
+                      e.target.value
+                    )
+                  }
+                  className="pl-9"
+                  placeholder="+254..."
+                />
+              </div>
+            </Field>
+
+            <Field label="WhatsApp number">
+              <div className="relative">
+                <MessageCircle
+                  size={14}
+                  className="absolute left-3 top-1/2 -translate-y-1/2 text-[#aaa]"
+                />
+
+                <Input
+                  value={
+                    business.whatsapp_number
+                  }
+                  onChange={(e) =>
+                    updateBusiness(
+                      "whatsapp_number",
+                      e.target.value
+                    )
+                  }
+                  className="pl-9"
+                  placeholder="+254..."
+                />
+              </div>
+            </Field>
+
+            <Field label="Email">
+              <div className="relative">
+                <Mail
+                  size={14}
+                  className="absolute left-3 top-1/2 -translate-y-1/2 text-[#aaa]"
+                />
+
+                <Input
+                  type="email"
+                  value={
+                    business.email
+                  }
+                  onChange={(e) =>
+                    updateBusiness(
+                      "email",
+                      e.target.value
+                    )
+                  }
+                  className="pl-9"
+                  placeholder="hello@sautitamu.com"
+                />
+              </div>
+            </Field>
+
+            <Field
+              label="Website"
+              className="lg:col-span-2"
+            >
+              <div className="relative">
+                <Globe
+                  size={14}
+                  className="absolute left-3 top-1/2 -translate-y-1/2 text-[#aaa]"
+                />
+
+                <Input
+                  type="url"
+                  value={
+                    business.website
+                  }
+                  onChange={(e) =>
+                    updateBusiness(
+                      "website",
+                      e.target.value
+                    )
+                  }
+                  className="pl-9"
+                  placeholder="https://..."
+                />
+              </div>
+            </Field>
+
+          </div>
+        </Section>
 
       </div>
 
-      {/* =====================================================
-          BUSINESS IDENTITY
-      ===================================================== */}
-
-      <section className="st-card overflow-hidden">
-
-        <div className="border-b border-[var(--st-border)] px-5 py-5 sm:px-6">
-
-          <div className="flex items-start gap-3">
-
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[var(--st-bg-soft)] text-[var(--st-red)]">
-              <Building2 size={18} />
-            </div>
-
-            <div>
-              <h2 className="st-section-title">
-                Business identity
-              </h2>
-
-              <p className="mt-1 max-w-[600px] text-[10px] leading-relaxed text-[var(--st-gray)]">
-                Manage the business information
-                used throughout the Sauti Tamu
-                administration system and future
-                documents.
-              </p>
-            </div>
-
-          </div>
-
-        </div>
-
-        <div className="grid grid-cols-1 gap-5 p-5 sm:p-6 lg:grid-cols-2">
-
-          <div>
-            <label className="st-label">
-              Business name
-            </label>
-
-            <input
-              type="text"
-              value={
-                business.business_name
-              }
-              onChange={(e) =>
-                updateBusiness(
-                  "business_name",
-                  e.target.value
-                )
-              }
-              className="st-input"
-              placeholder="Sauti Tamu Piano Center"
-            />
-          </div>
-
-          <div>
-            <label className="st-label">
-              Phone
-            </label>
-
-            <div className="relative">
-              <Phone
-                size={14}
-                className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--st-gray)]"
-              />
-
-              <input
-                type="tel"
-                value={
-                  business.phone
-                }
-                onChange={(e) =>
-                  updateBusiness(
-                    "phone",
-                    e.target.value
-                  )
-                }
-                className="st-input pl-10"
-                placeholder="+254..."
-              />
-            </div>
-          </div>
-
-          <div>
-            <label className="st-label">
-              WhatsApp number
-            </label>
-
-            <div className="relative">
-              <MessageCircle
-                size={14}
-                className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--st-gray)]"
-              />
-
-              <input
-                type="tel"
-                value={
-                  business.whatsapp_number
-                }
-                onChange={(e) =>
-                  updateBusiness(
-                    "whatsapp_number",
-                    e.target.value
-                  )
-                }
-                className="st-input pl-10"
-                placeholder="+254..."
-              />
-            </div>
-          </div>
-
-          <div>
-            <label className="st-label">
-              Email
-            </label>
-
-            <div className="relative">
-              <Mail
-                size={14}
-                className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--st-gray)]"
-              />
-
-              <input
-                type="email"
-                value={
-                  business.email
-                }
-                onChange={(e) =>
-                  updateBusiness(
-                    "email",
-                    e.target.value
-                  )
-                }
-                className="st-input pl-10"
-                placeholder="hello@example.com"
-              />
-            </div>
-          </div>
-
-          <div className="lg:col-span-2">
-            <label className="st-label">
-              Website
-            </label>
-
-            <div className="relative">
-              <Globe
-                size={14}
-                className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--st-gray)]"
-              />
-
-              <input
-                type="url"
-                value={
-                  business.website
-                }
-                onChange={(e) =>
-                  updateBusiness(
-                    "website",
-                    e.target.value
-                  )
-                }
-                className="st-input pl-10"
-                placeholder="https://..."
-              />
-            </div>
-          </div>
-
-        </div>
-
-      </section>
-
-      {/* =====================================================
+      {/* ===================================================
           BRAND ASSETS
-      ===================================================== */}
+      =================================================== */}
 
-      <section className="st-card mt-5 overflow-hidden">
+      <div className="mt-5">
 
-        <div className="border-b border-[var(--st-border)] px-5 py-5 sm:px-6">
+        <Section
+          icon={ImageIcon}
+          eyebrow="BRANDING"
+          title="Brand assets"
+          description="Upload the official logo and e-stamp used on business documents."
+        >
+          <div className="grid grid-cols-1 gap-5 p-5 sm:p-6 lg:grid-cols-2">
 
-          <div className="flex items-start gap-3">
+            {/* LOGO */}
 
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[var(--st-bg-soft)] text-[var(--st-red)]">
-              <ImageIcon size={18} />
-            </div>
+            <div className="rounded-xl border border-[#ebe7e7] p-4">
 
-            <div>
-              <h2 className="st-section-title">
-                Brand assets
-              </h2>
+              <div className="flex items-center justify-between">
 
-              <p className="mt-1 max-w-[600px] text-[10px] leading-relaxed text-[var(--st-gray)]">
-                Upload the official business logo
-                and e-stamp. These assets can be
-                reused on receipts and other
-                business documents.
-              </p>
-            </div>
+                <div>
+                  <p className="text-[11px] font-bold text-[#292929]">
+                    Business logo
+                  </p>
 
-          </div>
+                  <p className="mt-1 text-[9px] text-[#999]">
+                    PNG, JPG or WebP · Max 5 MB
+                  </p>
+                </div>
 
-        </div>
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#fdf1f2] text-[#c91f2b]">
+                  <ImageIcon size={15} />
+                </div>
 
-        <div className="grid grid-cols-1 gap-5 p-5 sm:p-6 lg:grid-cols-2">
-
-          {/* LOGO */}
-
-          <div className="rounded-2xl border border-[var(--st-border)] bg-white p-4">
-
-            <div className="flex items-start justify-between gap-3">
-
-              <div>
-                <p className="m-0 text-[11px] font-bold text-[var(--st-charcoal-dark)]">
-                  Business logo
-                </p>
-
-                <p className="mt-1 text-[9px] leading-relaxed text-[var(--st-gray)]">
-                  Preferably PNG with a
-                  transparent background.
-                </p>
               </div>
 
-              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--st-bg-soft)] text-[var(--st-red)]">
-                <ImageIcon size={16} />
-              </div>
+              <div className="mt-4 flex h-[150px] items-center justify-center rounded-xl border border-dashed border-[#ddd8d8] bg-[#faf9f9] p-5">
 
-            </div>
-
-            <div className="mt-4 flex min-h-[180px] items-center justify-center rounded-xl border border-dashed border-[var(--st-border)] bg-[var(--st-bg-soft)] p-5">
-
-              {logoPreview ? (
-                <img
-                  src={logoPreview}
-                  alt="Business logo"
-                  className="max-h-[130px] max-w-full object-contain"
-                />
-              ) : (
-                <div className="text-center">
-
-                  <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-white text-[var(--st-gray)]">
+                {logoPreview ? (
+                  <img
+                    src={logoPreview}
+                    alt="Business logo"
+                    className="max-h-[105px] max-w-[190px] object-contain"
+                  />
+                ) : (
+                  <div className="text-center">
                     <ImageIcon
-                      size={20}
+                      size={25}
+                      className="mx-auto text-[#c5c0c0]"
                     />
+
+                    <p className="mt-2 text-[10px] font-semibold text-[#777]">
+                      No logo uploaded
+                    </p>
                   </div>
-
-                  <p className="mt-3 mb-0 text-[10px] font-semibold text-[var(--st-charcoal-dark)]">
-                    No logo uploaded
-                  </p>
-
-                  <p className="mt-1 mb-0 text-[9px] text-[var(--st-gray)]">
-                    Upload your official
-                    business logo.
-                  </p>
-
-                </div>
-              )}
-
-            </div>
-
-            <div className="mt-4 flex flex-col gap-2 sm:flex-row">
-
-              <label className="st-button st-button-primary flex-1 cursor-pointer justify-center">
-
-                {uploadingLogo ? (
-                  <>
-                    <Loader2
-                      size={14}
-                      className="animate-spin"
-                    />
-                    Uploading...
-                  </>
-                ) : (
-                  <>
-                    <Upload
-                      size={14}
-                    />
-                    {logoPreview
-                      ? "Replace logo"
-                      : "Upload logo"}
-                  </>
                 )}
 
-                <input
-                  type="file"
-                  accept="image/png,image/jpeg,image/webp,image/svg+xml"
-                  className="hidden"
-                  disabled={
-                    uploadingLogo
-                  }
-                  onChange={(e) => {
-                    const file =
-                      e.target
-                        .files?.[0];
+              </div>
 
-                    if (file) {
-                      uploadBusinessAsset(
-                        file,
+              <div className="mt-3 flex gap-2">
+
+                <label className="flex h-9 flex-1 cursor-pointer items-center justify-center gap-2 rounded-lg bg-[#c91f2b] text-[9px] font-bold text-white">
+                  {uploadingLogo ? (
+                    <Loader2
+                      size={13}
+                      className="animate-spin"
+                    />
+                  ) : (
+                    <Upload size={13} />
+                  )}
+
+                  {logoPreview
+                    ? "Replace logo"
+                    : "Upload logo"}
+
+                  <input
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp,image/svg+xml"
+                    className="hidden"
+                    disabled={
+                      uploadingLogo
+                    }
+                    onChange={(e) => {
+                      const file =
+                        e.target
+                          .files?.[0];
+
+                      if (file) {
+                        uploadBusinessAsset(
+                          file,
+                          "logo"
+                        );
+                      }
+
+                      e.currentTarget.value =
+                        "";
+                    }}
+                  />
+                </label>
+
+                {logoPreview && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      removeBusinessAsset(
                         "logo"
-                      );
+                      )
                     }
-
-                    e.currentTarget.value =
-                      "";
-                  }}
-                />
-
-              </label>
-
-              {logoPreview && (
-                <button
-                  type="button"
-                  onClick={() =>
-                    removeBusinessAsset(
-                      "logo"
-                    )
-                  }
-                  className="st-button st-button-secondary justify-center sm:w-auto"
-                >
-                  <Trash2
-                    size={14}
-                  />
-                  Remove
-                </button>
-              )}
-
-            </div>
-
-          </div>
-
-          {/* STAMP */}
-
-          <div className="rounded-2xl border border-[var(--st-border)] bg-white p-4">
-
-            <div className="flex items-start justify-between gap-3">
-
-              <div>
-                <p className="m-0 text-[11px] font-bold text-[var(--st-charcoal-dark)]">
-                  Official e-stamp
-                </p>
-
-                <p className="mt-1 text-[9px] leading-relaxed text-[var(--st-gray)]">
-                  Use a clean PNG with a
-                  transparent background where
-                  possible.
-                </p>
-              </div>
-
-              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--st-bg-soft)] text-[var(--st-red)]">
-                <ShieldCheck
-                  size={16}
-                />
-              </div>
-
-            </div>
-
-            <div className="mt-4 flex min-h-[180px] items-center justify-center rounded-xl border border-dashed border-[var(--st-border)] bg-[var(--st-bg-soft)] p-5">
-
-              {stampPreview ? (
-                <img
-                  src={stampPreview}
-                  alt="Official e-stamp"
-                  className="max-h-[130px] max-w-full object-contain"
-                />
-              ) : (
-                <div className="text-center">
-
-                  <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-white text-[var(--st-gray)]">
-                    <ShieldCheck
-                      size={20}
-                    />
-                  </div>
-
-                  <p className="mt-3 mb-0 text-[10px] font-semibold text-[var(--st-charcoal-dark)]">
-                    No e-stamp uploaded
-                  </p>
-
-                  <p className="mt-1 mb-0 text-[9px] text-[var(--st-gray)]">
-                    Upload the official
-                    business stamp.
-                  </p>
-
-                </div>
-              )}
-
-            </div>
-
-            <div className="mt-4 flex flex-col gap-2 sm:flex-row">
-
-              <label className="st-button st-button-primary flex-1 cursor-pointer justify-center">
-
-                {uploadingStamp ? (
-                  <>
-                    <Loader2
-                      size={14}
-                      className="animate-spin"
-                    />
-                    Uploading...
-                  </>
-                ) : (
-                  <>
-                    <Upload
-                      size={14}
-                    />
-                    {stampPreview
-                      ? "Replace stamp"
-                      : "Upload e-stamp"}
-                  </>
+                    className="flex h-9 w-9 items-center justify-center rounded-lg border border-[#e5e1e1] text-[#999] hover:text-[#c91f2b]"
+                  >
+                    <Trash2 size={13} />
+                  </button>
                 )}
 
-                <input
-                  type="file"
-                  accept="image/png,image/jpeg,image/webp,image/svg+xml"
-                  className="hidden"
-                  disabled={
-                    uploadingStamp
-                  }
-                  onChange={(e) => {
-                    const file =
-                      e.target
-                        .files?.[0];
+              </div>
 
-                    if (file) {
-                      uploadBusinessAsset(
-                        file,
-                        "stamp"
-                      );
-                    }
+            </div>
 
-                    e.currentTarget.value =
-                      "";
-                  }}
-                />
+            {/* STAMP */}
 
-              </label>
+            <div className="rounded-xl border border-[#ebe7e7] p-4">
 
-              {stampPreview && (
-                <button
-                  type="button"
-                  onClick={() =>
-                    removeBusinessAsset(
-                      "stamp"
-                    )
-                  }
-                  className="st-button st-button-secondary justify-center sm:w-auto"
-                >
-                  <Trash2
-                    size={14}
+              <div className="flex items-center justify-between">
+
+                <div>
+                  <p className="text-[11px] font-bold text-[#292929]">
+                    Official e-stamp
+                  </p>
+
+                  <p className="mt-1 text-[9px] text-[#999]">
+                    Transparent PNG recommended
+                  </p>
+                </div>
+
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#fdf1f2] text-[#c91f2b]">
+                  <ShieldCheck size={15} />
+                </div>
+
+              </div>
+
+              <div className="mt-4 flex h-[150px] items-center justify-center rounded-xl border border-dashed border-[#ddd8d8] bg-[#faf9f9] p-5">
+
+                {stampPreview ? (
+                  <img
+                    src={stampPreview}
+                    alt="Official e-stamp"
+                    className="max-h-[105px] max-w-[190px] object-contain"
                   />
-                  Remove
-                </button>
-              )}
+                ) : (
+                  <div className="text-center">
+                    <ShieldCheck
+                      size={25}
+                      className="mx-auto text-[#c5c0c0]"
+                    />
+
+                    <p className="mt-2 text-[10px] font-semibold text-[#777]">
+                      No e-stamp uploaded
+                    </p>
+                  </div>
+                )}
+
+              </div>
+
+              <div className="mt-3 flex gap-2">
+
+                <label className="flex h-9 flex-1 cursor-pointer items-center justify-center gap-2 rounded-lg bg-[#c91f2b] text-[9px] font-bold text-white">
+                  {uploadingStamp ? (
+                    <Loader2
+                      size={13}
+                      className="animate-spin"
+                    />
+                  ) : (
+                    <Upload size={13} />
+                  )}
+
+                  {stampPreview
+                    ? "Replace stamp"
+                    : "Upload e-stamp"}
+
+                  <input
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp,image/svg+xml"
+                    className="hidden"
+                    disabled={
+                      uploadingStamp
+                    }
+                    onChange={(e) => {
+                      const file =
+                        e.target
+                          .files?.[0];
+
+                      if (file) {
+                        uploadBusinessAsset(
+                          file,
+                          "stamp"
+                        );
+                      }
+
+                      e.currentTarget.value =
+                        "";
+                    }}
+                  />
+                </label>
+
+                {stampPreview && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      removeBusinessAsset(
+                        "stamp"
+                      )
+                    }
+                    className="flex h-9 w-9 items-center justify-center rounded-lg border border-[#e5e1e1] text-[#999] hover:text-[#c91f2b]"
+                  >
+                    <Trash2 size={13} />
+                  </button>
+                )}
+
+              </div>
 
             </div>
 
           </div>
+        </Section>
 
-        </div>
+      </div>
 
-      </section>
+      {/* ===================================================
+          RECEIPTS
+      =================================================== */}
 
-      {/* =====================================================
-          RECEIPTS & DOCUMENTS
-      ===================================================== */}
+      <div className="mt-5">
 
-      <section className="st-card mt-5 overflow-hidden">
+        <Section
+          icon={Receipt}
+          eyebrow="DOCUMENTS"
+          title="Receipts & documents"
+          description="Control the business identity and branding displayed on receipts."
+        >
+          <div className="grid grid-cols-1 gap-5 p-5 sm:p-6 lg:grid-cols-2">
 
-        <div className="border-b border-[var(--st-border)] px-5 py-5 sm:px-6">
-
-          <div className="flex items-start gap-3">
-
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[var(--st-bg-soft)] text-[var(--st-red)]">
-              <Receipt size={18} />
-            </div>
-
-            <div>
-              <h2 className="st-section-title">
-                Receipts & documents
-              </h2>
-
-              <p className="mt-1 max-w-[600px] text-[10px] leading-relaxed text-[var(--st-gray)]">
-                Control how your business identity
-                appears on receipts and future
-                payment documents.
-              </p>
-            </div>
-
-          </div>
-
-        </div>
-
-        <div className="p-5 sm:p-6">
-
-          <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
-
-            <div>
-              <label className="st-label">
-                Receipt business name
-              </label>
-
-              <input
-                type="text"
+            <Field label="Receipt business name">
+              <Input
                 value={
                   business.receipt_business_name
                 }
@@ -2156,21 +1960,11 @@ export default function SettingsPage() {
                     e.target.value
                   )
                 }
-                className="st-input"
               />
+            </Field>
 
-              <p className="st-help">
-                This name will appear at the
-                top of receipts.
-              </p>
-            </div>
-
-            <div>
-              <label className="st-label">
-                Currency
-              </label>
-
-              <select
+            <Field label="Currency">
+              <Select
                 value={
                   business.currency
                 }
@@ -2180,143 +1974,101 @@ export default function SettingsPage() {
                     e.target.value
                   )
                 }
-                className="st-input"
               >
                 <option value="KES">
                   KES — Kenyan Shilling
                 </option>
-
                 <option value="USD">
                   USD — US Dollar
                 </option>
-
                 <option value="EUR">
                   EUR — Euro
                 </option>
-
                 <option value="GBP">
                   GBP — British Pound
                 </option>
-              </select>
-            </div>
+              </Select>
+            </Field>
 
-            {/* LOGO TOGGLE */}
+            <div className="rounded-xl border border-[#ebe7e7] p-4">
 
-            <div className="rounded-xl border border-[var(--st-border)] p-4">
-
-              <div className="flex items-center justify-between gap-4">
+              <div className="flex items-center justify-between">
 
                 <div className="flex items-center gap-3">
-
-                  <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[var(--st-bg-soft)] text-[var(--st-red)]">
-                    <ImageIcon
-                      size={16}
-                    />
+                  <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#fdf1f2] text-[#c91f2b]">
+                    <ImageIcon size={15} />
                   </div>
 
                   <div>
-                    <p className="m-0 text-[11px] font-bold text-[var(--st-charcoal-dark)]">
-                      Show logo on receipts
+                    <p className="text-[10px] font-bold text-[#292929]">
+                      Show logo
                     </p>
 
-                    <p className="mt-1 text-[9px] text-[var(--st-gray)]">
-                      Display the uploaded
-                      business logo.
+                    <p className="mt-1 text-[9px] text-[#999]">
+                      Display the business logo.
                     </p>
                   </div>
-
                 </div>
 
-                <button
-                  type="button"
+                <Toggle
+                  enabled={
+                    business.receipt_show_logo
+                  }
                   onClick={() =>
                     updateBusiness(
                       "receipt_show_logo",
                       !business.receipt_show_logo
                     )
                   }
-                  className={`relative h-6 w-10 shrink-0 rounded-full transition-colors ${
-                    business.receipt_show_logo
-                      ? "bg-[var(--st-red)]"
-                      : "bg-[#d7d2d2]"
-                  }`}
-                >
-                  <span
-                    className={`absolute top-1 h-4 w-4 rounded-full bg-white shadow-sm transition-transform ${
-                      business.receipt_show_logo
-                        ? "translate-x-5"
-                        : "translate-x-1"
-                    }`}
-                  />
-                </button>
+                />
 
               </div>
 
             </div>
 
-            {/* STAMP TOGGLE */}
+            <div className="rounded-xl border border-[#ebe7e7] p-4">
 
-            <div className="rounded-xl border border-[var(--st-border)] p-4">
-
-              <div className="flex items-center justify-between gap-4">
+              <div className="flex items-center justify-between">
 
                 <div className="flex items-center gap-3">
-
-                  <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[var(--st-bg-soft)] text-[var(--st-red)]">
-                    <ShieldCheck
-                      size={16}
-                    />
+                  <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#fdf1f2] text-[#c91f2b]">
+                    <ShieldCheck size={15} />
                   </div>
 
                   <div>
-                    <p className="m-0 text-[11px] font-bold text-[var(--st-charcoal-dark)]">
-                      Show e-stamp on receipts
+                    <p className="text-[10px] font-bold text-[#292929]">
+                      Show e-stamp
                     </p>
 
-                    <p className="mt-1 text-[9px] text-[var(--st-gray)]">
-                      Display the official
-                      business stamp.
+                    <p className="mt-1 text-[9px] text-[#999]">
+                      Display the official stamp.
                     </p>
                   </div>
-
                 </div>
 
-                <button
-                  type="button"
+                <Toggle
+                  enabled={
+                    business.receipt_show_stamp
+                  }
                   onClick={() =>
                     updateBusiness(
                       "receipt_show_stamp",
                       !business.receipt_show_stamp
                     )
                   }
-                  className={`relative h-6 w-10 shrink-0 rounded-full transition-colors ${
-                    business.receipt_show_stamp
-                      ? "bg-[var(--st-red)]"
-                      : "bg-[#d7d2d2]"
-                  }`}
-                >
-                  <span
-                    className={`absolute top-1 h-4 w-4 rounded-full bg-white shadow-sm transition-transform ${
-                      business.receipt_show_stamp
-                        ? "translate-x-5"
-                        : "translate-x-1"
-                    }`}
-                  />
-                </button>
+                />
 
               </div>
 
             </div>
 
-            {/* FOOTER */}
-
-            <div className="lg:col-span-2">
-
-              <label className="st-label">
-                Receipt footer
-              </label>
-
-              <textarea
+            <Field
+              label="Receipt footer"
+              help="This message appears at the bottom of receipts."
+              className="lg:col-span-2"
+            >
+              <Textarea
+                rows={3}
                 value={
                   business.receipt_footer
                 }
@@ -2326,27 +2078,16 @@ export default function SettingsPage() {
                     e.target.value
                   )
                 }
-                rows={3}
-                className="st-textarea"
-                placeholder="Thank you for choosing us."
               />
+            </Field>
 
-              <p className="st-help">
-                This message appears at the
-                bottom of receipts.
-              </p>
-
-            </div>
-
-            {/* PAYMENT INSTRUCTIONS */}
-
-            <div className="lg:col-span-2">
-
-              <label className="st-label">
-                Payment instructions
-              </label>
-
-              <textarea
+            <Field
+              label="Payment instructions"
+              help="Optional instructions that can later appear on invoices and receipts."
+              className="lg:col-span-2"
+            >
+              <Textarea
+                rows={3}
                 value={
                   business.payment_instructions
                 }
@@ -2356,46 +2097,36 @@ export default function SettingsPage() {
                     e.target.value
                   )
                 }
-                rows={4}
-                className="st-textarea"
                 placeholder="Example: Pay via M-Pesa Till Number..."
               />
-
-              <p className="st-help">
-                Optional instructions that can
-                later appear on invoices and
-                receipts.
-              </p>
-
-            </div>
+            </Field>
 
           </div>
 
           {/* RECEIPT PREVIEW */}
 
-          <div className="mt-6 rounded-2xl border border-[var(--st-border)] bg-[var(--st-bg-soft)] p-5">
+          <div className="border-t border-[#eeeaea] bg-[#faf9f9] p-5 sm:p-6">
 
-            <div className="flex items-start justify-between gap-4">
+            <div className="flex items-center justify-between">
 
               <div>
-                <p className="m-0 text-[9px] font-bold uppercase tracking-[0.12em] text-[var(--st-gray)]">
-                  RECEIPT PREVIEW
+                <p className="text-[8px] font-bold uppercase tracking-[0.16em] text-[#aaa]">
+                  LIVE PREVIEW
                 </p>
 
-                <p className="mt-1 mb-0 text-[10px] text-[var(--st-gray)]">
-                  Preview of the branding
-                  configuration.
-                </p>
+                <h3 className="mt-1 text-[12px] font-bold text-[#292929]">
+                  Receipt appearance
+                </h3>
               </div>
 
               <Receipt
                 size={17}
-                className="text-[var(--st-red)]"
+                className="text-[#c91f2b]"
               />
 
             </div>
 
-            <div className="mx-auto mt-5 max-w-[380px] rounded-xl border border-[var(--st-border)] bg-white p-5 shadow-sm">
+            <div className="mx-auto mt-5 max-w-[370px] rounded-xl border border-[#e5e1e1] bg-white p-5 shadow-sm">
 
               <div className="text-center">
 
@@ -2404,657 +2135,343 @@ export default function SettingsPage() {
                     <img
                       src={logoPreview}
                       alt=""
-                      className="mx-auto mb-3 max-h-[60px] max-w-[160px] object-contain"
+                      className="mx-auto mb-3 max-h-[55px] max-w-[150px] object-contain"
                     />
                   )}
 
-                <p className="m-0 text-[13px] font-bold text-[var(--st-charcoal-dark)]">
+                <p className="text-[13px] font-bold text-[#242424]">
                   {
                     business.receipt_business_name
                   }
                 </p>
 
                 {business.phone && (
-                  <p className="mt-1 mb-0 text-[8px] text-[var(--st-gray)]">
-                    {
-                      business.phone
-                    }
+                  <p className="mt-1 text-[8px] text-[#999]">
+                    {business.phone}
                   </p>
                 )}
 
                 {business.email && (
-                  <p className="mt-1 mb-0 text-[8px] text-[var(--st-gray)]">
-                    {
-                      business.email
-                    }
+                  <p className="mt-1 text-[8px] text-[#999]">
+                    {business.email}
                   </p>
                 )}
 
               </div>
 
-              <div className="my-4 border-t border-dashed border-[var(--st-border)]" />
+              <div className="my-4 border-t border-dashed border-[#ddd8d8]" />
 
               <div className="flex justify-between text-[9px]">
-
-                <span className="text-[var(--st-gray)]">
+                <span className="text-[#999]">
                   Receipt
                 </span>
 
-                <span className="font-semibold text-[var(--st-charcoal-dark)]">
+                <span className="font-semibold">
                   #000001
                 </span>
-
               </div>
 
               <div className="mt-2 flex justify-between text-[9px]">
-
-                <span className="text-[var(--st-gray)]">
+                <span className="text-[#999]">
                   Amount
                 </span>
 
-                <span className="font-bold text-[var(--st-charcoal-dark)]">
-                  {
-                    business.currency
-                  }{" "}
-                  18,850
+                <span className="font-bold">
+                  {business.currency} 18,850
                 </span>
-
               </div>
 
               {business.receipt_show_stamp &&
                 stampPreview && (
                   <div className="mt-5 flex justify-end">
-
                     <img
                       src={stampPreview}
                       alt=""
-                      className="max-h-[70px] max-w-[100px] object-contain opacity-90"
+                      className="max-h-[65px] max-w-[95px] object-contain"
                     />
-
                   </div>
                 )}
 
-              <div className="mt-4 border-t border-[var(--st-border)] pt-3 text-center">
-
-                <p className="m-0 text-[8px] leading-relaxed text-[var(--st-gray)]">
-                  {
-                    business.receipt_footer
-                  }
-                </p>
-
-              </div>
-
-            </div>
-
-          </div>
-
-          <div className="mt-4 flex items-start gap-2 rounded-xl border border-blue-100 bg-blue-50 px-4 py-3">
-
-            <ExternalLink
-              size={13}
-              className="mt-0.5 shrink-0 text-blue-600"
-            />
-
-            <p className="m-0 text-[9px] leading-relaxed text-blue-700">
-              These settings control receipt
-              branding. The actual payment,
-              receipt numbering and transaction
-              workflow will remain separate.
-            </p>
-
-          </div>
-
-        </div>
-
-      </section>
-
-      {/* =====================================================
-          GENERAL BOOKING SETTINGS
-      ===================================================== */}
-
-      <section className="st-card mt-5 overflow-hidden">
-
-        <div className="border-b border-[var(--st-border)] px-5 py-5 sm:px-6">
-
-          <div className="flex items-start gap-3">
-
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[var(--st-bg-soft)] text-[var(--st-red)]">
-              <CalendarDays size={18} />
-            </div>
-
-            <div>
-              <h2 className="st-section-title">
-                Booking page
-              </h2>
-
-              <p className="mt-1 mb-0 text-[10px] leading-relaxed text-[var(--st-gray)]">
-                These settings control the main
-                information customers see when
-                they open the booking page.
-              </p>
-            </div>
-
-          </div>
-
-        </div>
-
-        <div className="grid grid-cols-1 gap-5 p-5 sm:p-6 lg:grid-cols-2">
-
-          <div>
-            <label className="st-label">
-              Booking title
-            </label>
-
-            <input
-              type="text"
-              value={
-                settings.booking_title
-              }
-              onChange={(e) =>
-                updateSetting(
-                  "booking_title",
-                  e.target.value
-                )
-              }
-              className="st-input"
-            />
-          </div>
-
-          <div>
-            <label className="st-label">
-              Appointment name
-            </label>
-
-            <input
-              type="text"
-              value={
-                settings.appointment_name
-              }
-              onChange={(e) =>
-                updateSetting(
-                  "appointment_name",
-                  e.target.value
-                )
-              }
-              className="st-input"
-            />
-          </div>
-
-          <div>
-            <label className="st-label">
-              Center name
-            </label>
-
-            <input
-              type="text"
-              value={
-                settings.center_name
-              }
-              onChange={(e) =>
-                updateSetting(
-                  "center_name",
-                  e.target.value
-                )
-              }
-              className="st-input"
-            />
-          </div>
-
-          <div>
-            <label className="st-label">
-              Timezone
-            </label>
-
-            <select
-              value={
-                settings.timezone
-              }
-              onChange={(e) =>
-                updateSetting(
-                  "timezone",
-                  e.target.value
-                )
-              }
-              className="st-input"
-            >
-              <option value="Africa/Nairobi">
-                Africa/Nairobi
-              </option>
-
-              <option value="UTC">
-                UTC
-              </option>
-            </select>
-          </div>
-
-          <div>
-            <label className="st-label">
-              Lesson duration
-            </label>
-
-            <select
-              value={
-                settings.booking_duration_minutes
-              }
-              onChange={(e) =>
-                updateSetting(
-                  "booking_duration_minutes",
-                  Number(
-                    e.target.value
-                  )
-                )
-              }
-              className="st-input"
-            >
-              <option value={30}>
-                30 minutes
-              </option>
-
-              <option value={45}>
-                45 minutes
-              </option>
-
-              <option value={60}>
-                60 minutes
-              </option>
-
-              <option value={90}>
-                90 minutes
-              </option>
-
-              <option value={120}>
-                120 minutes
-              </option>
-            </select>
-          </div>
-
-          <div>
-            <label className="st-label">
-              Minimum booking notice
-            </label>
-
-            <select
-              value={
-                settings.minimum_notice_hours
-              }
-              onChange={(e) =>
-                updateSetting(
-                  "minimum_notice_hours",
-                  Number(
-                    e.target.value
-                  )
-                )
-              }
-              className="st-input"
-            >
-              <option value={0}>
-                No minimum notice
-              </option>
-
-              <option value={1}>
-                1 hour
-              </option>
-
-              <option value={2}>
-                2 hours
-              </option>
-
-              <option value={4}>
-                4 hours
-              </option>
-
-              <option value={6}>
-                6 hours
-              </option>
-
-              <option value={12}>
-                12 hours
-              </option>
-
-              <option value={24}>
-                24 hours
-              </option>
-
-              <option value={48}>
-                48 hours
-              </option>
-            </select>
-
-            <p className="st-help">
-              Customers cannot book a lesson
-              within this period before it starts.
-            </p>
-          </div>
-
-          <div>
-            <label className="st-label">
-              Maximum days ahead
-            </label>
-
-            <select
-              value={
-                settings.maximum_days_ahead
-              }
-              onChange={(e) =>
-                updateSetting(
-                  "maximum_days_ahead",
-                  Number(
-                    e.target.value
-                  )
-                )
-              }
-              className="st-input"
-            >
-              <option value={7}>
-                Next 7 days
-              </option>
-
-              <option value={14}>
-                Next 14 days
-              </option>
-
-              <option value={21}>
-                Next 21 days
-              </option>
-
-              <option value={28}>
-                Next 28 days
-              </option>
-
-              <option value={30}>
-                Next 30 days
-              </option>
-
-              <option value={60}>
-                Next 60 days
-              </option>
-            </select>
-          </div>
-
-          <div className="lg:col-span-2">
-            <label className="st-label">
-              Booking page description
-            </label>
-
-            <textarea
-              value={
-                settings.description_intro
-              }
-              onChange={(e) =>
-                updateSetting(
-                  "description_intro",
-                  e.target.value
-                )
-              }
-              rows={5}
-              className="st-textarea"
-            />
-          </div>
-
-        </div>
-
-      </section>
-
-      {/* =====================================================
-          VISIT DESCRIPTION
-      ===================================================== */}
-
-      <section className="st-card mt-5 p-5 sm:p-6">
-
-        <div className="flex items-start gap-3">
-
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[var(--st-bg-soft)] text-[var(--st-red)]">
-            <FileText size={18} />
-          </div>
-
-          <div>
-            <h2 className="st-section-title">
-              During the visit
-            </h2>
-
-            <p className="mt-1 text-[10px] text-[var(--st-gray)]">
-              Explain what the student should
-              expect during the free trial.
-            </p>
-          </div>
-
-        </div>
-
-        <div className="mt-5 space-y-5">
-
-          <div>
-            <label className="st-label">
-              Section title
-            </label>
-
-            <input
-              type="text"
-              value={
-                settings.description_visit_title
-              }
-              onChange={(e) =>
-                updateSetting(
-                  "description_visit_title",
-                  e.target.value
-                )
-              }
-              className="st-input"
-            />
-          </div>
-
-          <div>
-            <label className="st-label">
-              What students will experience
-            </label>
-
-            <textarea
-              value={arrayToText(
-                settings.description_visit_items
-              )}
-              onChange={(e) =>
-                updateSetting(
-                  "description_visit_items",
-                  textToArray(
-                    e.target.value
-                  )
-                )
-              }
-              rows={7}
-              className="st-textarea"
-              placeholder="One item per line"
-            />
-
-            <p className="st-help">
-              Put each item on a separate line.
-            </p>
-          </div>
-
-        </div>
-
-      </section>
-
-      {/* =====================================================
-          SPECIAL OFFER
-      ===================================================== */}
-
-      <section className="st-card mt-5 overflow-hidden">
-
-        <div className="border-b border-[var(--st-border)] p-5 sm:p-6">
-
-          <div className="flex items-start justify-between gap-4">
-
-            <div className="flex items-start gap-3">
-
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[var(--st-bg-soft)] text-[var(--st-red)]">
-                <Gift size={18} />
-              </div>
-
-              <div>
-                <h2 className="st-section-title">
-                  Special offer
-                </h2>
-
-                <p className="mt-1 text-[10px] text-[var(--st-gray)]">
-                  Control the promotional offer
-                  displayed on the booking page.
+              <div className="mt-4 border-t border-[#eeeaea] pt-3 text-center">
+                <p className="text-[8px] leading-relaxed text-[#999]">
+                  {business.receipt_footer}
                 </p>
               </div>
 
             </div>
-
-            <button
-              type="button"
-              onClick={() =>
-                updateSetting(
-                  "offer_enabled",
-                  !settings.offer_enabled
-                )
-              }
-              className={`relative h-6 w-10 shrink-0 rounded-full transition-colors ${
-                settings.offer_enabled
-                  ? "bg-[var(--st-red)]"
-                  : "bg-[#d7d2d2]"
-              }`}
-            >
-              <span
-                className={`absolute top-1 h-4 w-4 rounded-full bg-white shadow-sm transition-transform ${
-                  settings.offer_enabled
-                    ? "translate-x-5"
-                    : "translate-x-1"
-                }`}
-              />
-            </button>
-
           </div>
+        </Section>
 
-        </div>
+      </div>
 
-        {settings.offer_enabled && (
+      {/* ===================================================
+          BOOKING
+      =================================================== */}
+
+      <div
+        id="booking"
+        className="mt-5"
+      >
+
+        <Section
+          icon={CalendarDays}
+          eyebrow="BOOKING"
+          title="Booking experience"
+          description="Control what customers see and how far ahead they can book."
+        >
           <div className="grid grid-cols-1 gap-5 p-5 sm:p-6 lg:grid-cols-2">
 
-            <div className="lg:col-span-2">
-              <label className="st-label">
-                Offer title
-              </label>
-
-              <input
-                type="text"
+            <Field label="Booking title">
+              <Input
                 value={
-                  settings.offer_title
+                  settings.booking_title
                 }
                 onChange={(e) =>
                   updateSetting(
-                    "offer_title",
+                    "booking_title",
                     e.target.value
                   )
                 }
-                className="st-input"
               />
-            </div>
+            </Field>
 
-            <div>
-              <label className="st-label">
-                Special price
-              </label>
-
-              <input
-                type="text"
+            <Field label="Appointment name">
+              <Input
                 value={
-                  settings.offer_price
+                  settings.appointment_name
                 }
                 onChange={(e) =>
                   updateSetting(
-                    "offer_price",
+                    "appointment_name",
                     e.target.value
                   )
                 }
-                className="st-input"
-                placeholder="18850"
               />
-            </div>
+            </Field>
 
-            <div>
-              <label className="st-label">
-                Regular price
-              </label>
-
-              <input
-                type="text"
+            <Field label="Centre name">
+              <Input
                 value={
-                  settings.offer_regular_price
+                  settings.center_name
                 }
                 onChange={(e) =>
                   updateSetting(
-                    "offer_regular_price",
+                    "center_name",
                     e.target.value
                   )
                 }
-                className="st-input"
-                placeholder="26850"
               />
-            </div>
+            </Field>
 
-            <div className="lg:col-span-2">
-              <label className="st-label">
-                Offer description
-              </label>
-
-              <textarea
+            <Field label="Timezone">
+              <Select
                 value={
-                  settings.offer_description
+                  settings.timezone
                 }
                 onChange={(e) =>
                   updateSetting(
-                    "offer_description",
+                    "timezone",
                     e.target.value
                   )
                 }
-                rows={4}
-                className="st-textarea"
+              >
+                <option value="Africa/Nairobi">
+                  Africa/Nairobi
+                </option>
+                <option value="UTC">
+                  UTC
+                </option>
+              </Select>
+            </Field>
+
+            <Field label="Lesson duration">
+              <Select
+                value={
+                  settings.booking_duration_minutes
+                }
+                onChange={(e) =>
+                  updateSetting(
+                    "booking_duration_minutes",
+                    Number(e.target.value)
+                  )
+                }
+              >
+                <option value={30}>
+                  30 minutes
+                </option>
+                <option value={45}>
+                  45 minutes
+                </option>
+                <option value={60}>
+                  60 minutes
+                </option>
+                <option value={90}>
+                  90 minutes
+                </option>
+                <option value={120}>
+                  120 minutes
+                </option>
+              </Select>
+            </Field>
+
+            <Field
+              label="Minimum booking notice"
+              help="Customers cannot book within this period before the lesson starts."
+            >
+              <Select
+                value={
+                  settings.minimum_notice_hours
+                }
+                onChange={(e) =>
+                  updateSetting(
+                    "minimum_notice_hours",
+                    Number(e.target.value)
+                  )
+                }
+              >
+                <option value={0}>
+                  No minimum notice
+                </option>
+                <option value={1}>
+                  1 hour
+                </option>
+                <option value={2}>
+                  2 hours
+                </option>
+                <option value={4}>
+                  4 hours
+                </option>
+                <option value={6}>
+                  6 hours
+                </option>
+                <option value={12}>
+                  12 hours
+                </option>
+                <option value={24}>
+                  24 hours
+                </option>
+                <option value={48}>
+                  48 hours
+                </option>
+              </Select>
+            </Field>
+
+            <Field label="Maximum days ahead">
+              <Select
+                value={
+                  settings.maximum_days_ahead
+                }
+                onChange={(e) =>
+                  updateSetting(
+                    "maximum_days_ahead",
+                    Number(e.target.value)
+                  )
+                }
+              >
+                <option value={7}>
+                  Next 7 days
+                </option>
+                <option value={14}>
+                  Next 14 days
+                </option>
+                <option value={21}>
+                  Next 21 days
+                </option>
+                <option value={28}>
+                  Next 28 days
+                </option>
+                <option value={30}>
+                  Next 30 days
+                </option>
+                <option value={60}>
+                  Next 60 days
+                </option>
+              </Select>
+            </Field>
+
+            <Field
+              label="Booking page introduction"
+              className="lg:col-span-2"
+            >
+              <Textarea
+                rows={5}
+                value={
+                  settings.description_intro
+                }
+                onChange={(e) =>
+                  updateSetting(
+                    "description_intro",
+                    e.target.value
+                  )
+                }
               />
-            </div>
+            </Field>
 
           </div>
-        )}
+        </Section>
 
-      </section>
+      </div>
 
-      {/* =====================================================
-          PROGRAMME + WHAT TO BRING
-      ===================================================== */}
+      {/* ===================================================
+          CONTENT
+      =================================================== */}
 
-      <section className="mt-5 grid grid-cols-1 gap-5 lg:grid-cols-2">
+      <div
+        id="content"
+        className="mt-5 grid grid-cols-1 gap-5 lg:grid-cols-2"
+      >
 
-        <div className="st-card p-5 sm:p-6">
+        <Section
+          icon={FileText}
+          title="During the visit"
+          description="Explain what students should expect during the free trial."
+        >
+          <div className="space-y-5 p-5 sm:p-6">
 
-          <div className="flex items-start gap-3">
+            <Field label="Section title">
+              <Input
+                value={
+                  settings.description_visit_title
+                }
+                onChange={(e) =>
+                  updateSetting(
+                    "description_visit_title",
+                    e.target.value
+                  )
+                }
+              />
+            </Field>
 
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[var(--st-bg-soft)] text-[var(--st-red)]">
-              <BookOpen size={18} />
-            </div>
-
-            <div>
-              <h2 className="st-section-title">
-                Programme
-              </h2>
-
-              <p className="mt-1 text-[10px] text-[var(--st-gray)]">
-                Show students what their course
-                fee includes.
-              </p>
-            </div>
+            <Field
+              label="What students will experience"
+              help="Keep these short and easy to scan."
+            >
+              <ListEditor
+                items={
+                  settings.description_visit_items
+                }
+                onChange={(items) =>
+                  updateSetting(
+                    "description_visit_items",
+                    items
+                  )
+                }
+                placeholder="Example: Meet your instructor"
+              />
+            </Field>
 
           </div>
+        </Section>
 
-          <div className="mt-5 space-y-5">
+        <Section
+          icon={BookOpen}
+          title="Programme"
+          description="Show students exactly what the course fee includes."
+        >
+          <div className="space-y-5 p-5 sm:p-6">
 
-            <div>
-              <label className="st-label">
-                Section title
-              </label>
-
-              <input
-                type="text"
+            <Field label="Section title">
+              <Input
                 value={
                   settings.program_title
                 }
@@ -3064,67 +2481,36 @@ export default function SettingsPage() {
                     e.target.value
                   )
                 }
-                className="st-input"
               />
-            </div>
+            </Field>
 
-            <div>
-              <label className="st-label">
-                Programme items
-              </label>
-
-              <textarea
-                value={arrayToText(
+            <Field label="Programme items">
+              <ListEditor
+                items={
                   settings.program_items
-                )}
-                onChange={(e) =>
+                }
+                onChange={(items) =>
                   updateSetting(
                     "program_items",
-                    textToArray(
-                      e.target.value
-                    )
+                    items
                   )
                 }
-                rows={7}
-                className="st-textarea"
-                placeholder="One item per line"
+                placeholder="Example: 3 Months Program"
               />
-            </div>
+            </Field>
 
           </div>
+        </Section>
 
-        </div>
+        <Section
+          icon={Music2}
+          title="What to bring"
+          description="Tell students what they should bring to the trial."
+        >
+          <div className="space-y-5 p-5 sm:p-6">
 
-        <div className="st-card p-5 sm:p-6">
-
-          <div className="flex items-start gap-3">
-
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[var(--st-bg-soft)] text-[var(--st-red)]">
-              <Music2 size={18} />
-            </div>
-
-            <div>
-              <h2 className="st-section-title">
-                What to bring
-              </h2>
-
-              <p className="mt-1 text-[10px] text-[var(--st-gray)]">
-                Tell students what they should
-                bring to their lesson.
-              </p>
-            </div>
-
-          </div>
-
-          <div className="mt-5 space-y-5">
-
-            <div>
-              <label className="st-label">
-                Section title
-              </label>
-
-              <input
-                type="text"
+            <Field label="Section title">
+              <Input
                 value={
                   settings.what_to_bring_title
                 }
@@ -3134,772 +2520,753 @@ export default function SettingsPage() {
                     e.target.value
                   )
                 }
-                className="st-input"
               />
-            </div>
+            </Field>
 
-            <div>
-              <label className="st-label">
-                Items
-              </label>
-
-              <textarea
-                value={arrayToText(
+            <Field label="Items">
+              <ListEditor
+                items={
                   settings.what_to_bring_items
-                )}
-                onChange={(e) =>
+                }
+                onChange={(items) =>
                   updateSetting(
                     "what_to_bring_items",
-                    textToArray(
-                      e.target.value
-                    )
+                    items
                   )
                 }
-                rows={7}
-                className="st-textarea"
-                placeholder="One item per line"
+                placeholder="Example: A Notebook"
               />
-            </div>
+            </Field>
 
           </div>
+        </Section>
 
-        </div>
+        <Section
+          icon={Clock3}
+          title="Working hours"
+          description="Customer-facing information. Actual bookable times come from the weekly schedule."
+        >
+          <div className="space-y-5 p-5 sm:p-6">
 
-      </section>
+            <Field label="Section title">
+              <Input
+                value={
+                  settings.working_hours_title
+                }
+                onChange={(e) =>
+                  updateSetting(
+                    "working_hours_title",
+                    e.target.value
+                  )
+                }
+              />
+            </Field>
 
-      {/* =====================================================
-          WORKING HOURS
-      ===================================================== */}
+            <Field label="Working hours">
+              <Input
+                value={
+                  settings.working_hours_text
+                }
+                onChange={(e) =>
+                  updateSetting(
+                    "working_hours_text",
+                    e.target.value
+                  )
+                }
+              />
+            </Field>
 
-      <section className="st-card mt-5 p-5 sm:p-6">
-
-        <div className="flex items-start gap-3">
-
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[var(--st-bg-soft)] text-[var(--st-red)]">
-            <Clock3 size={18} />
           </div>
+        </Section>
 
-          <div>
-            <h2 className="st-section-title">
-              Working hours
-            </h2>
+      </div>
 
-            <p className="mt-1 text-[10px] text-[var(--st-gray)]">
-              This is informational text displayed
-              to customers. Actual booking slots come
-              from the weekly availability below.
-            </p>
-          </div>
+      {/* ===================================================
+          OFFER
+      =================================================== */}
 
-        </div>
+      <div
+        id="offer"
+        className="mt-5"
+      >
 
-        <div className="mt-5 grid grid-cols-1 gap-5 lg:grid-cols-2">
-
-          <div>
-            <label className="st-label">
-              Section title
-            </label>
-
-            <input
-              type="text"
-              value={
-                settings.working_hours_title
+        <Section
+          icon={Gift}
+          eyebrow="PROMOTION"
+          title="Special offer"
+          description="Control the promotional offer displayed on the booking page."
+          action={
+            <Toggle
+              enabled={
+                settings.offer_enabled
               }
-              onChange={(e) =>
+              onClick={() =>
                 updateSetting(
-                  "working_hours_title",
-                  e.target.value
+                  "offer_enabled",
+                  !settings.offer_enabled
                 )
               }
-              className="st-input"
             />
-          </div>
+          }
+        >
 
-          <div>
-            <label className="st-label">
-              Working hours
-            </label>
+          {settings.offer_enabled && (
+            <div className="grid grid-cols-1 gap-5 p-5 sm:p-6 lg:grid-cols-2">
 
-            <input
-              type="text"
-              value={
-                settings.working_hours_text
-              }
-              onChange={(e) =>
-                updateSetting(
-                  "working_hours_text",
-                  e.target.value
-                )
-              }
-              className="st-input"
-            />
-          </div>
-
-        </div>
-
-      </section>
-
-      {/* =====================================================
-          LOCATION
-      ===================================================== */}
-
-      <section className="st-card mt-5 p-5 sm:p-6">
-
-        <div className="flex items-start gap-3">
-
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[var(--st-bg-soft)] text-[var(--st-red)]">
-            <MapPin size={18} />
-          </div>
-
-          <div>
-            <h2 className="st-section-title">
-              Location
-            </h2>
-
-            <p className="mt-1 text-[10px] text-[var(--st-gray)]">
-              The address and arrival information
-              customers receive after booking.
-            </p>
-          </div>
-
-        </div>
-
-        <div className="mt-5 grid grid-cols-1 gap-5 lg:grid-cols-2">
-
-          <div>
-            <label className="st-label">
-              Section title
-            </label>
-
-            <input
-              type="text"
-              value={
-                settings.location_title
-              }
-              onChange={(e) =>
-                updateSetting(
-                  "location_title",
-                  e.target.value
-                )
-              }
-              className="st-input"
-            />
-          </div>
-
-          <div>
-            <label className="st-label">
-              Location name
-            </label>
-
-            <input
-              type="text"
-              value={
-                settings.location_name
-              }
-              onChange={(e) =>
-                updateSetting(
-                  "location_name",
-                  e.target.value
-                )
-              }
-              className="st-input"
-            />
-          </div>
-
-          <div>
-            <label className="st-label">
-              Address
-            </label>
-
-            <input
-              type="text"
-              value={
-                settings.location_address
-              }
-              onChange={(e) =>
-                updateSetting(
-                  "location_address",
-                  e.target.value
-                )
-              }
-              className="st-input"
-            />
-          </div>
-
-          <div>
-            <label className="st-label">
-              Landmark
-            </label>
-
-            <input
-              type="text"
-              value={
-                settings.location_landmark
-              }
-              onChange={(e) =>
-                updateSetting(
-                  "location_landmark",
-                  e.target.value
-                )
-              }
-              className="st-input"
-            />
-          </div>
-
-          <div className="lg:col-span-2">
-            <label className="st-label">
-              Google Maps / Maps link
-            </label>
-
-            <input
-              type="url"
-              value={
-                settings.location_maps_url
-              }
-              onChange={(e) =>
-                updateSetting(
-                  "location_maps_url",
-                  e.target.value
-                )
-              }
-              className="st-input"
-              placeholder="https://..."
-            />
-          </div>
-
-          <div className="lg:col-span-2">
-            <label className="st-label">
-              Arrival instruction
-            </label>
-
-            <input
-              type="text"
-              value={
-                settings.arrival_instruction
-              }
-              onChange={(e) =>
-                updateSetting(
-                  "arrival_instruction",
-                  e.target.value
-                )
-              }
-              className="st-input"
-            />
-          </div>
-
-        </div>
-
-      </section>
-
-      {/* =====================================================
-          WEEKLY AVAILABILITY
-      ===================================================== */}
-
-      <section className="st-card mt-5 overflow-hidden">
-
-        <div className="border-b border-[var(--st-border)] px-5 py-5 sm:px-6">
-
-          <div className="flex items-start gap-3">
-
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[var(--st-bg-soft)] text-[var(--st-red)]">
-              <CalendarDays size={18} />
-            </div>
-
-            <div>
-              <h2 className="st-section-title">
-                Weekly availability
-              </h2>
-
-              <p className="mt-1 max-w-[550px] text-[10px] leading-relaxed text-[var(--st-gray)]">
-                This schedule repeats every week.
-                Trial slots are generated from
-                these hours.
-              </p>
-            </div>
-
-          </div>
-
-        </div>
-
-        <div className="divide-y divide-[var(--st-border)]">
-
-          {schedule.map(
-            (
-              day,
-              index
-            ) => (
-              <div
-                key={day.day}
-                className="flex flex-col gap-4 px-5 py-4 sm:flex-row sm:items-center sm:px-6"
+              <Field
+                label="Offer title"
+                className="lg:col-span-2"
               >
+                <Input
+                  value={
+                    settings.offer_title
+                  }
+                  onChange={(e) =>
+                    updateSetting(
+                      "offer_title",
+                      e.target.value
+                    )
+                  }
+                />
+              </Field>
 
-                <div className="flex w-full items-center gap-3 sm:w-[150px]">
+              <Field label="Special price">
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[10px] font-bold text-[#aaa]">
+                    KES
+                  </span>
 
-                  <button
-                    type="button"
-                    onClick={() =>
-                      updateDay(
-                        index,
-                        {
-                          enabled:
-                            !day.enabled,
-                        }
+                  <Input
+                    type="number"
+                    value={
+                      settings.offer_price
+                    }
+                    onChange={(e) =>
+                      updateSetting(
+                        "offer_price",
+                        e.target.value
                       )
                     }
-                    className={`relative h-6 w-10 shrink-0 rounded-full transition-colors ${
-                      day.enabled
-                        ? "bg-[var(--st-red)]"
-                        : "bg-[#d7d2d2]"
-                    }`}
-                  >
-                    <span
-                      className={`absolute top-1 h-4 w-4 rounded-full bg-white shadow-sm transition-transform ${
-                        day.enabled
-                          ? "translate-x-5"
-                          : "translate-x-1"
-                      }`}
+                    className="pl-12"
+                  />
+                </div>
+              </Field>
+
+              <Field label="Regular price">
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[10px] font-bold text-[#aaa]">
+                    KES
+                  </span>
+
+                  <Input
+                    type="number"
+                    value={
+                      settings.offer_regular_price
+                    }
+                    onChange={(e) =>
+                      updateSetting(
+                        "offer_regular_price",
+                        e.target.value
+                      )
+                    }
+                    className="pl-12"
+                  />
+                </div>
+              </Field>
+
+              <Field
+                label="Offer description"
+                className="lg:col-span-2"
+              >
+                <Textarea
+                  rows={4}
+                  value={
+                    settings.offer_description
+                  }
+                  onChange={(e) =>
+                    updateSetting(
+                      "offer_description",
+                      e.target.value
+                    )
+                  }
+                />
+              </Field>
+
+              {/* OFFER PREVIEW */}
+
+              <div className="lg:col-span-2">
+
+                <div className="overflow-hidden rounded-2xl border border-[#e9d9db] bg-[#fff8f8]">
+
+                  <div className="flex items-center gap-2 border-b border-[#f1dfe1] px-4 py-3">
+                    <Sparkles
+                      size={14}
+                      className="text-[#c91f2b]"
                     />
-                  </button>
 
-                  <div>
-                    <p className="m-0 text-[11px] font-bold text-[var(--st-charcoal-dark)]">
-                      {day.day}
+                    <span className="text-[9px] font-bold uppercase tracking-[0.12em] text-[#c91f2b]">
+                      Offer preview
+                    </span>
+                  </div>
+
+                  <div className="p-5">
+
+                    <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[#c91f2b]">
+                      {settings.offer_title}
                     </p>
 
-                    <p className="mt-1 text-[8px] font-bold tracking-[0.12em] text-[var(--st-gray)]">
-                      {day.short}
+                    <div className="mt-2 flex items-end gap-3">
+
+                      <span className="text-[27px] font-bold tracking-[-0.03em] text-[#242424]">
+                        KES{" "}
+                        {Number(
+                          settings.offer_price
+                        ).toLocaleString()}
+                      </span>
+
+                      <span className="mb-1 text-[11px] text-[#aaa] line-through">
+                        KES{" "}
+                        {Number(
+                          settings.offer_regular_price
+                        ).toLocaleString()}
+                      </span>
+
+                    </div>
+
+                    <p className="mt-3 max-w-[650px] text-[10px] leading-relaxed text-[#777]">
+                      {
+                        settings.offer_description
+                      }
                     </p>
+
                   </div>
 
                 </div>
 
-                {day.enabled ? (
-                  <div className="flex flex-1 flex-col gap-3 sm:flex-row sm:items-center">
+              </div>
 
-                    <div className="flex items-center gap-2">
+            </div>
+          )}
+
+        </Section>
+
+      </div>
+
+      {/* ===================================================
+          LOCATION
+      =================================================== */}
+
+      <div
+        id="location"
+        className="mt-5"
+      >
+
+        <Section
+          icon={MapPin}
+          eyebrow="LOCATION"
+          title="Business location"
+          description="The address and arrival information customers receive after booking."
+        >
+          <div className="grid grid-cols-1 gap-5 p-5 sm:p-6 lg:grid-cols-2">
+
+            <Field label="Section title">
+              <Input
+                value={
+                  settings.location_title
+                }
+                onChange={(e) =>
+                  updateSetting(
+                    "location_title",
+                    e.target.value
+                  )
+                }
+              />
+            </Field>
+
+            <Field label="Location name">
+              <Input
+                value={
+                  settings.location_name
+                }
+                onChange={(e) =>
+                  updateSetting(
+                    "location_name",
+                    e.target.value
+                  )
+                }
+              />
+            </Field>
+
+            <Field label="Address">
+              <Input
+                value={
+                  settings.location_address
+                }
+                onChange={(e) =>
+                  updateSetting(
+                    "location_address",
+                    e.target.value
+                  )
+                }
+              />
+            </Field>
+
+            <Field label="Landmark">
+              <Input
+                value={
+                  settings.location_landmark
+                }
+                onChange={(e) =>
+                  updateSetting(
+                    "location_landmark",
+                    e.target.value
+                  )
+                }
+              />
+            </Field>
+
+            <Field
+              label="Maps link"
+              className="lg:col-span-2"
+            >
+              <div className="flex gap-2">
+
+                <Input
+                  type="url"
+                  value={
+                    settings.location_maps_url
+                  }
+                  onChange={(e) =>
+                    updateSetting(
+                      "location_maps_url",
+                      e.target.value
+                    )
+                  }
+                  placeholder="https://..."
+                />
+
+                {settings.location_maps_url && (
+                  <a
+                    href={
+                      settings.location_maps_url
+                    }
+                    target="_blank"
+                    rel="noreferrer"
+                    className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-[#e8e5e5] text-[#888] hover:border-[#c91f2b] hover:text-[#c91f2b]"
+                  >
+                    <ExternalLink size={14} />
+                  </a>
+                )}
+
+              </div>
+            </Field>
+
+            <Field
+              label="Arrival instruction"
+              className="lg:col-span-2"
+            >
+              <Input
+                value={
+                  settings.arrival_instruction
+                }
+                onChange={(e) =>
+                  updateSetting(
+                    "arrival_instruction",
+                    e.target.value
+                  )
+                }
+              />
+            </Field>
+
+          </div>
+        </Section>
+
+      </div>
+
+      {/* ===================================================
+          AVAILABILITY
+      =================================================== */}
+
+      <div
+        id="availability"
+        className="mt-5"
+      >
+
+        <Section
+          icon={CalendarDays}
+          eyebrow="SCHEDULE"
+          title="Weekly availability"
+          description="This schedule repeats every week. Trial slots are generated from these hours."
+        >
+
+          <div className="divide-y divide-[#eeeaea]">
+
+            {schedule.map(
+              (day, index) => (
+                <div
+                  key={day.day}
+                  className="px-5 py-4 sm:px-6"
+                >
+
+                  <div className="flex items-center justify-between gap-4">
+
+                    <div className="flex items-center gap-3">
+
+                      <Toggle
+                        enabled={
+                          day.enabled
+                        }
+                        onClick={() =>
+                          updateDay(
+                            index,
+                            {
+                              enabled:
+                                !day.enabled,
+                            }
+                          )
+                        }
+                      />
+
+                      <div>
+                        <p className="text-[11px] font-bold text-[#292929]">
+                          {day.day}
+                        </p>
+
+                        <p className="mt-0.5 text-[8px] font-bold tracking-[0.12em] text-[#aaa]">
+                          {day.short}
+                        </p>
+                      </div>
+
+                    </div>
+
+                    {day.enabled && (
+                      <span className="hidden text-[9px] font-semibold text-[#999] sm:block">
+                        {formatTime(day.start)}
+                        {" – "}
+                        {formatTime(day.end)}
+                      </span>
+                    )}
+
+                    {!day.enabled && (
+                      <span className="text-[9px] font-semibold text-[#aaa]">
+                        Closed
+                      </span>
+                    )}
+
+                  </div>
+
+                  {day.enabled && (
+                    <div className="mt-3 flex items-center gap-2 pl-[60px]">
 
                       <Clock3
-                        size={14}
-                        className="text-[var(--st-red)]"
+                        size={13}
+                        className="text-[#c91f2b]"
                       />
 
                       <input
                         type="time"
-                        value={
-                          day.start
-                        }
+                        value={day.start}
                         onChange={(e) =>
                           updateDay(
                             index,
                             {
                               start:
-                                e.target
-                                  .value,
+                                e.target.value,
                             }
                           )
                         }
-                        className="rounded-lg border border-[var(--st-border)] bg-white px-3 py-2 text-[11px] font-semibold text-[var(--st-charcoal-dark)] outline-none focus:border-[var(--st-red)]"
+                        className="h-9 rounded-lg border border-[#e8e5e5] px-2 text-[10px] outline-none focus:border-[#c91f2b]"
                       />
 
-                      <span className="text-[10px] text-[var(--st-gray)]">
+                      <span className="text-[9px] text-[#aaa]">
                         to
                       </span>
 
                       <input
                         type="time"
-                        value={
-                          day.end
-                        }
+                        value={day.end}
                         onChange={(e) =>
                           updateDay(
                             index,
                             {
                               end:
-                                e.target
-                                  .value,
+                                e.target.value,
                             }
                           )
                         }
-                        className="rounded-lg border border-[var(--st-border)] bg-white px-3 py-2 text-[11px] font-semibold text-[var(--st-charcoal-dark)] outline-none focus:border-[var(--st-red)]"
+                        className="h-9 rounded-lg border border-[#e8e5e5] px-2 text-[10px] outline-none focus:border-[#c91f2b]"
                       />
 
                     </div>
+                  )}
 
-                    <span className="text-[9px] text-[var(--st-gray)]">
-                      {formatTime(
-                        day.start
+                </div>
+              )
+            )}
+
+          </div>
+        </Section>
+
+      </div>
+
+      {/* ===================================================
+          INSTRUMENTS
+      =================================================== */}
+
+      <div className="mt-5 grid grid-cols-1 gap-5 lg:grid-cols-2">
+
+        <Section
+          icon={Music2}
+          title="Trial instruments"
+          description="Each available hour creates one slot per selected instrument."
+        >
+          <div className="grid grid-cols-2 gap-3 p-5 sm:p-6">
+
+            {[
+              {
+                name: "Piano",
+                active: piano,
+                setActive: setPiano,
+                icon: Music2,
+              },
+              {
+                name: "Guitar",
+                active: guitar,
+                setActive: setGuitar,
+                icon: Guitar,
+              },
+            ].map((item) => {
+              const Icon = item.icon;
+
+              return (
+                <button
+                  key={item.name}
+                  type="button"
+                  onClick={() =>
+                    item.setActive(
+                      !item.active
+                    )
+                  }
+                  className={`rounded-xl border p-4 text-left transition ${
+                    item.active
+                      ? "border-[#c91f2b] bg-[#fff8f8]"
+                      : "border-[#e8e5e5] bg-white"
+                  }`}
+                >
+
+                  <div className="flex items-center justify-between">
+
+                    <div
+                      className={`flex h-9 w-9 items-center justify-center rounded-lg ${
+                        item.active
+                          ? "bg-[#c91f2b] text-white"
+                          : "bg-[#f5f3f3] text-[#aaa]"
+                      }`}
+                    >
+                      {item.active ? (
+                        <Check size={15} />
+                      ) : (
+                        <Icon size={15} />
                       )}
-                      {" – "}
-                      {formatTime(
-                        day.end
-                      )}
-                    </span>
+                    </div>
+
+                    {item.active && (
+                      <span className="text-[8px] font-bold uppercase tracking-[0.1em] text-[#c91f2b]">
+                        Active
+                      </span>
+                    )}
 
                   </div>
-                ) : (
-                  <div className="flex-1">
-                    <span className="text-[10px] font-semibold text-[var(--st-gray)]">
-                      Closed
-                    </span>
-                  </div>
-                )}
 
-              </div>
-            )
-          )}
+                  <p className="mt-4 text-[11px] font-bold text-[#292929]">
+                    {item.name}
+                  </p>
 
-        </div>
+                  <p className="mt-1 text-[9px] text-[#999]">
+                    1 trial slot / hour
+                  </p>
 
-      </section>
+                </button>
+              );
+            })}
 
-      {/* =====================================================
-          INSTRUMENTS + DURATION
-      ===================================================== */}
+          </div>
+        </Section>
 
-      <section className="mt-5 grid grid-cols-1 gap-5 lg:grid-cols-2">
+        <Section
+          icon={Clock3}
+          title="Lesson length"
+          description="Standard duration used when generating new trial slots."
+        >
+          <div className="p-5 sm:p-6">
 
-        <div className="st-card p-5 sm:p-6">
+            <div className="rounded-xl bg-[#faf8f8] p-5">
 
-          <div className="flex items-start gap-3">
-
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[var(--st-bg-soft)] text-[var(--st-red)]">
-              <Music2 size={18} />
-            </div>
-
-            <div>
-              <h2 className="st-section-title">
-                Trial instruments
-              </h2>
-
-              <p className="mt-1 text-[10px] text-[var(--st-gray)]">
-                Each available hour gets one
-                slot per selected instrument.
+              <p className="text-[8px] font-bold uppercase tracking-[0.15em] text-[#aaa]">
+                STANDARD TRIAL
               </p>
-            </div>
 
-          </div>
+              <div className="mt-2 flex items-end gap-2">
+                <span className="text-[32px] font-bold tracking-[-0.04em] text-[#242424]">
+                  {
+                    settings.booking_duration_minutes
+                  }
+                </span>
 
-          <div className="mt-5 grid grid-cols-2 gap-3">
-
-            <button
-              type="button"
-              onClick={() =>
-                setPiano(!piano)
-              }
-              className={`flex items-center gap-3 rounded-xl border p-4 text-left transition-all ${
-                piano
-                  ? "border-[var(--st-red)] bg-[var(--st-bg-soft)]"
-                  : "border-[var(--st-border)] bg-white"
-              }`}
-            >
-              <div
-                className={`flex h-8 w-8 items-center justify-center rounded-lg ${
-                  piano
-                    ? "bg-[var(--st-red)] text-white"
-                    : "bg-[var(--st-bg-soft)] text-[var(--st-gray)]"
-                }`}
-              >
-                {piano ? (
-                  <Check size={15} />
-                ) : (
-                  <Music2 size={15} />
-                )}
+                <span className="mb-1 text-[10px] font-semibold text-[#999]">
+                  minutes
+                </span>
               </div>
-
-              <div>
-                <p className="m-0 text-[11px] font-bold">
-                  Piano
-                </p>
-
-                <p className="mt-1 text-[9px] text-[var(--st-gray)]">
-                  1 slot / hour
-                </p>
-              </div>
-            </button>
-
-            <button
-              type="button"
-              onClick={() =>
-                setGuitar(!guitar)
-              }
-              className={`flex items-center gap-3 rounded-xl border p-4 text-left transition-all ${
-                guitar
-                  ? "border-[var(--st-red)] bg-[var(--st-bg-soft)]"
-                  : "border-[var(--st-border)] bg-white"
-              }`}
-            >
-              <div
-                className={`flex h-8 w-8 items-center justify-center rounded-lg ${
-                  guitar
-                    ? "bg-[var(--st-red)] text-white"
-                    : "bg-[var(--st-bg-soft)] text-[var(--st-gray)]"
-                }`}
-              >
-                {guitar ? (
-                  <Check size={15} />
-                ) : (
-                  <Guitar size={15} />
-                )}
-              </div>
-
-              <div>
-                <p className="m-0 text-[11px] font-bold">
-                  Guitar
-                </p>
-
-                <p className="mt-1 text-[9px] text-[var(--st-gray)]">
-                  1 slot / hour
-                </p>
-              </div>
-            </button>
-
-          </div>
-
-        </div>
-
-        <div className="st-card p-5 sm:p-6">
-
-          <div className="flex items-start gap-3">
-
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[var(--st-bg-soft)] text-[var(--st-red)]">
-              <Clock3 size={18} />
-            </div>
-
-            <div>
-              <h2 className="st-section-title">
-                Lesson length
-              </h2>
-
-              <p className="mt-1 text-[10px] text-[var(--st-gray)]">
-                Standard duration used for new
-                generated trial slots.
-              </p>
-            </div>
-
-          </div>
-
-          <div className="mt-5 rounded-xl border border-[var(--st-border)] bg-[var(--st-bg-soft)] px-4 py-4">
-
-            <p className="m-0 text-[9px] font-bold uppercase tracking-[0.12em] text-[var(--st-gray)]">
-              STANDARD TRIAL
-            </p>
-
-            <div className="mt-2 flex items-end gap-2">
-
-              <span className="text-[30px] font-bold leading-none text-[var(--st-charcoal-dark)]">
-                {
-                  settings.booking_duration_minutes
-                }
-              </span>
-
-              <span className="mb-1 text-[11px] font-semibold text-[var(--st-gray)]">
-                minutes
-              </span>
 
             </div>
 
           </div>
+        </Section>
 
-        </div>
+      </div>
 
-      </section>
+      {/* ===================================================
+          AUTOMATION
+      =================================================== */}
 
-      {/* =====================================================
-          AUTOMATIONS
-      ===================================================== */}
+      <div
+        id="automation"
+        className="mt-5"
+      >
 
-      <section className="st-card mt-5 p-5 sm:p-6">
+        <Section
+          icon={MessageCircle}
+          eyebrow="AUTOMATION"
+          title="Reminders & follow-ups"
+          description="Control the automated communication workflow around trial lessons."
+        >
 
-        <div className="flex items-start gap-3">
+          <div className="divide-y divide-[#eeeaea]">
 
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[var(--st-bg-soft)] text-[var(--st-red)]">
-            <MessageCircle size={18} />
-          </div>
-
-          <div>
-            <h2 className="st-section-title">
-              Automated follow-ups
-            </h2>
-
-            <p className="mt-1 text-[10px] text-[var(--st-gray)]">
-              Control the reminder and post-trial
-              communication workflow.
-            </p>
-          </div>
-
-        </div>
-
-        <div className="mt-5 space-y-3">
-
-          {[
-            {
-              key:
-                "reminder_24h_enabled" as const,
-
-              title:
-                "24-hour reminder",
-
-              description:
-                "Send a reminder before the trial lesson.",
-
-              icon: Mail,
-            },
-
-            {
-              key:
-                "reminder_2h_enabled" as const,
-
-              title:
-                "2-hour reminder",
-
-              description:
-                "Send a final reminder shortly before the lesson.",
-
-              icon: Clock3,
-            },
-
-            {
-              key:
-                "follow_up_enabled" as const,
-
-              title:
-                "Post-trial follow-up",
-
-              description:
-                "Create a follow-up task after the student's trial.",
-
-              icon: MessageCircle,
-            },
-          ].map(
-            (item) => {
-              const Icon =
-                item.icon;
-
+            {[
+              {
+                key:
+                  "reminder_24h_enabled" as const,
+                title:
+                  "24-hour reminder",
+                description:
+                  "Send a reminder before the trial lesson.",
+                icon: Mail,
+              },
+              {
+                key:
+                  "reminder_2h_enabled" as const,
+                title:
+                  "2-hour reminder",
+                description:
+                  "Send a final reminder shortly before the lesson.",
+                icon: Clock3,
+              },
+              {
+                key:
+                  "follow_up_enabled" as const,
+                title:
+                  "Post-trial follow-up",
+                description:
+                  "Create a follow-up task after the student's trial.",
+                icon: MessageCircle,
+              },
+            ].map((item) => {
+              const Icon = item.icon;
               const enabled =
-                settings[
-                  item.key
-                ];
+                settings[item.key];
 
               return (
                 <div
-                  key={
-                    item.key
-                  }
-                  className="flex items-center justify-between gap-4 rounded-xl border border-[var(--st-border)] p-4"
+                  key={item.key}
+                  className="flex items-center justify-between gap-4 px-5 py-4 sm:px-6"
                 >
 
                   <div className="flex items-center gap-3">
 
-                    <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[var(--st-bg-soft)] text-[var(--st-red)]">
-                      <Icon
-                        size={16}
-                      />
+                    <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#fdf1f2] text-[#c91f2b]">
+                      <Icon size={15} />
                     </div>
 
                     <div>
-                      <p className="m-0 text-[11px] font-bold text-[var(--st-charcoal-dark)]">
-                        {
-                          item.title
-                        }
+                      <p className="text-[10px] font-bold text-[#292929]">
+                        {item.title}
                       </p>
 
-                      <p className="mt-1 text-[9px] text-[var(--st-gray)]">
-                        {
-                          item.description
-                        }
+                      <p className="mt-1 text-[9px] text-[#999]">
+                        {item.description}
                       </p>
                     </div>
 
                   </div>
 
-                  <button
-                    type="button"
+                  <Toggle
+                    enabled={enabled}
                     onClick={() =>
                       updateSetting(
                         item.key,
                         !enabled
                       )
                     }
-                    className={`relative h-6 w-10 shrink-0 rounded-full transition-colors ${
-                      enabled
-                        ? "bg-[var(--st-red)]"
-                        : "bg-[#d7d2d2]"
-                    }`}
-                  >
-                    <span
-                      className={`absolute top-1 h-4 w-4 rounded-full bg-white shadow-sm transition-transform ${
-                        enabled
-                          ? "translate-x-5"
-                          : "translate-x-1"
-                      }`}
-                    />
-                  </button>
+                  />
 
                 </div>
               );
-            }
-          )}
+            })}
 
-        </div>
+          </div>
+        </Section>
 
-      </section>
+      </div>
 
-      {/* =====================================================
-          AVAILABILITY GENERATOR
-      ===================================================== */}
+      {/* ===================================================
+          GENERATOR
+      =================================================== */}
 
-      <section className="mt-5 overflow-hidden rounded-2xl bg-[var(--st-charcoal-dark)] text-white">
+      <div className="mt-5 overflow-hidden rounded-2xl bg-[#242424] text-white">
 
         <div className="p-5 sm:p-6">
 
-          <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
 
-            <div className="flex items-start gap-4">
+            <div className="flex items-start gap-3">
 
-              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[var(--st-red)]">
-                <RefreshCw size={19} />
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#c91f2b]">
+                <RefreshCw size={17} />
               </div>
 
               <div>
-
-                <p className="m-0 text-[9px] font-bold uppercase tracking-[0.16em] text-white/50">
+                <p className="text-[8px] font-bold uppercase tracking-[0.15em] text-white/40">
                   AVAILABILITY GENERATOR
                 </p>
 
-                <h2 className="mt-1 text-[18px] font-bold">
+                <h2 className="mt-1 text-[16px] font-bold">
                   Generate the next 4 weeks
                 </h2>
 
-                <p className="mt-2 max-w-[550px] text-[10px] leading-relaxed text-white/55">
-                  Create all bookable Piano and
-                  Guitar trial slots from the
-                  recurring weekly schedule.
-                  Existing slots are not duplicated.
+                <p className="mt-1 max-w-[550px] text-[9px] leading-relaxed text-white/50">
+                  Generate bookable Piano and Guitar
+                  trial slots from the weekly schedule.
+                  Existing slots will not be duplicated.
                 </p>
-
               </div>
 
             </div>
 
-            <div className="shrink-0">
+            <div className="flex items-center gap-4">
 
-              <div className="mb-3 text-right">
-
-                <p className="m-0 text-[9px] uppercase tracking-[0.12em] text-white/40">
+              <div className="text-right">
+                <p className="text-[8px] uppercase tracking-[0.12em] text-white/40">
                   ESTIMATED
                 </p>
 
                 <p className="mt-1 text-[22px] font-bold">
-                  {
-                    weeklySlotCount *
-                    4
-                  }
+                  {weeklySlotCount * 4}
                 </p>
 
-                <p className="mt-1 text-[9px] text-white/40">
+                <p className="text-[8px] text-white/40">
                   slots / 4 weeks
                 </p>
-
               </div>
 
               <button
@@ -3910,24 +3277,18 @@ export default function SettingsPage() {
                 disabled={
                   generating
                 }
-                className="st-button w-full bg-white text-[var(--st-charcoal-dark)] hover:bg-[var(--st-bg-soft)] disabled:opacity-60"
+                className="flex h-10 items-center gap-2 rounded-xl bg-white px-4 text-[9px] font-bold text-[#242424] transition hover:bg-[#f5f3f3] disabled:opacity-50"
               >
                 {generating ? (
-                  <>
-                    <Loader2
-                      size={14}
-                      className="animate-spin"
-                    />
-                    Generating...
-                  </>
+                  <Loader2
+                    size={13}
+                    className="animate-spin"
+                  />
                 ) : (
-                  <>
-                    <RefreshCw
-                      size={14}
-                    />
-                    Generate availability
-                  </>
+                  <RefreshCw size={13} />
                 )}
+
+                Generate
               </button>
 
             </div>
@@ -3935,31 +3296,15 @@ export default function SettingsPage() {
           </div>
 
         </div>
+      </div>
 
-      </section>
+      {/* ===================================================
+          MOBILE SAVE BAR
+      =================================================== */}
 
-      {/* =====================================================
-          SAVE AREA
-      ===================================================== */}
+      <div className="fixed bottom-0 left-0 right-0 z-40 border-t border-[#e5e1e1] bg-white/95 p-3 backdrop-blur lg:hidden">
 
-      <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-
-        <div className="flex items-center gap-2">
-
-          <Settings
-            size={13}
-            className="text-[var(--st-gray)]"
-          />
-
-          <p className="m-0 text-[9px] text-[var(--st-gray)]">
-            Business and booking settings are
-            stored separately so receipt branding
-            does not affect the booking workflow.
-          </p>
-
-        </div>
-
-        <div className="flex flex-col gap-2 sm:flex-row">
+        <div className="mx-auto flex max-w-[900px] gap-2">
 
           <button
             type="button"
@@ -3969,24 +3314,10 @@ export default function SettingsPage() {
             disabled={
               savingBusiness
             }
-            className="st-button st-button-secondary"
+            className="flex h-11 flex-1 items-center justify-center gap-2 rounded-xl border border-[#ddd9d9] bg-white text-[9px] font-bold text-[#333]"
           >
-            {savingBusiness ? (
-              <>
-                <Loader2
-                  size={14}
-                  className="animate-spin"
-                />
-                Saving...
-              </>
-            ) : (
-              <>
-                <Building2
-                  size={14}
-                />
-                Save business
-              </>
-            )}
+            <Building2 size={14} />
+            Business
           </button>
 
           <button
@@ -3997,61 +3328,51 @@ export default function SettingsPage() {
             disabled={
               savingSettings
             }
-            className="st-button st-button-primary"
+            className="flex h-11 flex-1 items-center justify-center gap-2 rounded-xl bg-[#c91f2b] text-[9px] font-bold text-white"
           >
             {savingSettings ? (
-              <>
-                <Loader2
-                  size={14}
-                  className="animate-spin"
-                />
-                Saving...
-              </>
+              <Loader2
+                size={14}
+                className="animate-spin"
+              />
             ) : (
-              <>
-                <Save size={14} />
-                Save booking
-              </>
+              <Save size={14} />
             )}
+
+            Save booking
           </button>
 
         </div>
-
       </div>
 
-      {/* =====================================================
-          SUCCESS
-      ===================================================== */}
+      {/* ===================================================
+          STATUS
+      =================================================== */}
 
       {message && (
-        <div className="mt-4 rounded-xl border border-green-200 bg-green-50 px-4 py-4">
+        <div className="mt-5 rounded-xl border border-[#cce8d4] bg-[#f1fbf4] px-4 py-3">
+          <div className="flex items-center gap-2">
+            <Check
+              size={14}
+              className="text-green-600"
+            />
 
-          <p className="m-0 text-[10px] font-bold text-green-800">
-            Settings updated
-          </p>
-
-          <p className="mt-1 mb-0 text-[10px] text-green-700">
-            {message}
-          </p>
-
+            <p className="text-[10px] font-bold text-green-800">
+              {message}
+            </p>
+          </div>
         </div>
       )}
 
-      {/* =====================================================
-          ERROR
-      ===================================================== */}
-
       {error && (
-        <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-4">
-
-          <p className="m-0 text-[10px] font-bold text-red-800">
+        <div className="mt-5 rounded-xl border border-[#f0caca] bg-[#fff5f5] px-4 py-3">
+          <p className="text-[10px] font-bold text-red-800">
             Something went wrong
           </p>
 
-          <p className="mt-1 mb-0 text-[10px] text-red-700">
+          <p className="mt-1 text-[9px] text-red-700">
             {error}
           </p>
-
         </div>
       )}
 
