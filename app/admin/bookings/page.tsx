@@ -6,7 +6,6 @@ import {
   CalendarDays,
   Check,
   CheckCircle2,
-  ChevronDown,
   Clock3,
   Mail,
   MessageCircle,
@@ -16,6 +15,9 @@ import {
   User,
   X,
   XCircle,
+  UserPlus,
+  UserCheck,
+  UserX,
 } from "lucide-react";
 
 import { useRouter } from "next/navigation";
@@ -181,13 +183,13 @@ function prettyStatus(
       return "Confirmed";
 
     case "completed":
-      return "Completed";
+      return "Attended";
 
     case "cancelled":
       return "Cancelled";
 
     case "no_show":
-      return "No-show";
+      return "Missed";
 
     default:
       return status;
@@ -236,6 +238,12 @@ function statusIcon(
   }
 }
 
+/*
+ * =========================================================
+ * PAGE
+ * =========================================================
+ */
+
 export default function AdminBookingsPage() {
   const router = useRouter();
 
@@ -271,13 +279,10 @@ export default function AdminBookingsPage() {
   const [updatingId, setUpdatingId] =
     useState<string | null>(null);
 
-  const [showStatusMenu, setShowStatusMenu] =
-    useState(false);
-
   /*
-   * ---------------------------------------------------------
+   * =========================================================
    * LOAD BOOKINGS
-   * ---------------------------------------------------------
+   * =========================================================
    */
 
   async function loadBookings(
@@ -290,10 +295,6 @@ export default function AdminBookingsPage() {
     }
 
     setError("");
-
-    /*
-     * Load bookings.
-     */
 
     const {
       data: bookingData,
@@ -348,10 +349,6 @@ export default function AdminBookingsPage() {
 
       return;
     }
-
-    /*
-     * Load related leads.
-     */
 
     const leadIds = Array.from(
       new Set(
@@ -460,7 +457,9 @@ export default function AdminBookingsPage() {
           ) ?? null,
       }));
 
-    setRecords(loadedRecords);
+    setRecords(
+      loadedRecords
+    );
 
     setLoading(false);
     setRefreshing(false);
@@ -471,9 +470,9 @@ export default function AdminBookingsPage() {
   }, []);
 
   /*
-   * ---------------------------------------------------------
+   * =========================================================
    * FILTERING
-   * ---------------------------------------------------------
+   * =========================================================
    */
 
   const filteredRecords =
@@ -496,7 +495,8 @@ export default function AdminBookingsPage() {
 
           if (
             filter !== "all" &&
-            booking.status !== filter
+            booking.status !==
+              filter
           ) {
             return false;
           }
@@ -526,12 +526,16 @@ export default function AdminBookingsPage() {
           );
         }
       );
-    }, [records, search, filter]);
+    }, [
+      records,
+      search,
+      filter,
+    ]);
 
   /*
-   * ---------------------------------------------------------
-   * LIVE STATS
-   * ---------------------------------------------------------
+   * =========================================================
+   * STATS
+   * =========================================================
    */
 
   const stats = useMemo(() => {
@@ -610,71 +614,25 @@ export default function AdminBookingsPage() {
   }, [records]);
 
   /*
-   * ---------------------------------------------------------
-   * UPDATE STATUS
-   * ---------------------------------------------------------
+   * =========================================================
+   * COMMON BOOKING UPDATE
+   * =========================================================
    */
 
-  async function updateStatus(
-    record: BookingRecord,
-    newStatus: BookingStatus
-  ) {
-    const booking =
-      record.booking;
-
-    setUpdatingId(booking.id);
-    setError("");
-
-    const updates: Record<
+  async function updateBooking(
+    bookingId: string,
+    updates: Record<
       string,
       string | null
-    > = {
-      status: newStatus,
-    };
-
-    if (
-      newStatus === "completed"
-    ) {
-      updates.completed_at =
-        new Date().toISOString();
-
-      updates.attended_at =
-        new Date().toISOString();
-
-      updates.cancelled_at = null;
-    }
-
-    if (
-      newStatus === "cancelled"
-    ) {
-      updates.cancelled_at =
-        new Date().toISOString();
-
-      updates.completed_at = null;
-      updates.attended_at = null;
-    }
-
-    if (
-      newStatus === "confirmed"
-    ) {
-      updates.cancelled_at = null;
-      updates.completed_at = null;
-    }
-
-    if (
-      newStatus === "no_show"
-    ) {
-      updates.completed_at = null;
-      updates.cancelled_at = null;
-    }
-
+    >
+  ) {
     const {
       data,
       error: updateError,
     } = await supabase
       .from("bookings")
       .update(updates)
-      .eq("id", booking.id)
+      .eq("id", bookingId)
       .select(
         `
           id,
@@ -695,56 +653,695 @@ export default function AdminBookingsPage() {
       .single();
 
     if (updateError) {
-      console.error(
-        "Status update error:",
-        updateError
-      );
-
-      setError(
-        "We couldn't update this booking."
-      );
-
-      setUpdatingId(null);
-
-      return;
+      throw updateError;
     }
 
-    const updatedBooking =
-      data as Booking;
-
-    const updatedRecord: BookingRecord =
-      {
-        ...record,
-        booking:
-          updatedBooking,
-      };
-
-    setRecords((current) =>
-      current.map((item) =>
-        item.booking.id ===
-        booking.id
-          ? updatedRecord
-          : item
-      )
-    );
-
-    if (
-      selectedBooking?.booking.id ===
-      booking.id
-    ) {
-      setSelectedBooking(
-        updatedRecord
-      );
-    }
-
-    setShowStatusMenu(false);
-    setUpdatingId(null);
+    return data as Booking;
   }
 
   /*
-   * ---------------------------------------------------------
-   * NAVIGATION
-   * ---------------------------------------------------------
+   * =========================================================
+   * FIND / CREATE STUDENT
+   *
+   * Booked = this lead has now become a student.
+   *
+   * We first look for an existing student linked to
+   * the lead. This prevents duplicate student records.
+   * =========================================================
+   */
+
+  async function ensureStudentFromLead(
+    record: BookingRecord
+  ) {
+    const lead =
+      record.lead;
+
+    if (!lead) {
+      throw new Error(
+        "This booking has no linked lead."
+      );
+    }
+
+    /*
+     * First check by lead_id.
+     */
+
+    const {
+      data: existingByLead,
+      error: existingLeadError,
+    } = await supabase
+      .from("students")
+      .select(
+        `
+          id,
+          lead_id,
+          full_name,
+          email,
+          whatsapp_number,
+          status
+        `
+      )
+      .eq(
+        "lead_id",
+        lead.id
+      )
+      .maybeSingle();
+
+    if (existingLeadError) {
+      throw existingLeadError;
+    }
+
+    if (existingByLead) {
+      /*
+       * Keep the student information aligned with the
+       * lead if the lead's contact details have changed.
+       */
+
+      const {
+        data: updatedStudent,
+        error: updateStudentError,
+      } = await supabase
+        .from("students")
+        .update({
+          full_name:
+            lead.full_name,
+          email:
+            lead.email,
+          whatsapp_number:
+            lead.whatsapp_number,
+          status:
+            existingByLead.status ===
+            "inactive"
+              ? "active"
+              : existingByLead.status,
+        })
+        .eq(
+          "id",
+          existingByLead.id
+        )
+        .select(
+          `
+            id,
+            lead_id,
+            full_name,
+            email,
+            whatsapp_number,
+            status
+          `
+        )
+        .single();
+
+      if (updateStudentError) {
+        throw updateStudentError;
+      }
+
+      return updatedStudent;
+    }
+
+    /*
+     * Create a student directly from the lead.
+     *
+     * No enrollment is created here because the current
+     * Students module treats the programme/enrollment as
+     * a separate registration step.
+     */
+
+    const {
+      data: newStudent,
+      error: studentError,
+    } = await supabase
+      .from("students")
+      .insert({
+        lead_id: lead.id,
+        full_name:
+          lead.full_name,
+        email:
+          lead.email,
+        whatsapp_number:
+          lead.whatsapp_number,
+        status: "active",
+        notes:
+          `Converted from trial booking ${record.booking.id}.`,
+      })
+      .select(
+        `
+          id,
+          lead_id,
+          full_name,
+          email,
+          whatsapp_number,
+          status
+        `
+      )
+      .single();
+
+    if (studentError) {
+      throw studentError;
+    }
+
+    return newStudent;
+  }
+
+  /*
+   * =========================================================
+   * FIND OPEN FOLLOW-UP
+   *
+   * Prevents clicking Attended/Missed twice from creating
+   * duplicate follow-up tasks for the same booking.
+   * =========================================================
+   */
+
+  async function hasOpenFollowUp(
+    bookingId: string
+  ) {
+    const {
+      data,
+      error,
+    } = await supabase
+      .from("follow_up_tasks")
+      .select("id, status")
+      .eq(
+        "booking_id",
+        bookingId
+      )
+      .in("status", [
+        "pending",
+        "sent",
+      ])
+      .limit(1);
+
+    if (error) {
+      throw error;
+    }
+
+    return (
+      (data ?? []).length > 0
+    );
+  }
+
+  /*
+   * =========================================================
+   * CREATE POST-TRIAL REGISTRATION FOLLOW-UP
+   * =========================================================
+   */
+
+  async function createRegistrationFollowUp(
+    record: BookingRecord
+  ) {
+    const booking =
+      record.booking;
+
+    const lead =
+      record.lead;
+
+    if (!lead) {
+      throw new Error(
+        "This booking has no linked lead."
+      );
+    }
+
+    const alreadyExists =
+      await hasOpenFollowUp(
+        booking.id
+      );
+
+    if (alreadyExists) {
+      return;
+    }
+
+    const dueAt =
+      record.slot?.ends_at ??
+      new Date().toISOString();
+
+    const lessonText =
+      record.slot
+        ? `${formatLongDate(
+            record.slot.starts_at
+          )} at ${formatTime(
+            record.slot.starts_at
+          )}`
+        : "the scheduled trial lesson";
+
+    const {
+      error,
+    } = await supabase
+      .from("follow_up_tasks")
+      .insert({
+        lead_id: lead.id,
+        booking_id:
+          booking.id,
+        task_type:
+          "post_trial_follow_up",
+        due_at: dueAt,
+        status: "pending",
+        channel: null,
+        message_template:
+          `Trial attended — follow up with ${lead.full_name} regarding registration after the ${booking.instrument} trial on ${lessonText}.`,
+        sent_at: null,
+        completed_at: null,
+      });
+
+    if (error) {
+      throw error;
+    }
+  }
+
+  /*
+   * =========================================================
+   * CREATE RESCHEDULE FOLLOW-UP
+   * =========================================================
+   */
+
+  async function createRescheduleFollowUp(
+    record: BookingRecord
+  ) {
+    const booking =
+      record.booking;
+
+    const lead =
+      record.lead;
+
+    if (!lead) {
+      throw new Error(
+        "This booking has no linked lead."
+      );
+    }
+
+    const alreadyExists =
+      await hasOpenFollowUp(
+        booking.id
+      );
+
+    if (alreadyExists) {
+      return;
+    }
+
+    const {
+      error,
+    } = await supabase
+      .from("follow_up_tasks")
+      .insert({
+        lead_id: lead.id,
+        booking_id:
+          booking.id,
+        task_type:
+          "trial_reschedule_follow_up",
+        due_at:
+          new Date().toISOString(),
+        status: "pending",
+        channel: null,
+        message_template:
+          `Missed trial — contact ${lead.full_name} to reschedule their ${booking.instrument} trial lesson.`,
+        sent_at: null,
+        completed_at: null,
+      });
+
+    if (error) {
+      throw error;
+    }
+  }
+
+  /*
+   * =========================================================
+   * BOOKED
+   *
+   * 1. Create/reuse student.
+   * 2. Mark trial as completed/attended.
+   * 3. Clear cancelled timestamp.
+   * 4. Open Students module.
+   * =========================================================
+   */
+
+  async function markBooked(
+    record: BookingRecord
+  ) {
+    const booking =
+      record.booking;
+
+    if (
+      booking.status ===
+        "cancelled" ||
+      booking.status ===
+        "no_show"
+    ) {
+      return;
+    }
+
+    setUpdatingId(
+      booking.id
+    );
+
+    setError("");
+
+    try {
+      await ensureStudentFromLead(
+        record
+      );
+
+      const now =
+        new Date().toISOString();
+
+      const updatedBooking =
+        await updateBooking(
+          booking.id,
+          {
+            status:
+              "completed",
+            attended_at:
+              booking.attended_at ??
+              now,
+            completed_at:
+              booking.completed_at ??
+              now,
+            cancelled_at:
+              null,
+          }
+        );
+
+      const updatedRecord: BookingRecord =
+        {
+          ...record,
+          booking:
+            updatedBooking,
+        };
+
+      setRecords((current) =>
+        current.map(
+          (item) =>
+            item.booking.id ===
+            booking.id
+              ? updatedRecord
+              : item
+        )
+      );
+
+      setSelectedBooking(
+        null
+      );
+
+      /*
+       * Open the Student Register.
+       *
+       * The student record has already been created and
+       * linked to the lead, so it will appear there.
+       */
+
+      router.push(
+        "/admin/students"
+      );
+    } catch (err) {
+      console.error(
+        "Booked action error:",
+        err
+      );
+
+      setError(
+        err &&
+        typeof err ===
+          "object" &&
+        "message" in err
+          ? String(
+              (
+                err as {
+                  message: string;
+                }
+              ).message
+            )
+          : "We couldn't register this learner as a student."
+      );
+    } finally {
+      setUpdatingId(null);
+    }
+  }
+
+  /*
+   * =========================================================
+   * ATTENDED
+   *
+   * 1. Mark booking completed.
+   * 2. Record attendance.
+   * 3. Create post-trial registration follow-up.
+   * =========================================================
+   */
+
+  async function markAttended(
+    record: BookingRecord
+  ) {
+    const booking =
+      record.booking;
+
+    if (
+      booking.status ===
+        "cancelled" ||
+      booking.status ===
+        "no_show"
+    ) {
+      return;
+    }
+
+    setUpdatingId(
+      booking.id
+    );
+
+    setError("");
+
+    try {
+      const now =
+        new Date().toISOString();
+
+      const updatedBooking =
+        await updateBooking(
+          booking.id,
+          {
+            status:
+              "completed",
+            attended_at:
+              booking.attended_at ??
+              now,
+            completed_at:
+              booking.completed_at ??
+              now,
+            cancelled_at:
+              null,
+          }
+        );
+
+      await createRegistrationFollowUp(
+        {
+          ...record,
+          booking:
+            updatedBooking,
+        }
+      );
+
+      const updatedRecord: BookingRecord =
+        {
+          ...record,
+          booking:
+            updatedBooking,
+        };
+
+      setRecords((current) =>
+        current.map(
+          (item) =>
+            item.booking.id ===
+            booking.id
+              ? updatedRecord
+              : item
+        )
+      );
+
+      setSelectedBooking(
+        null
+      );
+    } catch (err) {
+      console.error(
+        "Attended action error:",
+        err
+      );
+
+      setError(
+        err &&
+        typeof err ===
+          "object" &&
+        "message" in err
+          ? String(
+              (
+                err as {
+                  message: string;
+                }
+              ).message
+            )
+          : "We couldn't mark this trial as attended."
+      );
+    } finally {
+      setUpdatingId(null);
+    }
+  }
+
+  /*
+   * =========================================================
+   * MISSED TRIAL
+   *
+   * 1. Mark booking no_show.
+   * 2. Create reschedule follow-up.
+   * =========================================================
+   */
+
+  async function markMissedTrial(
+    record: BookingRecord
+  ) {
+    const booking =
+      record.booking;
+
+    if (
+      booking.status ===
+        "cancelled" ||
+      booking.status ===
+        "no_show"
+    ) {
+      return;
+    }
+
+    setUpdatingId(
+      booking.id
+    );
+
+    setError("");
+
+    try {
+      const updatedBooking =
+        await updateBooking(
+          booking.id,
+          {
+            status:
+              "no_show",
+            attended_at:
+              null,
+            completed_at:
+              null,
+            cancelled_at:
+              null,
+          }
+        );
+
+      await createRescheduleFollowUp(
+        {
+          ...record,
+          booking:
+            updatedBooking,
+        }
+      );
+
+      const updatedRecord: BookingRecord =
+        {
+          ...record,
+          booking:
+            updatedBooking,
+        };
+
+      setRecords((current) =>
+        current.map(
+          (item) =>
+            item.booking.id ===
+            booking.id
+              ? updatedRecord
+              : item
+        )
+      );
+
+      setSelectedBooking(
+        null
+      );
+    } catch (err) {
+      console.error(
+        "Missed trial action error:",
+        err
+      );
+
+      setError(
+        err &&
+        typeof err ===
+          "object" &&
+        "message" in err
+          ? String(
+              (
+                err as {
+                  message: string;
+                }
+              ).message
+            )
+          : "We couldn't mark this trial as missed."
+      );
+    } finally {
+      setUpdatingId(null);
+    }
+  }
+
+  /*
+   * =========================================================
+   * CALL
+   * =========================================================
+   */
+
+  function callLearner(
+    record: BookingRecord
+  ) {
+    if (
+      !record.lead
+        ?.whatsapp_number
+    ) {
+      return;
+    }
+
+    window.location.href =
+      `tel:${record.lead.whatsapp_number}`;
+  }
+
+  /*
+   * =========================================================
+   * WHATSAPP
+   * =========================================================
+   */
+
+  function openWhatsApp(
+    record: BookingRecord
+  ) {
+    const phone =
+      record.lead
+        ?.whatsapp_number;
+
+    if (!phone) {
+      return;
+    }
+
+    const cleanPhone =
+      phone.replace(
+        /[^0-9]/g,
+        ""
+      );
+
+    const message =
+      record.slot
+        ? `Hello ${record.lead?.full_name}, this is Sauti Tamu Piano Center regarding your ${record.booking.instrument} trial lesson on ${formatLongDate(
+            record.slot.starts_at
+          )} at ${formatTime(
+            record.slot.starts_at
+          )}.`
+        : `Hello ${record.lead?.full_name}, this is Sauti Tamu Piano Center regarding your trial lesson.`;
+
+    window.open(
+      `https://wa.me/${cleanPhone}?text=${encodeURIComponent(
+        message
+      )}`,
+      "_blank"
+    );
+  }
+
+  /*
+   * =========================================================
+   * CALENDAR
+   * =========================================================
    */
 
   function openCalendar(
@@ -766,56 +1363,10 @@ export default function AdminBookingsPage() {
     );
   }
 
-  function openWhatsApp(
-    record: BookingRecord
-  ) {
-    const phone =
-      record.lead?.whatsapp_number;
-
-    if (!phone) {
-      return;
-    }
-
-    const cleanPhone =
-      phone.replace(
-        /[^0-9+]/g,
-        ""
-      );
-
-    const message =
-      record.slot
-        ? `Hello ${record.lead?.full_name}, this is Sauti Tamu Piano Center regarding your ${record.booking.instrument} trial lesson on ${formatLongDate(
-            record.slot.starts_at
-          )} at ${formatTime(
-            record.slot.starts_at
-          )}.`
-        : `Hello ${record.lead?.full_name}, this is Sauti Tamu Piano Center regarding your trial lesson.`;
-
-    window.open(
-      `https://wa.me/${cleanPhone.replace(
-        "+",
-        ""
-      )}?text=${encodeURIComponent(
-        message
-      )}`,
-      "_blank"
-    );
-  }
-
-  function callLearner(
-    record: BookingRecord
-  ) {
-    if (!record.lead?.whatsapp_number) {
-      return;
-    }
-
-    window.location.href = `tel:${record.lead.whatsapp_number}`;
-  }
-
   /*
-   * ---------------------------------------------------------
+   * =========================================================
    * RENDER
-   * ---------------------------------------------------------
+   * =========================================================
    */
 
   return (
@@ -837,8 +1388,9 @@ export default function AdminBookingsPage() {
           </h1>
 
           <p className="st-page-description">
-            Manage your trial learners, lesson times
-            and booking status from one place.
+            Manage trial learners from booking
+            through attendance, registration and
+            rescheduling.
           </p>
         </div>
 
@@ -913,16 +1465,16 @@ export default function AdminBookingsPage() {
 
             <div>
               <p className="m-0 text-[10px] font-bold uppercase tracking-[0.08em] text-[var(--st-gray)]">
-                Completed
+                Attended
               </p>
 
-              <p className="mt-3 mb-0 text-[30px] font-bold leading-none text-[var(--st-charcoal-dark)]">
+              <p className="mt-3 mb-0 text-[30px] font-bold leading-none text-blue-700">
                 {stats.completed}
               </p>
             </div>
 
             <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-50 text-blue-700">
-              <Check size={18} />
+              <UserCheck size={18} />
             </div>
 
           </div>
@@ -990,7 +1542,7 @@ export default function AdminBookingsPage() {
             },
             {
               key: "completed",
-              label: "Completed",
+              label: "Attended",
             },
             {
               key: "cancelled",
@@ -998,7 +1550,7 @@ export default function AdminBookingsPage() {
             },
             {
               key: "no_show",
-              label: "No-show",
+              label: "Missed",
             },
           ].map((item) => (
             <button
@@ -1028,10 +1580,17 @@ export default function AdminBookingsPage() {
       ===================================================== */}
 
       {error && (
-        <div className="mt-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3">
+        <div className="mt-5 flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3">
+
+          <XCircle
+            size={15}
+            className="mt-0.5 shrink-0 text-red-600"
+          />
+
           <p className="m-0 text-[10px] leading-relaxed text-red-700">
             {error}
           </p>
+
         </div>
       )}
 
@@ -1063,11 +1622,14 @@ export default function AdminBookingsPage() {
 
         {loading ? (
           <div className="st-card flex min-h-[260px] items-center justify-center gap-2 text-[10px] text-[var(--st-gray)]">
+
             <RefreshCw
               size={16}
               className="animate-spin"
             />
+
             Loading bookings...
+
           </div>
         ) : filteredRecords.length ===
           0 ? (
@@ -1100,16 +1662,22 @@ export default function AdminBookingsPage() {
                 const slot =
                   record.slot;
 
+                const isUpdating =
+                  updatingId ===
+                  booking.id;
+
+                const canAct =
+                  booking.status ===
+                  "confirmed";
+
                 return (
-                  <button
+                  <div
                     key={booking.id}
-                    type="button"
-                    onClick={() =>
-                      setSelectedBooking(
-                        record
-                      )
-                    }
-                    className="st-card group w-full overflow-hidden p-0 text-left transition-all hover:border-[var(--st-red)]"
+                    className={`st-card overflow-hidden p-0 transition-all ${
+                      canAct
+                        ? "hover:border-[var(--st-red)]"
+                        : ""
+                    }`}
                   >
 
                     <div className="p-5">
@@ -1233,16 +1801,152 @@ export default function AdminBookingsPage() {
 
                         </div>
 
-                        <ArrowRight
-                          size={16}
-                          className="mt-2 shrink-0 text-[var(--st-gray)] transition-transform group-hover:translate-x-1"
-                        />
+                      </div>
+
+                      {/* =================================================
+                          FOUR TRIAL WORKFLOW BUTTONS
+                      ================================================= */}
+
+                      <div className="mt-5 border-t border-[var(--st-border)] pt-4">
+
+                        <p className="mb-3 text-[8px] font-bold uppercase tracking-[0.1em] text-[var(--st-gray)]">
+                          TRIAL OUTCOME
+                        </p>
+
+                        <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
+
+                          {/* BOOKED */}
+
+                          <button
+                            type="button"
+                            disabled={
+                              !canAct ||
+                              isUpdating
+                            }
+                            onClick={() =>
+                              markBooked(
+                                record
+                              )
+                            }
+                            className="flex min-h-[46px] items-center justify-center gap-2 rounded-xl bg-[var(--st-red)] px-3 py-3 text-[9px] font-bold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+                          >
+                            {isUpdating ? (
+                              <RefreshCw
+                                size={14}
+                                className="animate-spin"
+                              />
+                            ) : (
+                              <UserPlus
+                                size={14}
+                              />
+                            )}
+
+                            Booked
+                          </button>
+
+                          {/* CALL */}
+
+                          <button
+                            type="button"
+                            disabled={
+                              !lead?.whatsapp_number
+                            }
+                            onClick={() =>
+                              callLearner(
+                                record
+                              )
+                            }
+                            className="flex min-h-[46px] items-center justify-center gap-2 rounded-xl border border-[var(--st-border)] bg-white px-3 py-3 text-[9px] font-bold text-[var(--st-charcoal-dark)] transition hover:border-[var(--st-red)] disabled:cursor-not-allowed disabled:opacity-40"
+                          >
+                            <Phone
+                              size={14}
+                            />
+
+                            Call
+                          </button>
+
+                          {/* ATTENDED */}
+
+                          <button
+                            type="button"
+                            disabled={
+                              !canAct ||
+                              isUpdating
+                            }
+                            onClick={() =>
+                              markAttended(
+                                record
+                              )
+                            }
+                            className="flex min-h-[46px] items-center justify-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-3 py-3 text-[9px] font-bold text-blue-700 transition hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-40"
+                          >
+                            {isUpdating ? (
+                              <RefreshCw
+                                size={14}
+                                className="animate-spin"
+                              />
+                            ) : (
+                              <UserCheck
+                                size={14}
+                              />
+                            )}
+
+                            Attended
+                          </button>
+
+                          {/* MISSED */}
+
+                          <button
+                            type="button"
+                            disabled={
+                              !canAct ||
+                              isUpdating
+                            }
+                            onClick={() =>
+                              markMissedTrial(
+                                record
+                              )
+                            }
+                            className="flex min-h-[46px] items-center justify-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-3 text-[9px] font-bold text-amber-700 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-40"
+                          >
+                            {isUpdating ? (
+                              <RefreshCw
+                                size={14}
+                                className="animate-spin"
+                              />
+                            ) : (
+                              <UserX
+                                size={14}
+                              />
+                            )}
+
+                            Missed trial
+                          </button>
+
+                        </div>
 
                       </div>
 
+                      {/* VIEW */}
+
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setSelectedBooking(
+                            record
+                          )
+                        }
+                        className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-[var(--st-bg-soft)] px-3 py-3 text-[9px] font-bold text-[var(--st-gray)] transition hover:text-[var(--st-charcoal-dark)]"
+                      >
+                        View booking details
+                        <ArrowRight
+                          size={13}
+                        />
+                      </button>
+
                     </div>
 
-                  </button>
+                  </div>
                 );
               }
             )}
@@ -1261,7 +1965,7 @@ export default function AdminBookingsPage() {
 
           <div className="max-h-[92vh] w-full max-w-[560px] overflow-y-auto rounded-t-3xl bg-white shadow-2xl sm:rounded-3xl">
 
-            {/* DRAWER HEADER */}
+            {/* HEADER */}
 
             <div className="sticky top-0 z-10 border-b border-[var(--st-border)] bg-white px-5 py-4">
 
@@ -1272,7 +1976,8 @@ export default function AdminBookingsPage() {
                   <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[var(--st-bg-soft)] text-[10px] font-bold text-[var(--st-red)]">
                     {selectedBooking.lead
                       ? initials(
-                          selectedBooking.lead
+                          selectedBooking
+                            .lead
                             .full_name
                         )
                       : "BK"}
@@ -1296,14 +2001,11 @@ export default function AdminBookingsPage() {
 
                 <button
                   type="button"
-                  onClick={() => {
+                  onClick={() =>
                     setSelectedBooking(
                       null
-                    );
-                    setShowStatusMenu(
-                      false
-                    );
-                  }}
+                    )
+                  }
                   className="st-icon-button"
                   aria-label="Close"
                 >
@@ -1361,110 +2063,33 @@ export default function AdminBookingsPage() {
 
               </div>
 
-              {/* STATUS */}
+              {/* CURRENT OUTCOME */}
 
               <div className="mt-5">
 
-                <p className="mb-2 text-[9px] font-bold uppercase tracking-[0.1em] text-[var(--st-gray)]">
-                  BOOKING STATUS
+                <p className="mb-3 text-[9px] font-bold uppercase tracking-[0.1em] text-[var(--st-gray)]">
+                  TRIAL OUTCOME
                 </p>
 
-                <div className="relative">
-
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setShowStatusMenu(
-                        (value) =>
-                          !value
-                      )
-                    }
-                    disabled={
-                      updatingId ===
-                      selectedBooking
-                        .booking.id
-                    }
-                    className={`flex w-full items-center justify-between rounded-xl border border-[var(--st-border)] px-4 py-3 text-left ${
-                      updatingId ===
-                      selectedBooking
-                        .booking.id
-                        ? "opacity-60"
-                        : ""
-                    }`}
-                  >
-
-                    <span
-                      className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-[9px] font-bold uppercase ${statusClasses(
-                        selectedBooking
-                          .booking
-                          .status
-                      )}`}
-                    >
-                      {statusIcon(
-                        selectedBooking
-                          .booking
-                          .status
-                      )}
-
-                      {prettyStatus(
-                        selectedBooking
-                          .booking
-                          .status
-                      )}
-                    </span>
-
-                    <ChevronDown
-                      size={15}
-                      className="text-[var(--st-gray)]"
-                    />
-
-                  </button>
-
-                  {showStatusMenu && (
-                    <div className="absolute left-0 right-0 top-full z-20 mt-2 overflow-hidden rounded-xl border border-[var(--st-border)] bg-white p-1 shadow-xl">
-
-                      {(
-                        [
-                          "confirmed",
-                          "completed",
-                          "cancelled",
-                          "no_show",
-                        ] as BookingStatus[]
-                      ).map(
-                        (status) => (
-                          <button
-                            key={status}
-                            type="button"
-                            onClick={() =>
-                              updateStatus(
-                                selectedBooking,
-                                status
-                              )
-                            }
-                            className={`flex w-full items-center gap-3 rounded-lg px-3 py-3 text-left text-[10px] font-bold hover:bg-[var(--st-bg-soft)] ${
-                              selectedBooking
-                                .booking
-                                .status ===
-                              status
-                                ? "bg-[var(--st-bg-soft)]"
-                                : ""
-                            }`}
-                          >
-                            {statusIcon(
-                              status
-                            )}
-
-                            {prettyStatus(
-                              status
-                            )}
-                          </button>
-                        )
-                      )}
-
-                    </div>
+                <span
+                  className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-[9px] font-bold uppercase ${statusClasses(
+                    selectedBooking
+                      .booking
+                      .status
+                  )}`}
+                >
+                  {statusIcon(
+                    selectedBooking
+                      .booking
+                      .status
                   )}
 
-                </div>
+                  {prettyStatus(
+                    selectedBooking
+                      .booking
+                      .status
+                  )}
+                </span>
 
               </div>
 
@@ -1536,7 +2161,7 @@ export default function AdminBookingsPage() {
                     <div className="min-w-0">
 
                       <p className="m-0 text-[9px] text-[var(--st-gray)]">
-                        WhatsApp
+                        WhatsApp / Phone
                       </p>
 
                       <p className="mt-1 mb-0 text-[11px] font-semibold text-[var(--st-charcoal-dark)]">
@@ -1554,7 +2179,7 @@ export default function AdminBookingsPage() {
 
               </div>
 
-              {/* EMAIL STATUS */}
+              {/* REMINDERS */}
 
               <div className="mt-6">
 
@@ -1640,7 +2265,122 @@ export default function AdminBookingsPage() {
 
               </div>
 
-              {/* ACTIONS */}
+              {/* =================================================
+                  FOUR ACTIONS IN DRAWER
+              ================================================= */}
+
+              {selectedBooking.booking
+                .status ===
+                "confirmed" && (
+                <div className="mt-6">
+
+                  <p className="mb-3 text-[9px] font-bold uppercase tracking-[0.1em] text-[var(--st-gray)]">
+                    TRIAL OUTCOME
+                  </p>
+
+                  <div className="grid grid-cols-2 gap-2">
+
+                    <button
+                      type="button"
+                      disabled={
+                        updatingId ===
+                        selectedBooking
+                          .booking
+                          .id
+                      }
+                      onClick={() =>
+                        markBooked(
+                          selectedBooking
+                        )
+                      }
+                      className="st-button st-button-primary w-full disabled:opacity-50"
+                    >
+                      {updatingId ===
+                      selectedBooking
+                        .booking.id ? (
+                        <RefreshCw
+                          size={14}
+                          className="animate-spin"
+                        />
+                      ) : (
+                        <UserPlus
+                          size={14}
+                        />
+                      )}
+
+                      Booked
+                    </button>
+
+                    <button
+                      type="button"
+                      disabled={
+                        !selectedBooking
+                          .lead
+                          ?.whatsapp_number
+                      }
+                      onClick={() =>
+                        callLearner(
+                          selectedBooking
+                        )
+                      }
+                      className="st-button st-button-secondary w-full disabled:opacity-40"
+                    >
+                      <Phone size={14} />
+                      Call
+                    </button>
+
+                    <button
+                      type="button"
+                      disabled={
+                        updatingId ===
+                        selectedBooking
+                          .booking
+                          .id
+                      }
+                      onClick={() =>
+                        markAttended(
+                          selectedBooking
+                        )
+                      }
+                      className="w-full rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-[9px] font-bold text-blue-700 disabled:opacity-50"
+                    >
+                      <span className="inline-flex items-center gap-2">
+                        <UserCheck
+                          size={14}
+                        />
+                        Attended
+                      </span>
+                    </button>
+
+                    <button
+                      type="button"
+                      disabled={
+                        updatingId ===
+                        selectedBooking
+                          .booking
+                          .id
+                      }
+                      onClick={() =>
+                        markMissedTrial(
+                          selectedBooking
+                        )
+                      }
+                      className="w-full rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-[9px] font-bold text-amber-700 disabled:opacity-50"
+                    >
+                      <span className="inline-flex items-center gap-2">
+                        <UserX
+                          size={14}
+                        />
+                        Missed trial
+                      </span>
+                    </button>
+
+                  </div>
+
+                </div>
+              )}
+
+              {/* COMMUNICATION */}
 
               <div className="mt-6 grid grid-cols-2 gap-2">
 
@@ -1659,27 +2399,9 @@ export default function AdminBookingsPage() {
                   className="st-button st-button-secondary w-full disabled:opacity-40"
                 >
                   <MessageCircle
-                    size={15}
+                    size={14}
                   />
                   WhatsApp
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() =>
-                    callLearner(
-                      selectedBooking
-                    )
-                  }
-                  disabled={
-                    !selectedBooking
-                      .lead
-                      ?.whatsapp_number
-                  }
-                  className="st-button st-button-secondary w-full disabled:opacity-40"
-                >
-                  <Phone size={15} />
-                  Call
                 </button>
 
                 <button
@@ -1696,27 +2418,26 @@ export default function AdminBookingsPage() {
                   className="st-button st-button-secondary w-full disabled:opacity-40"
                 >
                   <CalendarDays
-                    size={15}
+                    size={14}
                   />
-                  Open calendar
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() =>
-                    setSelectedBooking(
-                      null
-                    )
-                  }
-                  className="st-button st-button-primary w-full"
-                >
-                  Done
-                  <ArrowRight
-                    size={15}
-                  />
+                  Calendar
                 </button>
 
               </div>
+
+              {/* CLOSE */}
+
+              <button
+                type="button"
+                onClick={() =>
+                  setSelectedBooking(
+                    null
+                  )
+                }
+                className="mt-2 w-full rounded-xl px-4 py-3 text-[9px] font-bold text-gray-500 transition hover:bg-gray-100"
+              >
+                Close
+              </button>
 
               {/* BOOKING ID */}
 
