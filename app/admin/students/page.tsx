@@ -12,7 +12,6 @@ import {
   Eye,
   Mail,
   MessageCircle,
-  Phone,
   Plus,
   RefreshCw,
   Search,
@@ -20,11 +19,19 @@ import {
   Wallet,
   X,
   AlertCircle,
+  Phone,
 } from "lucide-react";
 
 import { supabase } from "@/lib/supabase";
-import { generatePaymentReceipt } from "@/lib/generate-payment-receipt";
-import type { PaymentReceiptData } from "@/lib/generate-payment-receipt";
+
+import {
+  generatePaymentReceipt,
+} from "@/lib/generate-payment-receipt";
+
+import type {
+  PaymentReceiptData,
+  PaymentReceiptItem,
+} from "@/lib/generate-payment-receipt";
 
 type StudentStatus =
   | "active"
@@ -122,28 +129,18 @@ type Filter =
 
 /*
  * =========================================================
- * RECEIPT HISTORY TYPE
+ * RECEIPT DATA
  * =========================================================
  */
 
-type ReceiptHistoryItem = {
-  id: string;
-  amount: number;
-  paymentDate: string;
-  paymentMethod: PaymentMethod;
-  reference?: string | null;
-  isCurrent: boolean;
-};
-
 type ReceiptDataWithHistory =
   PaymentReceiptData & {
-    previousBalance: number;
-    balanceAfterPayment: number;
     balance: number;
-    payments: ReceiptHistoryItem[];
+    payments: PaymentReceiptItem[];
   };
 
-const NAIROBI_TIME_ZONE = "Africa/Nairobi";
+const NAIROBI_TIME_ZONE =
+  "Africa/Nairobi";
 
 /*
  * =========================================================
@@ -151,48 +148,75 @@ const NAIROBI_TIME_ZONE = "Africa/Nairobi";
  * =========================================================
  */
 
-function formatCurrency(amount: number) {
-  return new Intl.NumberFormat("en-KE", {
-    style: "currency",
-    currency: "KES",
-    maximumFractionDigits: 0,
-  }).format(Number(amount) || 0);
-}
-
-function formatDate(dateString: string) {
-  if (!dateString) return "—";
-
-  return new Intl.DateTimeFormat("en-KE", {
-    timeZone: NAIROBI_TIME_ZONE,
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  }).format(
-    new Date(`${dateString}T00:00:00+03:00`)
+function formatCurrency(
+  amount: number
+) {
+  return new Intl.NumberFormat(
+    "en-KE",
+    {
+      style: "currency",
+      currency: "KES",
+      maximumFractionDigits: 0,
+    }
+  ).format(
+    Number(amount) || 0
   );
 }
 
-function formatLongDate(dateString: string) {
+function formatDate(
+  dateString: string
+) {
   if (!dateString) return "—";
 
-  return new Intl.DateTimeFormat("en-KE", {
-    timeZone: NAIROBI_TIME_ZONE,
-    weekday: "long",
-    day: "numeric",
-    month: "long",
-    year: "numeric",
-  }).format(
-    new Date(`${dateString}T00:00:00+03:00`)
+  return new Intl.DateTimeFormat(
+    "en-KE",
+    {
+      timeZone:
+        NAIROBI_TIME_ZONE,
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+    }
+  ).format(
+    new Date(
+      `${dateString}T00:00:00+03:00`
+    )
+  );
+}
+
+function formatLongDate(
+  dateString: string
+) {
+  if (!dateString) return "—";
+
+  return new Intl.DateTimeFormat(
+    "en-KE",
+    {
+      timeZone:
+        NAIROBI_TIME_ZONE,
+      weekday: "long",
+      day: "numeric",
+      month: "long",
+      year: "numeric",
+    }
+  ).format(
+    new Date(
+      `${dateString}T00:00:00+03:00`
+    )
   );
 }
 
 function getTodayKey() {
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: NAIROBI_TIME_ZONE,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(new Date());
+  return new Intl.DateTimeFormat(
+    "en-CA",
+    {
+      timeZone:
+        NAIROBI_TIME_ZONE,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }
+  ).format(new Date());
 }
 
 function calculateDaysRemaining(
@@ -207,21 +231,28 @@ function calculateDaysRemaining(
   );
 
   return Math.ceil(
-    (end.getTime() - today.getTime()) /
+    (end.getTime() -
+      today.getTime()) /
       (1000 * 60 * 60 * 24)
   );
 }
 
-function addThreeMonths(dateString: string) {
+function addThreeMonths(
+  dateString: string
+) {
   if (!dateString) return "";
 
   const date = new Date(
     `${dateString}T00:00:00+03:00`
   );
 
-  date.setMonth(date.getMonth() + 3);
+  date.setMonth(
+    date.getMonth() + 3
+  );
 
-  const year = date.getFullYear();
+  const year =
+    date.getFullYear();
+
   const month = String(
     date.getMonth() + 1
   ).padStart(2, "0");
@@ -233,11 +264,15 @@ function addThreeMonths(dateString: string) {
   return `${year}-${month}-${day}`;
 }
 
-function initials(name: string) {
+function initials(
+  name: string
+) {
   return name
     .trim()
     .split(/\s+/)
-    .map((word) => word[0])
+    .map(
+      (word) => word[0]
+    )
     .join("")
     .slice(0, 2)
     .toUpperCase();
@@ -264,12 +299,16 @@ function studentStatusLabel(
   switch (status) {
     case "active":
       return "Active";
+
     case "completed":
       return "Completed";
+
     case "paused":
       return "Paused";
+
     case "inactive":
       return "Inactive";
+
     default:
       return status;
   }
@@ -281,12 +320,16 @@ function studentStatusClasses(
   switch (status) {
     case "active":
       return "bg-green-50 text-green-700";
+
     case "completed":
       return "bg-blue-50 text-blue-700";
+
     case "paused":
       return "bg-amber-50 text-amber-700";
+
     case "inactive":
       return "bg-gray-100 text-gray-600";
+
     default:
       return "bg-gray-50 text-gray-700";
   }
@@ -302,16 +345,22 @@ function paymentStatusLabel(
   switch (schedule.status) {
     case "paid":
       return "Paid";
+
     case "due":
       return "Due today";
+
     case "overdue":
       return "Overdue";
+
     case "partially_paid":
       return "Partially paid";
+
     case "scheduled":
       return "Upcoming";
+
     case "cancelled":
       return "Cancelled";
+
     default:
       return schedule.status;
   }
@@ -327,16 +376,22 @@ function paymentStatusClasses(
   switch (schedule.status) {
     case "paid":
       return "bg-green-50 text-green-700";
+
     case "due":
       return "bg-amber-50 text-amber-700";
+
     case "overdue":
       return "bg-red-50 text-red-700";
+
     case "partially_paid":
       return "bg-orange-50 text-orange-700";
+
     case "scheduled":
       return "bg-blue-50 text-blue-700";
+
     case "cancelled":
       return "bg-gray-100 text-gray-600";
+
     default:
       return "bg-gray-50 text-gray-600";
   }
@@ -351,17 +406,25 @@ function paymentStatusClasses(
 function getNextPayment(
   schedules: PaymentSchedule[]
 ) {
-  const activeSchedules = schedules
-    .filter(
-      (schedule) =>
-        schedule.status !== "paid" &&
-        schedule.status !== "cancelled"
-    )
-    .sort((a, b) =>
-      a.due_date.localeCompare(b.due_date)
-    );
+  const activeSchedules =
+    schedules
+      .filter(
+        (schedule) =>
+          schedule.status !==
+            "paid" &&
+          schedule.status !==
+            "cancelled"
+      )
+      .sort((a, b) =>
+        a.due_date.localeCompare(
+          b.due_date
+        )
+      );
 
-  return activeSchedules[0] ?? null;
+  return (
+    activeSchedules[0] ??
+    null
+  );
 }
 
 function getTotalPaid(
@@ -369,7 +432,8 @@ function getTotalPaid(
 ) {
   return payments.reduce(
     (total, payment) =>
-      total + Number(payment.amount),
+      total +
+      Number(payment.amount),
     0
   );
 }
@@ -383,8 +447,12 @@ function getBalance(
   }
 
   return Math.max(
-    Number(enrollment.total_fee) -
-      getTotalPaid(payments),
+    Number(
+      enrollment.total_fee
+    ) -
+      getTotalPaid(
+        payments
+      ),
     0
   );
 }
@@ -402,20 +470,30 @@ function getPaymentFollowUpLabel(
     `${schedule.due_date}T00:00:00+03:00`
   );
 
-  const difference = Math.round(
-    (due.getTime() - today.getTime()) /
-      (1000 * 60 * 60 * 24)
-  );
+  const difference =
+    Math.round(
+      (due.getTime() -
+        today.getTime()) /
+        (1000 * 60 * 60 * 24)
+    );
 
-  if (schedule.status === "paid") {
+  if (
+    schedule.status ===
+    "paid"
+  ) {
     return "Paid";
   }
 
   if (difference < 0) {
-    const days = Math.abs(difference);
+    const days =
+      Math.abs(
+        difference
+      );
 
     return `Overdue by ${days} ${
-      days === 1 ? "day" : "days"
+      days === 1
+        ? "day"
+        : "days"
     }`;
   }
 
@@ -446,8 +524,8 @@ function createReceiptNumber(
 }
 
 /*
- * Build receipt using payment history up to
- * the selected payment.
+ * Build the exact shape expected by the
+ * current generate-payment-receipt.ts.
  */
 
 function buildReceiptData(
@@ -458,32 +536,36 @@ function buildReceiptData(
     return null;
   }
 
-  const paymentsChronological = [
-    ...record.payments,
-  ].sort((a, b) => {
-    const dateDifference =
-      a.payment_date.localeCompare(
-        b.payment_date
-      );
+  const paymentsChronological =
+    [
+      ...record.payments,
+    ].sort((a, b) => {
+      const dateDifference =
+        a.payment_date.localeCompare(
+          b.payment_date
+        );
 
-    if (dateDifference !== 0) {
-      return dateDifference;
-    }
+      if (
+        dateDifference !== 0
+      ) {
+        return dateDifference;
+      }
 
-    if (
-      a.created_at &&
-      b.created_at
-    ) {
-      return a.created_at.localeCompare(
+      if (
+        a.created_at &&
         b.created_at
-      );
-    }
+      ) {
+        return a.created_at.localeCompare(
+          b.created_at
+        );
+      }
 
-    return 0;
-  });
+      return 0;
+    });
 
   /*
-   * Make sure current payment is included.
+   * Make sure current payment is
+   * included.
    */
 
   if (
@@ -503,7 +585,9 @@ function buildReceiptData(
             b.payment_date
           );
 
-        if (dateDifference !== 0) {
+        if (
+          dateDifference !== 0
+        ) {
           return dateDifference;
         }
 
@@ -527,8 +611,16 @@ function buildReceiptData(
         item.id === payment.id
     );
 
+  if (
+    currentIndex < 0
+  ) {
+    return null;
+  }
+
   /*
-   * Only show payments up to this receipt.
+   * Only include payments up to
+   * and including the payment
+   * represented by this receipt.
    */
 
   const paymentsUpToCurrent =
@@ -539,17 +631,22 @@ function buildReceiptData(
 
   const previousPaymentsTotal =
     paymentsUpToCurrent
-      .slice(0, currentIndex)
+      .slice(
+        0,
+        currentIndex
+      )
       .reduce(
         (sum, item) =>
-          sum + Number(item.amount),
+          sum +
+          Number(item.amount),
         0
       );
 
   const previousBalance =
     Math.max(
       Number(
-        record.enrollment.total_fee
+        record.enrollment
+          .total_fee
       ) -
         previousPaymentsTotal,
       0
@@ -562,19 +659,31 @@ function buildReceiptData(
       0
     );
 
-  const paymentHistory: ReceiptHistoryItem[] =
+  /*
+   * IMPORTANT:
+   *
+   * This now matches PaymentReceiptItem
+   * from the current receipt generator.
+   */
+
+  const paymentHistory: PaymentReceiptItem[] =
     paymentsUpToCurrent.map(
       (item, index) => ({
-        id: item.id,
-        amount: Number(item.amount),
-        paymentDate:
+        label: `Payment ${
+          index + 1
+        }`,
+
+        amount:
+          Number(item.amount),
+
+        date:
           item.payment_date,
-        paymentMethod:
+
+        method:
           item.payment_method,
+
         reference:
           item.reference,
-        isCurrent:
-          index === currentIndex,
       })
     );
 
@@ -585,7 +694,8 @@ function buildReceiptData(
       ),
 
     studentName:
-      record.student.full_name,
+      record.student
+        .full_name,
 
     studentEmail:
       record.student.email,
@@ -598,15 +708,19 @@ function buildReceiptData(
       record.enrollment
         .programme_name,
 
-    instrument: instrumentName(
-      record.enrollment
-        .instrument
-    ),
+    instrument:
+      instrumentName(
+        record.enrollment
+          .instrument
+      ),
 
     programmeAmount:
       Number(
-        record.enrollment.total_fee
+        record.enrollment
+          .total_fee
       ),
+
+    paymentHistory,
 
     previousBalance,
 
@@ -621,11 +735,11 @@ function buildReceiptData(
     paymentMethod:
       payment.payment_method,
 
-    reference:
-      payment.reference,
-
     paymentDate:
       payment.payment_date,
+
+    reference:
+      payment.reference,
 
     payments:
       paymentHistory,
@@ -640,7 +754,9 @@ function buildReceiptData(
 
 export default function AdminStudentsPage() {
   const [records, setRecords] =
-    useState<StudentRecord[]>([]);
+    useState<StudentRecord[]>(
+      []
+    );
 
   const [loading, setLoading] =
     useState(true);
@@ -657,33 +773,66 @@ export default function AdminStudentsPage() {
   const [filter, setFilter] =
     useState<Filter>("all");
 
-  const [selectedStudent, setSelectedStudent] =
-    useState<StudentRecord | null>(null);
+  const [
+    selectedStudent,
+    setSelectedStudent,
+  ] =
+    useState<StudentRecord | null>(
+      null
+    );
 
-  const [showAddStudent, setShowAddStudent] =
+  const [
+    showAddStudent,
+    setShowAddStudent,
+  ] =
     useState(false);
 
-  const [showPaymentForm, setShowPaymentForm] =
+  const [
+    showPaymentForm,
+    setShowPaymentForm,
+  ] =
     useState(false);
 
-  const [updatingId, setUpdatingId] =
-    useState<string | null>(null);
+  const [
+    updatingId,
+    setUpdatingId,
+  ] =
+    useState<string | null>(
+      null
+    );
 
-  const [paymentAmount, setPaymentAmount] =
+  const [
+    paymentAmount,
+    setPaymentAmount,
+  ] =
     useState("");
 
-  const [paymentMethod, setPaymentMethod] =
-    useState<PaymentMethod>("mpesa");
+  const [
+    paymentMethod,
+    setPaymentMethod,
+  ] =
+    useState<PaymentMethod>(
+      "mpesa"
+    );
 
-  const [paymentReference, setPaymentReference] =
+  const [
+    paymentReference,
+    setPaymentReference,
+  ] =
     useState("");
 
-  const [lastReceipt, setLastReceipt] =
+  const [
+    lastReceipt,
+    setLastReceipt,
+  ] =
     useState<ReceiptDataWithHistory | null>(
       null
     );
 
-  const [viewingReceipt, setViewingReceipt] =
+  const [
+    viewingReceipt,
+    setViewingReceipt,
+  ] =
     useState<ReceiptDataWithHistory | null>(
       null
     );
@@ -694,61 +843,107 @@ export default function AdminStudentsPage() {
    * =========================================================
    */
 
-  const [studentName, setStudentName] =
-    useState("");
+  const [
+    studentName,
+    setStudentName,
+  ] = useState("");
 
-  const [studentEmail, setStudentEmail] =
-    useState("");
+  const [
+    studentEmail,
+    setStudentEmail,
+  ] = useState("");
 
-  const [studentWhatsapp, setStudentWhatsapp] =
-    useState("");
+  const [
+    studentWhatsapp,
+    setStudentWhatsapp,
+  ] = useState("");
 
-  const [studentNotes, setStudentNotes] =
-    useState("");
+  const [
+    studentNotes,
+    setStudentNotes,
+  ] = useState("");
 
-  const [instrument, setInstrument] =
-    useState<Instrument>("piano");
-
-  const [programmeName, setProgrammeName] =
-    useState(
-      "3 Month Training Programme"
+  const [
+    instrument,
+    setInstrument,
+  ] =
+    useState<Instrument>(
+      "piano"
     );
 
-  const [startDate, setStartDate] =
-    useState(getTodayKey());
+  const [
+    programmeName,
+    setProgrammeName,
+  ] = useState(
+    "3 Month Training Programme"
+  );
 
-  const [totalFee, setTotalFee] =
-    useState("");
+  const [
+    startDate,
+    setStartDate,
+  ] =
+    useState(
+      getTodayKey()
+    );
 
-  const [initialPayment, setInitialPayment] =
-    useState("");
+  const [
+    totalFee,
+    setTotalFee,
+  ] = useState("");
 
-  const [initialPaymentMethod, setInitialPaymentMethod] =
-    useState<PaymentMethod>("mpesa");
+  const [
+    initialPayment,
+    setInitialPayment,
+  ] = useState("");
 
-  const [initialPaymentReference, setInitialPaymentReference] =
-    useState("");
+  const [
+    initialPaymentMethod,
+    setInitialPaymentMethod,
+  ] =
+    useState<PaymentMethod>(
+      "mpesa"
+    );
 
-  const [nextPaymentAmount, setNextPaymentAmount] =
-    useState("");
+  const [
+    initialPaymentReference,
+    setInitialPaymentReference,
+  ] = useState("");
 
-  const [nextPaymentDueDate, setNextPaymentDueDate] =
-    useState("");
+  const [
+    nextPaymentAmount,
+    setNextPaymentAmount,
+  ] = useState("");
 
-  const [nextPaymentFollowUpDate, setNextPaymentFollowUpDate] =
-    useState("");
+  const [
+    nextPaymentDueDate,
+    setNextPaymentDueDate,
+  ] = useState("");
 
-  const [nextPaymentNotes, setNextPaymentNotes] =
-    useState("");
+  const [
+    nextPaymentFollowUpDate,
+    setNextPaymentFollowUpDate,
+  ] = useState("");
 
-  const [addingStudent, setAddingStudent] =
-    useState(false);
+  const [
+    nextPaymentNotes,
+    setNextPaymentNotes,
+  ] = useState("");
 
-  const [addStudentError, setAddStudentError] =
-    useState("");
+  const [
+    addingStudent,
+    setAddingStudent,
+  ] = useState(false);
+
+  const [
+    addStudentError,
+    setAddStudentError,
+  ] = useState("");
 
   const endDate = useMemo(
-    () => addThreeMonths(startDate),
+    () =>
+      addThreeMonths(
+        startDate
+      ),
     [startDate]
   );
 
@@ -756,10 +951,14 @@ export default function AdminStudentsPage() {
     Number(totalFee) || 0;
 
   const numericInitialPayment =
-    Number(initialPayment) || 0;
+    Number(
+      initialPayment
+    ) || 0;
 
   const numericNextPayment =
-    Number(nextPaymentAmount) || 0;
+    Number(
+      nextPaymentAmount
+    ) || 0;
 
   const remainingAfterInitial =
     Math.max(
@@ -825,12 +1024,17 @@ export default function AdminStudentsPage() {
       "3 Month Training Programme"
     );
 
-    setStartDate(getTodayKey());
+    setStartDate(
+      getTodayKey()
+    );
 
     setTotalFee("");
     setInitialPayment("");
 
-    setInitialPaymentMethod("mpesa");
+    setInitialPaymentMethod(
+      "mpesa"
+    );
+
     setInitialPaymentReference("");
 
     setNextPaymentAmount("");
@@ -845,6 +1049,7 @@ export default function AdminStudentsPage() {
     if (addingStudent) return;
 
     setShowAddStudent(false);
+
     resetAddStudentForm();
   }
 
@@ -868,24 +1073,28 @@ export default function AdminStudentsPage() {
     const {
       data: studentsData,
       error: studentsError,
-    } = await supabase
-      .from("students")
-      .select(
-        `
-          id,
-          lead_id,
-          full_name,
-          email,
-          whatsapp_number,
-          status,
-          notes,
-          created_at,
-          updated_at
-        `
-      )
-      .order("created_at", {
-        ascending: false,
-      });
+    } =
+      await supabase
+        .from("students")
+        .select(
+          `
+            id,
+            lead_id,
+            full_name,
+            email,
+            whatsapp_number,
+            status,
+            notes,
+            created_at,
+            updated_at
+          `
+        )
+        .order(
+          "created_at",
+          {
+            ascending: false,
+          }
+        );
 
     if (studentsError) {
       console.error(
@@ -907,7 +1116,9 @@ export default function AdminStudentsPage() {
       (studentsData ??
         []) as Student[];
 
-    if (students.length === 0) {
+    if (
+      students.length === 0
+    ) {
       setRecords([]);
 
       setLoading(false);
@@ -929,65 +1140,78 @@ export default function AdminStudentsPage() {
     const [
       enrollmentsResult,
       paymentsResult,
-    ] = await Promise.all([
-      supabase
-        .from("student_enrollments")
-        .select(
-          `
-            id,
-            student_id,
-            instrument,
-            programme_name,
-            start_date,
-            end_date,
-            total_fee,
-            status,
-            notes,
-            created_at,
-            updated_at
-          `
-        )
-        .in(
-          "student_id",
-          studentIds
-        )
-        .order("created_at", {
-          ascending: false,
-        }),
+    ] =
+      await Promise.all([
+        supabase
+          .from(
+            "student_enrollments"
+          )
+          .select(
+            `
+              id,
+              student_id,
+              instrument,
+              programme_name,
+              start_date,
+              end_date,
+              total_fee,
+              status,
+              notes,
+              created_at,
+              updated_at
+            `
+          )
+          .in(
+            "student_id",
+            studentIds
+          )
+          .order(
+            "created_at",
+            {
+              ascending: false,
+            }
+          ),
 
-      supabase
-        .from("payments")
-        .select(
-          `
-            id,
-            student_id,
-            enrollment_id,
-            payment_schedule_id,
-            amount,
-            payment_date,
-            payment_method,
-            reference,
-            notes,
-            created_at
-          `
-        )
-        .in(
-          "student_id",
-          studentIds
-        )
-        .order("payment_date", {
-          ascending: false,
-        }),
-    ]);
+        supabase
+          .from("payments")
+          .select(
+            `
+              id,
+              student_id,
+              enrollment_id,
+              payment_schedule_id,
+              amount,
+              payment_date,
+              payment_method,
+              reference,
+              notes,
+              created_at
+            `
+          )
+          .in(
+            "student_id",
+            studentIds
+          )
+          .order(
+            "payment_date",
+            {
+              ascending: false,
+            }
+          ),
+      ]);
 
-    if (enrollmentsResult.error) {
+    if (
+      enrollmentsResult.error
+    ) {
       console.error(
         "Enrollments load error:",
         enrollmentsResult.error
       );
     }
 
-    if (paymentsResult.error) {
+    if (
+      paymentsResult.error
+    ) {
       console.error(
         "Payments load error:",
         paymentsResult.error
@@ -1008,33 +1232,43 @@ export default function AdminStudentsPage() {
           enrollment.id
       );
 
-    let schedules: PaymentSchedule[] =
+    let schedules:
+      PaymentSchedule[] =
       [];
 
-    if (enrollmentIds.length > 0) {
+    if (
+      enrollmentIds.length >
+      0
+    ) {
       const {
         data: scheduleData,
         error: scheduleError,
-      } = await supabase
-        .from("payment_schedule")
-        .select(
-          `
-            id,
-            enrollment_id,
-            amount_due,
-            due_date,
-            follow_up_date,
-            status,
-            notes
-          `
-        )
-        .in(
-          "enrollment_id",
-          enrollmentIds
-        )
-        .order("due_date", {
-          ascending: true,
-        });
+      } =
+        await supabase
+          .from(
+            "payment_schedule"
+          )
+          .select(
+            `
+              id,
+              enrollment_id,
+              amount_due,
+              due_date,
+              follow_up_date,
+              status,
+              notes
+            `
+          )
+          .in(
+            "enrollment_id",
+            enrollmentIds
+          )
+          .order(
+            "due_date",
+            {
+              ascending: true,
+            }
+          );
 
       if (scheduleError) {
         console.error(
@@ -1049,7 +1283,10 @@ export default function AdminStudentsPage() {
     }
 
     const enrollmentMap =
-      new Map<string, Enrollment>();
+      new Map<
+        string,
+        Enrollment
+      >();
 
     enrollments.forEach(
       (enrollment) => {
@@ -1079,7 +1316,9 @@ export default function AdminStudentsPage() {
             schedule.enrollment_id
           ) ?? [];
 
-        current.push(schedule);
+        current.push(
+          schedule
+        );
 
         schedulesMap.set(
           schedule.enrollment_id,
@@ -1089,7 +1328,10 @@ export default function AdminStudentsPage() {
     );
 
     const paymentsMap =
-      new Map<string, Payment[]>();
+      new Map<
+        string,
+        Payment[]
+      >();
 
     payments.forEach(
       (payment) => {
@@ -1098,7 +1340,9 @@ export default function AdminStudentsPage() {
             payment.student_id
           ) ?? [];
 
-        current.push(payment);
+        current.push(
+          payment
+        );
 
         paymentsMap.set(
           payment.student_id,
@@ -1108,28 +1352,33 @@ export default function AdminStudentsPage() {
     );
 
     const loadedRecords =
-      students.map((student) => {
-        const enrollment =
-          enrollmentMap.get(
-            student.id
-          ) ?? null;
-
-        return {
-          student,
-          enrollment,
-          schedules: enrollment
-            ? schedulesMap.get(
-                enrollment.id
-              ) ?? []
-            : [],
-          payments:
-            paymentsMap.get(
+      students.map(
+        (student) => {
+          const enrollment =
+            enrollmentMap.get(
               student.id
-            ) ?? [],
-        };
-      });
+            ) ?? null;
 
-    setRecords(loadedRecords);
+          return {
+            student,
+            enrollment,
+            schedules:
+              enrollment
+                ? schedulesMap.get(
+                    enrollment.id
+                  ) ?? []
+                : [],
+            payments:
+              paymentsMap.get(
+                student.id
+              ) ?? [],
+          };
+        }
+      );
+
+    setRecords(
+      loadedRecords
+    );
 
     setLoading(false);
     setRefreshing(false);
@@ -1151,23 +1400,27 @@ export default function AdminStudentsPage() {
     const {
       data: studentData,
       error: studentError,
-    } = await supabase
-      .from("students")
-      .select(
-        `
-          id,
-          lead_id,
-          full_name,
-          email,
-          whatsapp_number,
-          status,
-          notes,
-          created_at,
-          updated_at
-        `
-      )
-      .eq("id", studentId)
-      .single();
+    } =
+      await supabase
+        .from("students")
+        .select(
+          `
+            id,
+            lead_id,
+            full_name,
+            email,
+            whatsapp_number,
+            status,
+            notes,
+            created_at,
+            updated_at
+          `
+        )
+        .eq(
+          "id",
+          studentId
+        )
+        .single();
 
     if (
       studentError ||
@@ -1178,30 +1431,36 @@ export default function AdminStudentsPage() {
 
     const {
       data: enrollmentData,
-    } = await supabase
-      .from("student_enrollments")
-      .select(
-        `
-          id,
-          student_id,
-          instrument,
-          programme_name,
-          start_date,
-          end_date,
-          total_fee,
-          status,
-          notes,
-          created_at,
-          updated_at
-        `
-      )
-      .eq(
-        "student_id",
-        studentId
-      )
-      .order("created_at", {
-        ascending: false,
-      });
+    } =
+      await supabase
+        .from(
+          "student_enrollments"
+        )
+        .select(
+          `
+            id,
+            student_id,
+            instrument,
+            programme_name,
+            start_date,
+            end_date,
+            total_fee,
+            status,
+            notes,
+            created_at,
+            updated_at
+          `
+        )
+        .eq(
+          "student_id",
+          studentId
+        )
+        .order(
+          "created_at",
+          {
+            ascending: false,
+          }
+        );
 
     const enrollment =
       (
@@ -1209,32 +1468,39 @@ export default function AdminStudentsPage() {
           []) as Enrollment[]
       )[0] ?? null;
 
-    let schedules: PaymentSchedule[] =
+    let schedules:
+      PaymentSchedule[] =
       [];
 
     if (enrollment) {
       const {
         data: scheduleData,
-      } = await supabase
-        .from("payment_schedule")
-        .select(
-          `
-            id,
-            enrollment_id,
-            amount_due,
-            due_date,
-            follow_up_date,
-            status,
-            notes
-          `
-        )
-        .eq(
-          "enrollment_id",
-          enrollment.id
-        )
-        .order("due_date", {
-          ascending: true,
-        });
+      } =
+        await supabase
+          .from(
+            "payment_schedule"
+          )
+          .select(
+            `
+              id,
+              enrollment_id,
+              amount_due,
+              due_date,
+              follow_up_date,
+              status,
+              notes
+            `
+          )
+          .eq(
+            "enrollment_id",
+            enrollment.id
+          )
+          .order(
+            "due_date",
+            {
+              ascending: true,
+            }
+          );
 
       schedules =
         (scheduleData ??
@@ -1243,35 +1509,42 @@ export default function AdminStudentsPage() {
 
     const {
       data: paymentData,
-    } = await supabase
-      .from("payments")
-      .select(
-        `
-          id,
-          student_id,
-          enrollment_id,
-          payment_schedule_id,
-          amount,
-          payment_date,
-          payment_method,
-          reference,
-          notes,
-          created_at
-        `
-      )
-      .eq(
-        "student_id",
-        studentId
-      )
-      .order("payment_date", {
-        ascending: false,
-      });
+    } =
+      await supabase
+        .from("payments")
+        .select(
+          `
+            id,
+            student_id,
+            enrollment_id,
+            payment_schedule_id,
+            amount,
+            payment_date,
+            payment_method,
+            reference,
+            notes,
+            created_at
+          `
+        )
+        .eq(
+          "student_id",
+          studentId
+        )
+        .order(
+          "payment_date",
+          {
+            ascending: false,
+          }
+        );
 
     return {
       student:
         studentData as Student,
+
       enrollment,
+
       schedules,
+
       payments:
         (paymentData ??
           []) as Payment[],
@@ -1303,10 +1576,14 @@ export default function AdminStudentsPage() {
       Number(totalFee);
 
     const initial =
-      Number(initialPayment) || 0;
+      Number(
+        initialPayment
+      ) || 0;
 
     const nextAmount =
-      Number(nextPaymentAmount) || 0;
+      Number(
+        nextPaymentAmount
+      ) || 0;
 
     if (!name) {
       setAddStudentError(
@@ -1343,7 +1620,10 @@ export default function AdminStudentsPage() {
       return;
     }
 
-    if (!total || total <= 0) {
+    if (
+      !total ||
+      total <= 0
+    ) {
       setAddStudentError(
         "Please enter a valid programme fee."
       );
@@ -1382,7 +1662,8 @@ export default function AdminStudentsPage() {
     }
 
     if (
-      remainingAfterInitial > 0 &&
+      remainingAfterInitial >
+        0 &&
       nextAmount <= 0
     ) {
       setAddStudentError(
@@ -1392,7 +1673,8 @@ export default function AdminStudentsPage() {
     }
 
     if (
-      remainingAfterInitial > 0 &&
+      remainingAfterInitial >
+        0 &&
       !nextPaymentDueDate
     ) {
       setAddStudentError(
@@ -1431,30 +1713,32 @@ export default function AdminStudentsPage() {
       const {
         data: createdStudent,
         error: studentError,
-      } = await supabase
-        .from("students")
-        .insert({
-          full_name: name,
-          email,
-          whatsapp_number:
-            whatsapp,
-          status: "active",
-          notes: notes || null,
-        })
-        .select(
-          `
-            id,
-            lead_id,
-            full_name,
+      } =
+        await supabase
+          .from("students")
+          .insert({
+            full_name: name,
             email,
-            whatsapp_number,
-            status,
-            notes,
-            created_at,
-            updated_at
-          `
-        )
-        .single();
+            whatsapp_number:
+              whatsapp,
+            status: "active",
+            notes:
+              notes || null,
+          })
+          .select(
+            `
+              id,
+              lead_id,
+              full_name,
+              email,
+              whatsapp_number,
+              status,
+              notes,
+              created_at,
+              updated_at
+            `
+          )
+          .single();
 
       if (studentError) {
         throw studentError;
@@ -1470,39 +1754,54 @@ export default function AdminStudentsPage() {
       const {
         data: createdEnrollment,
         error: enrollmentError,
-      } = await supabase
-        .from("student_enrollments")
-        .insert({
-          student_id:
-            createdStudent.id,
-          instrument,
-          programme_name:
-            programmeName.trim() ||
-            "3 Month Training Programme",
-          start_date: startDate,
-          end_date: endDate,
-          total_fee: total,
-          status: "active",
-          notes: null,
-        })
-        .select(
-          `
-            id,
-            student_id,
-            instrument,
-            programme_name,
-            start_date,
-            end_date,
-            total_fee,
-            status,
-            notes,
-            created_at,
-            updated_at
-          `
-        )
-        .single();
+      } =
+        await supabase
+          .from(
+            "student_enrollments"
+          )
+          .insert({
+            student_id:
+              createdStudent.id,
 
-      if (enrollmentError) {
+            instrument,
+
+            programme_name:
+              programmeName.trim() ||
+              "3 Month Training Programme",
+
+            start_date:
+              startDate,
+
+            end_date:
+              endDate,
+
+            total_fee:
+              total,
+
+            status: "active",
+
+            notes: null,
+          })
+          .select(
+            `
+              id,
+              student_id,
+              instrument,
+              programme_name,
+              start_date,
+              end_date,
+              total_fee,
+              status,
+              notes,
+              created_at,
+              updated_at
+            `
+          )
+          .single();
+
+      if (
+        enrollmentError
+      ) {
         throw enrollmentError;
       }
 
@@ -1521,50 +1820,53 @@ export default function AdminStudentsPage() {
         const {
           data: initialPaymentData,
           error: initialPaymentError,
-        } = await supabase
-          .from("payments")
-          .insert({
-            student_id:
-              createdStudent.id,
+        } =
+          await supabase
+            .from("payments")
+            .insert({
+              student_id:
+                createdStudent.id,
 
-            enrollment_id:
-              createdEnrollment.id,
+              enrollment_id:
+                createdEnrollment.id,
 
-            payment_schedule_id:
-              null,
+              payment_schedule_id:
+                null,
 
-            amount: initial,
+              amount: initial,
 
-            payment_date:
-              getTodayKey(),
+              payment_date:
+                getTodayKey(),
 
-            payment_method:
-              initialPaymentMethod,
+              payment_method:
+                initialPaymentMethod,
 
-            reference:
-              initialPaymentReference.trim() ||
-              null,
+              reference:
+                initialPaymentReference.trim() ||
+                null,
 
-            notes:
-              "Initial payment at student registration.",
-          })
-          .select(
-            `
-              id,
-              student_id,
-              enrollment_id,
-              payment_schedule_id,
-              amount,
-              payment_date,
-              payment_method,
-              reference,
-              notes,
-              created_at
-            `
-          )
-          .single();
+              notes:
+                "Initial payment at student registration.",
+            })
+            .select(
+              `
+                id,
+                student_id,
+                enrollment_id,
+                payment_schedule_id,
+                amount,
+                payment_date,
+                payment_method,
+                reference,
+                notes,
+                created_at
+              `
+            )
+            .single();
 
-        if (initialPaymentError) {
+        if (
+          initialPaymentError
+        ) {
           throw initialPaymentError;
         }
 
@@ -1577,35 +1879,42 @@ export default function AdminStudentsPage() {
        */
 
       if (
-        remainingAfterInitial > 0 &&
+        remainingAfterInitial >
+          0 &&
         nextAmount > 0
       ) {
         const {
           error: scheduleError,
-        } = await supabase
-          .from("payment_schedule")
-          .insert({
-            enrollment_id:
-              createdEnrollment.id,
+        } =
+          await supabase
+            .from(
+              "payment_schedule"
+            )
+            .insert({
+              enrollment_id:
+                createdEnrollment.id,
 
-            amount_due:
-              nextAmount,
+              amount_due:
+                nextAmount,
 
-            due_date:
-              nextPaymentDueDate,
+              due_date:
+                nextPaymentDueDate,
 
-            follow_up_date:
-              nextPaymentFollowUpDate ||
-              null,
+              follow_up_date:
+                nextPaymentFollowUpDate ||
+                null,
 
-            status: "scheduled",
+              status:
+                "scheduled",
 
-            notes:
-              nextPaymentNotes.trim() ||
-              null,
-          });
+              notes:
+                nextPaymentNotes.trim() ||
+                null,
+            });
 
-        if (scheduleError) {
+        if (
+          scheduleError
+        ) {
           throw scheduleError;
         }
       }
@@ -1618,14 +1927,18 @@ export default function AdminStudentsPage() {
 
       resetAddStudentForm();
 
-      await loadStudents(true);
+      await loadStudents(
+        true
+      );
 
       const newlyCreatedRecord =
         await getStudentRecord(
           createdStudent.id
         );
 
-      if (newlyCreatedRecord) {
+      if (
+        newlyCreatedRecord
+      ) {
         setSelectedStudent(
           newlyCreatedRecord
         );
@@ -1637,10 +1950,12 @@ export default function AdminStudentsPage() {
             buildReceiptData(
               {
                 ...newlyCreatedRecord,
+
                 payments: [
                   createdInitialPayment,
                 ],
               },
+
               createdInitialPayment
             );
 
@@ -1657,7 +1972,9 @@ export default function AdminStudentsPage() {
         err
       );
 
-      if (createdEnrollmentId) {
+      if (
+        createdEnrollmentId
+      ) {
         await supabase
           .from(
             "student_enrollments"
@@ -1669,7 +1986,9 @@ export default function AdminStudentsPage() {
           );
       }
 
-      if (createdStudentId) {
+      if (
+        createdStudentId
+      ) {
         await supabase
           .from("students")
           .delete()
@@ -1681,7 +2000,8 @@ export default function AdminStudentsPage() {
 
       const message =
         err &&
-        typeof err === "object" &&
+        typeof err ===
+          "object" &&
         "message" in err
           ? String(
               (
@@ -1728,27 +2048,7 @@ export default function AdminStudentsPage() {
     return receipt;
   }
 
-  /*
-   * =========================================================
-   * UPDATED RECEIPT DOWNLOAD
-   * =========================================================
-   *
-   * IMPORTANT:
-   *
-   * generatePaymentReceipt() now returns void.
-   * It creates and saves the PDF internally.
-   *
-   * Therefore:
-   *
-   * WRONG:
-   * const doc = generatePaymentReceipt(...);
-   * doc.save(...);
-   *
-   * CORRECT:
-   * generatePaymentReceipt(...);
-   */
-
-  function downloadReceipt(
+  async function downloadReceipt(
     record: StudentRecord,
     payment: Payment
   ) {
@@ -1760,9 +2060,20 @@ export default function AdminStudentsPage() {
 
     if (!receipt) return;
 
-    generatePaymentReceipt(
-      receipt as PaymentReceiptData
-    );
+    try {
+      await generatePaymentReceipt(
+        receipt
+      );
+    } catch (err) {
+      console.error(
+        "Receipt generation error:",
+        err
+      );
+
+      setError(
+        "We couldn't generate the receipt. Please try again."
+      );
+    }
   }
 
   function viewReceipt(
@@ -1782,12 +2093,23 @@ export default function AdminStudentsPage() {
     );
   }
 
-  function downloadLastReceipt() {
+  async function downloadLastReceipt() {
     if (!lastReceipt) return;
 
-    generatePaymentReceipt(
-      lastReceipt as PaymentReceiptData
-    );
+    try {
+      await generatePaymentReceipt(
+        lastReceipt
+      );
+    } catch (err) {
+      console.error(
+        "Receipt generation error:",
+        err
+      );
+
+      setError(
+        "We couldn't generate the receipt. Please try again."
+      );
+    }
   }
 
   function emailReceipt(
@@ -1847,7 +2169,6 @@ export default function AdminStudentsPage() {
       "",
       "Kind regards,",
       "Sauti Tamu Piano Center",
-      "Junction Trade Center · Nairobi CBD",
     ]
       .filter(Boolean)
       .join("\n");
@@ -1876,7 +2197,10 @@ export default function AdminStudentsPage() {
     const amount =
       Number(paymentAmount);
 
-    if (!amount || amount <= 0) {
+    if (
+      !amount ||
+      amount <= 0
+    ) {
       setError(
         "Enter a valid payment amount."
       );
@@ -1911,7 +2235,8 @@ export default function AdminStudentsPage() {
     }
 
     setUpdatingId(
-      selectedStudent.student.id
+      selectedStudent
+        .student.id
     );
 
     setError("");
@@ -1924,45 +2249,47 @@ export default function AdminStudentsPage() {
     const {
       data,
       error: paymentError,
-    } = await supabase
-      .from("payments")
-      .insert({
-        student_id:
-          selectedStudent.student.id,
+    } =
+      await supabase
+        .from("payments")
+        .insert({
+          student_id:
+            selectedStudent.student.id,
 
-        enrollment_id:
-          selectedStudent.enrollment.id,
+          enrollment_id:
+            selectedStudent.enrollment.id,
 
-        payment_schedule_id:
-          nextSchedule?.id ?? null,
+          payment_schedule_id:
+            nextSchedule?.id ??
+            null,
 
-        amount,
-
-        payment_date:
-          getTodayKey(),
-
-        payment_method:
-          paymentMethod,
-
-        reference:
-          paymentReference.trim() ||
-          null,
-      })
-      .select(
-        `
-          id,
-          student_id,
-          enrollment_id,
-          payment_schedule_id,
           amount,
-          payment_date,
-          payment_method,
-          reference,
-          notes,
-          created_at
-        `
-      )
-      .single();
+
+          payment_date:
+            getTodayKey(),
+
+          payment_method:
+            paymentMethod,
+
+          reference:
+            paymentReference.trim() ||
+            null,
+        })
+        .select(
+          `
+            id,
+            student_id,
+            enrollment_id,
+            payment_schedule_id,
+            amount,
+            payment_date,
+            payment_method,
+            reference,
+            notes,
+            created_at
+          `
+        )
+        .single();
 
     if (paymentError) {
       console.error(
@@ -1974,7 +2301,9 @@ export default function AdminStudentsPage() {
         "We couldn't record this payment."
       );
 
-      setUpdatingId(null);
+      setUpdatingId(
+        null
+      );
 
       return;
     }
@@ -1994,15 +2323,18 @@ export default function AdminStudentsPage() {
           .reduce(
             (sum, payment) =>
               sum +
-              Number(payment.amount),
+              Number(
+                payment.amount
+              ),
             0
           );
 
       const paidAmount =
-        schedulePayments + amount;
+        schedulePayments +
+        amount;
 
       let newStatus:
-        | PaymentScheduleStatus =
+        PaymentScheduleStatus =
         "partially_paid";
 
       if (
@@ -2015,9 +2347,12 @@ export default function AdminStudentsPage() {
       }
 
       await supabase
-        .from("payment_schedule")
+        .from(
+          "payment_schedule"
+        )
         .update({
-          status: newStatus,
+          status:
+            newStatus,
         })
         .eq(
           "id",
@@ -2029,18 +2364,19 @@ export default function AdminStudentsPage() {
       data as Payment;
 
     /*
-     * Build receipt immediately using
-     * OLD history + NEW payment.
+     * Build receipt immediately
+     * using old history + new payment.
      */
 
-    const recordForReceipt: StudentRecord =
-      {
-        ...selectedStudent,
-        payments: [
-          ...selectedStudent.payments,
-          newPayment,
-        ],
-      };
+    const recordForReceipt:
+      StudentRecord = {
+      ...selectedStudent,
+
+      payments: [
+        ...selectedStudent.payments,
+        newPayment,
+      ],
+    };
 
     const receipt =
       buildReceiptData(
@@ -2059,6 +2395,7 @@ export default function AdminStudentsPage() {
         current
           ? {
               ...current,
+
               payments: [
                 newPayment,
                 ...current.payments,
@@ -2069,15 +2406,24 @@ export default function AdminStudentsPage() {
 
     setPaymentAmount("");
     setPaymentReference("");
-    setPaymentMethod("mpesa");
-    setShowPaymentForm(false);
+    setPaymentMethod(
+      "mpesa"
+    );
+
+    setShowPaymentForm(
+      false
+    );
+
     setUpdatingId(null);
 
-    await loadStudents(true);
+    await loadStudents(
+      true
+    );
 
     const refreshed =
       await getStudentRecord(
-        selectedStudent.student.id
+        selectedStudent
+          .student.id
       );
 
     if (refreshed) {
@@ -2116,16 +2462,20 @@ export default function AdminStudentsPage() {
     let message =
       `Hello ${record.student.full_name}, this is Sauti Tamu Piano Center.`;
 
-    message += ` Your current outstanding balance is ${formatCurrency(
-      balance
-    )}.`;
+    message +=
+      ` Your current outstanding balance is ${formatCurrency(
+        balance
+      )}.`;
 
     if (next) {
-      message += ` This is a reminder regarding your next payment of ${formatCurrency(
-        Number(next.amount_due)
-      )} due on ${formatDate(
-        next.due_date
-      )}.`;
+      message +=
+        ` This is a reminder regarding your next payment of ${formatCurrency(
+          Number(
+            next.amount_due
+          )
+        )} due on ${formatDate(
+          next.due_date
+        )}.`;
     }
 
     message +=
@@ -2172,14 +2522,16 @@ export default function AdminStudentsPage() {
   const filteredRecords =
     useMemo(() => {
       const query =
-        search.trim().toLowerCase();
+        search
+          .trim()
+          .toLowerCase();
 
       return records.filter(
         (record) => {
           if (
             filter !== "all" &&
-            record.student.status !==
-              filter
+            record.student
+              .status !== filter
           ) {
             return false;
           }
@@ -2189,13 +2541,22 @@ export default function AdminStudentsPage() {
           }
 
           const searchable = [
-            record.student.full_name,
-            record.student.email,
-            record.student.whatsapp_number,
+            record.student
+              .full_name,
+
+            record.student
+              .email,
+
+            record.student
+              .whatsapp_number,
+
             record.enrollment
-              ?.instrument ?? "",
+              ?.instrument ??
+              "",
+
             record.enrollment
-              ?.programme_name ?? "",
+              ?.programme_name ??
+              "",
           ]
             .join(" ")
             .toLowerCase();
@@ -2217,65 +2578,76 @@ export default function AdminStudentsPage() {
    * =========================================================
    */
 
-  const stats = useMemo(() => {
-    const active =
-      records.filter(
-        (record) =>
-          record.student.status ===
-          "active"
-      ).length;
-
-    const completed =
-      records.filter(
-        (record) =>
-          record.student.status ===
-          "completed"
-      ).length;
-
-    const endingSoon =
-      records.filter((record) => {
-        if (
-          !record.enrollment ||
-          record.student.status !==
+  const stats =
+    useMemo(() => {
+      const active =
+        records.filter(
+          (record) =>
+            record.student
+              .status ===
             "active"
-        ) {
-          return false;
-        }
+        ).length;
 
-        const days =
-          calculateDaysRemaining(
-            record.enrollment.end_date
-          );
+      const completed =
+        records.filter(
+          (record) =>
+            record.student
+              .status ===
+            "completed"
+        ).length;
 
-        return (
-          days >= 0 &&
-          days <= 30
-        );
-      }).length;
+      const endingSoon =
+        records.filter(
+          (record) => {
+            if (
+              !record.enrollment ||
+              record.student
+                .status !==
+                "active"
+            ) {
+              return false;
+            }
 
-    const paymentAttention =
-      records.filter((record) => {
-        const next =
-          getNextPayment(
-            record.schedules
-          );
+            const days =
+              calculateDaysRemaining(
+                record
+                  .enrollment
+                  .end_date
+              );
 
-        return (
-          next?.status === "due" ||
-          next?.status ===
-            "overdue" ||
-          next?.status ===
-            "partially_paid"
-        );
-      }).length;
+            return (
+              days >= 0 &&
+              days <= 30
+            );
+          }
+        ).length;
 
-    return {
-      active,
-      completed,
-      endingSoon,
-      paymentAttention,
-    };
-  }, [records]);
+      const paymentAttention =
+        records.filter(
+          (record) => {
+            const next =
+              getNextPayment(
+                record.schedules
+              );
+
+            return (
+              next?.status ===
+                "due" ||
+              next?.status ===
+                "overdue" ||
+              next?.status ===
+                "partially_paid"
+            );
+          }
+        ).length;
+
+      return {
+        active,
+        completed,
+        endingSoon,
+        paymentAttention,
+      };
+    }, [records]);
 
   /*
    * =========================================================
@@ -2289,6 +2661,7 @@ export default function AdminStudentsPage() {
       {/* HEADER */}
 
       <div className="mb-7 flex flex-col gap-5 md:flex-row md:items-end md:justify-between">
+
         <div>
           <p className="st-eyebrow">
             STUDENTS
@@ -2306,10 +2679,13 @@ export default function AdminStudentsPage() {
         </div>
 
         <div className="flex gap-2">
+
           <button
             type="button"
             onClick={() =>
-              loadStudents(true)
+              loadStudents(
+                true
+              )
             }
             className="st-button st-button-secondary"
           >
@@ -2321,20 +2697,26 @@ export default function AdminStudentsPage() {
                   : ""
               }
             />
+
             Refresh
           </button>
 
           <button
             type="button"
             onClick={() =>
-              setShowAddStudent(true)
+              setShowAddStudent(
+                true
+              )
             }
             className="st-button st-button-primary"
           >
             <Plus size={15} />
+
             Add student
           </button>
+
         </div>
+
       </div>
 
       {/* STATS */}
@@ -2342,7 +2724,9 @@ export default function AdminStudentsPage() {
       <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
 
         <div className="st-card p-5">
+
           <div className="flex items-center justify-between gap-3">
+
             <div>
               <p className="m-0 text-[10px] font-bold uppercase tracking-[0.08em] text-[var(--st-gray)]">
                 Active students
@@ -2356,11 +2740,15 @@ export default function AdminStudentsPage() {
             <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[var(--st-bg-soft)] text-[var(--st-red)]">
               <Users size={18} />
             </div>
+
           </div>
+
         </div>
 
         <div className="st-card p-5">
+
           <div className="flex items-center justify-between gap-3">
+
             <div>
               <p className="m-0 text-[10px] font-bold uppercase tracking-[0.08em] text-[var(--st-gray)]">
                 Ending soon
@@ -2378,11 +2766,15 @@ export default function AdminStudentsPage() {
             <div className="flex h-10 w-10 items-center justify-center rounded-full bg-amber-50 text-amber-700">
               <Clock3 size={18} />
             </div>
+
           </div>
+
         </div>
 
         <div className="st-card p-5">
+
           <div className="flex items-center justify-between gap-3">
+
             <div>
               <p className="m-0 text-[10px] font-bold uppercase tracking-[0.08em] text-[var(--st-gray)]">
                 Payments due
@@ -2400,11 +2792,15 @@ export default function AdminStudentsPage() {
             <div className="flex h-10 w-10 items-center justify-center rounded-full bg-red-50 text-[var(--st-red)]">
               <Wallet size={18} />
             </div>
+
           </div>
+
         </div>
 
         <div className="st-card p-5">
+
           <div className="flex items-center justify-between gap-3">
+
             <div>
               <p className="m-0 text-[10px] font-bold uppercase tracking-[0.08em] text-[var(--st-gray)]">
                 Completed
@@ -2418,7 +2814,9 @@ export default function AdminStudentsPage() {
             <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-50 text-blue-700">
               <CheckCircle2 size={18} />
             </div>
+
           </div>
+
         </div>
 
       </section>
@@ -2442,7 +2840,9 @@ export default function AdminStudentsPage() {
 
               <p className="mt-1 mb-0 text-[9px] text-green-700">
                 Receipt{" "}
-                {lastReceipt.receiptNumber}
+                {
+                  lastReceipt.receiptNumber
+                }
                 {" · "}
                 {formatCurrency(
                   lastReceipt.amountPaid
@@ -2562,7 +2962,8 @@ export default function AdminStudentsPage() {
 
       {/* PAYMENT ATTENTION */}
 
-      {stats.paymentAttention > 0 && (
+      {stats.paymentAttention >
+        0 && (
         <section className="mt-5">
 
           <div className="mb-3 flex items-center justify-between">
@@ -2578,7 +2979,9 @@ export default function AdminStudentsPage() {
             </div>
 
             <span className="st-badge st-badge-red">
-              {stats.paymentAttention}{" "}
+              {
+                stats.paymentAttention
+              }{" "}
               {stats.paymentAttention ===
               1
                 ? "student"
@@ -2590,159 +2993,168 @@ export default function AdminStudentsPage() {
           <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
 
             {records
-              .filter((record) => {
-                const next =
-                  getNextPayment(
-                    record.schedules
-                  );
+              .filter(
+                (record) => {
+                  const next =
+                    getNextPayment(
+                      record.schedules
+                    );
 
-                return (
-                  next?.status ===
-                    "due" ||
-                  next?.status ===
-                    "overdue" ||
-                  next?.status ===
-                    "partially_paid"
-                );
-              })
+                  return (
+                    next?.status ===
+                      "due" ||
+                    next?.status ===
+                      "overdue" ||
+                    next?.status ===
+                      "partially_paid"
+                  );
+                }
+              )
               .slice(0, 4)
-              .map((record) => {
-                const next =
-                  getNextPayment(
-                    record.schedules
-                  );
+              .map(
+                (record) => {
+                  const next =
+                    getNextPayment(
+                      record.schedules
+                    );
 
-                if (!next) return null;
+                  if (!next)
+                    return null;
 
-                const balance =
-                  getBalance(
-                    record.enrollment,
-                    record.payments
-                  );
+                  const balance =
+                    getBalance(
+                      record.enrollment,
+                      record.payments
+                    );
 
-                return (
-                  <div
-                    key={
-                      record.student.id
-                    }
-                    className="st-card p-4"
-                  >
+                  return (
+                    <div
+                      key={
+                        record
+                          .student
+                          .id
+                      }
+                      className="st-card p-4"
+                    >
 
-                    <div className="flex items-start gap-3">
+                      <div className="flex items-start gap-3">
 
-                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[var(--st-bg-soft)] text-[10px] font-bold text-[var(--st-red)]">
-                        {initials(
-                          record.student
-                            .full_name
-                        )}
-                      </div>
-
-                      <div className="min-w-0 flex-1">
-
-                        <div className="flex items-start justify-between gap-3">
-
-                          <div className="min-w-0">
-
-                            <p className="m-0 truncate text-[12px] font-bold text-[var(--st-charcoal-dark)]">
-                              {
-                                record
-                                  .student
-                                  .full_name
-                              }
-                            </p>
-
-                            <p className="mt-1 mb-0 text-[9px] text-[var(--st-gray)]">
-                              {record.enrollment
-                                ? instrumentName(
-                                    record
-                                      .enrollment
-                                      .instrument
-                                  )
-                                : "No programme"}
-                            </p>
-
-                          </div>
-
-                          <span
-                            className={`shrink-0 rounded-full px-2.5 py-1 text-[8px] font-bold ${paymentStatusClasses(
-                              next
-                            )}`}
-                          >
-                            {paymentStatusLabel(
-                              next
-                            )}
-                          </span>
-
+                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[var(--st-bg-soft)] text-[10px] font-bold text-[var(--st-red)]">
+                          {initials(
+                            record
+                              .student
+                              .full_name
+                          )}
                         </div>
 
-                        <div className="mt-3 flex items-end justify-between gap-3">
+                        <div className="min-w-0 flex-1">
 
-                          <div>
+                          <div className="flex items-start justify-between gap-3">
 
-                            <p className="m-0 text-[17px] font-bold text-[var(--st-red)]">
-                              {formatCurrency(
-                                Number(
-                                  next.amount_due
-                                )
-                              )}
-                            </p>
+                            <div className="min-w-0">
 
-                            <p className="mt-1 mb-0 text-[9px] text-[var(--st-gray)]">
-                              {getPaymentFollowUpLabel(
+                              <p className="m-0 truncate text-[12px] font-bold text-[var(--st-charcoal-dark)]">
+                                {
+                                  record
+                                    .student
+                                    .full_name
+                                }
+                              </p>
+
+                              <p className="mt-1 mb-0 text-[9px] text-[var(--st-gray)]">
+                                {record.enrollment
+                                  ? instrumentName(
+                                      record
+                                        .enrollment
+                                        .instrument
+                                    )
+                                  : "No programme"}
+                              </p>
+
+                            </div>
+
+                            <span
+                              className={`shrink-0 rounded-full px-2.5 py-1 text-[8px] font-bold ${paymentStatusClasses(
+                                next
+                              )}`}
+                            >
+                              {paymentStatusLabel(
                                 next
                               )}
-                            </p>
-
-                            <p className="mt-1 mb-0 text-[8px] font-semibold text-[var(--st-gray)]">
-                              Current balance:{" "}
-                              {formatCurrency(
-                                balance
-                              )}
-                            </p>
-
-                            {next.follow_up_date && (
-                              <p className="mt-1 mb-0 text-[8px] font-semibold text-[var(--st-gray)]">
-                                Follow-up:{" "}
-                                {formatDate(
-                                  next.follow_up_date
-                                )}
-                              </p>
-                            )}
+                            </span>
 
                           </div>
 
-                          <div className="flex gap-1">
+                          <div className="mt-3 flex items-end justify-between gap-3">
 
-                            <button
-                              type="button"
-                              onClick={() =>
-                                openWhatsApp(
-                                  record
-                                )
-                              }
-                              className="st-icon-button"
-                              aria-label="WhatsApp student"
-                            >
-                              <MessageCircle
-                                size={14}
-                              />
-                            </button>
+                            <div>
 
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setSelectedStudent(
-                                  record
-                                );
+                              <p className="m-0 text-[17px] font-bold text-[var(--st-red)]">
+                                {formatCurrency(
+                                  Number(
+                                    next.amount_due
+                                  )
+                                )}
+                              </p>
 
-                                setShowPaymentForm(
-                                  true
-                                );
-                              }}
-                              className="st-button st-button-primary !px-3 !py-2 text-[9px]"
-                            >
-                              Record payment
-                            </button>
+                              <p className="mt-1 mb-0 text-[9px] text-[var(--st-gray)]">
+                                {getPaymentFollowUpLabel(
+                                  next
+                                )}
+                              </p>
+
+                              <p className="mt-1 mb-0 text-[8px] font-semibold text-[var(--st-gray)]">
+                                Current balance:{" "}
+                                {formatCurrency(
+                                  balance
+                                )}
+                              </p>
+
+                              {next.follow_up_date && (
+                                <p className="mt-1 mb-0 text-[8px] font-semibold text-[var(--st-gray)]">
+                                  Follow-up:{" "}
+                                  {formatDate(
+                                    next.follow_up_date
+                                  )}
+                                </p>
+                              )}
+
+                            </div>
+
+                            <div className="flex gap-1">
+
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  openWhatsApp(
+                                    record
+                                  )
+                                }
+                                className="st-icon-button"
+                                aria-label="WhatsApp student"
+                              >
+                                <MessageCircle
+                                  size={14}
+                                />
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setSelectedStudent(
+                                    record
+                                  );
+
+                                  setShowPaymentForm(
+                                    true
+                                  );
+                                }}
+                                className="st-button st-button-primary !px-3 !py-2 text-[9px]"
+                              >
+                                Record payment
+                              </button>
+
+                            </div>
 
                           </div>
 
@@ -2751,10 +3163,9 @@ export default function AdminStudentsPage() {
                       </div>
 
                     </div>
-
-                  </div>
-                );
-              })}
+                  );
+                }
+              )}
 
           </div>
 
@@ -2809,24 +3220,27 @@ export default function AdminStudentsPage() {
               key: "inactive",
               label: "Inactive",
             },
-          ].map((item) => (
-            <button
-              key={item.key}
-              type="button"
-              onClick={() =>
-                setFilter(
-                  item.key as Filter
-                )
-              }
-              className={`rounded-xl px-3 py-3 text-[10px] font-bold transition ${
-                filter === item.key
-                  ? "bg-[var(--st-red)] text-white"
-                  : "bg-[var(--st-bg-soft)] text-[var(--st-gray)] hover:text-[var(--st-charcoal-dark)]"
-              }`}
-            >
-              {item.label}
-            </button>
-          ))}
+          ].map(
+            (item) => (
+              <button
+                key={item.key}
+                type="button"
+                onClick={() =>
+                  setFilter(
+                    item.key as Filter
+                  )
+                }
+                className={`rounded-xl px-3 py-3 text-[10px] font-bold transition ${
+                  filter ===
+                  item.key
+                    ? "bg-[var(--st-red)] text-white"
+                    : "bg-[var(--st-bg-soft)] text-[var(--st-gray)] hover:text-[var(--st-charcoal-dark)]"
+                }`}
+              >
+                {item.label}
+              </button>
+            )
+          )}
 
         </div>
 
@@ -2864,7 +3278,9 @@ export default function AdminStudentsPage() {
           </p>
 
           <p className="mt-1 mb-0 text-[10px] text-[var(--st-gray)]">
-            {filteredRecords.length}{" "}
+            {
+              filteredRecords.length
+            }{" "}
             {filteredRecords.length ===
             1
               ? "student"
@@ -2875,11 +3291,14 @@ export default function AdminStudentsPage() {
 
         {loading ? (
           <div className="st-card flex min-h-[260px] items-center justify-center gap-2 text-[10px] text-[var(--st-gray)]">
+
             <RefreshCw
               size={16}
               className="animate-spin"
             />
+
             Loading students...
+
           </div>
         ) : filteredRecords.length ===
           0 ? (
@@ -2901,7 +3320,9 @@ export default function AdminStudentsPage() {
             <button
               type="button"
               onClick={() =>
-                setShowAddStudent(true)
+                setShowAddStudent(
+                  true
+                )
               }
               className="st-button st-button-primary mt-5"
             >
@@ -2939,7 +3360,9 @@ export default function AdminStudentsPage() {
                 return (
                   <button
                     key={
-                      record.student.id
+                      record
+                        .student
+                        .id
                     }
                     type="button"
                     onClick={() =>
@@ -2956,7 +3379,8 @@ export default function AdminStudentsPage() {
 
                         <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[var(--st-bg-soft)] text-[10px] font-bold text-[var(--st-red)]">
                           {initials(
-                            record.student
+                            record
+                              .student
                               .full_name
                           )}
                         </div>
@@ -3074,7 +3498,8 @@ export default function AdminStudentsPage() {
 
                                 <p
                                   className={`mt-1 text-[10px] font-bold ${
-                                    balance > 0
+                                    balance >
+                                    0
                                       ? "text-[var(--st-red)]"
                                       : "text-green-700"
                                   }`}
@@ -3162,6 +3587,7 @@ export default function AdminStudentsPage() {
                           <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2">
 
                             <span className="flex min-w-0 items-center gap-1.5 text-[9px] text-[var(--st-gray)]">
+
                               <Phone
                                 size={12}
                                 className="shrink-0 text-[var(--st-red)]"
@@ -3174,9 +3600,11 @@ export default function AdminStudentsPage() {
                                     .whatsapp_number
                                 }
                               </span>
+
                             </span>
 
                             <span className="flex min-w-0 items-center gap-1.5 text-[9px] text-[var(--st-gray)]">
+
                               <Mail
                                 size={12}
                                 className="shrink-0 text-[var(--st-red)]"
@@ -3189,15 +3617,18 @@ export default function AdminStudentsPage() {
                                     .email
                                 }
                               </span>
+
                             </span>
 
                             <span className="ml-auto flex shrink-0 items-center gap-1 text-[9px] font-bold text-[var(--st-red)]">
+
                               View
 
                               <ArrowRight
                                 size={12}
                                 className="transition-transform group-hover:translate-x-1"
                               />
+
                             </span>
 
                           </div>
@@ -3232,13 +3663,17 @@ export default function AdminStudentsPage() {
               <div className="flex items-center justify-between gap-3">
 
                 <div>
+
                   <p className="st-eyebrow">
                     PAYMENT RECEIPT
                   </p>
 
                   <h2 className="mt-1 text-[18px] font-bold text-[var(--st-charcoal-dark)]">
-                    {viewingReceipt.receiptNumber}
+                    {
+                      viewingReceipt.receiptNumber
+                    }
                   </h2>
+
                 </div>
 
                 <button
@@ -3284,15 +3719,21 @@ export default function AdminStudentsPage() {
                   </p>
 
                   <p className="mt-1 text-[13px] font-bold text-[var(--st-charcoal-dark)]">
-                    {viewingReceipt.studentName}
+                    {
+                      viewingReceipt.studentName
+                    }
                   </p>
 
                   <p className="mt-1 break-all text-[9px] text-[var(--st-gray)]">
-                    {viewingReceipt.studentEmail}
+                    {
+                      viewingReceipt.studentEmail
+                    }
                   </p>
 
                   <p className="mt-1 text-[9px] text-[var(--st-gray)]">
-                    {viewingReceipt.studentPhone}
+                    {
+                      viewingReceipt.studentPhone
+                    }
                   </p>
 
                 </div>
@@ -3304,11 +3745,15 @@ export default function AdminStudentsPage() {
                   </p>
 
                   <p className="mt-1 text-[11px] font-bold text-[var(--st-charcoal-dark)]">
-                    {viewingReceipt.programmeName}
+                    {
+                      viewingReceipt.programmeName
+                    }
                   </p>
 
                   <p className="mt-1 text-[9px] text-[var(--st-gray)]">
-                    {viewingReceipt.instrument}{" "}
+                    {
+                      viewingReceipt.instrument
+                    }{" "}
                     Training
                   </p>
 
@@ -3340,20 +3785,19 @@ export default function AdminStudentsPage() {
 
                   <div className="mt-2 overflow-hidden rounded-xl border border-[var(--st-border)] bg-white">
 
-                    {viewingReceipt.payments.map(
+                    {viewingReceipt.paymentHistory?.map(
                       (
                         item,
                         index
                       ) => (
                         <div
-                          key={
-                            item.id
-                          }
+                          key={`${viewingReceipt.receiptNumber}-${index}`}
                           className={`flex items-center justify-between gap-3 px-3 py-3 ${
                             index <
-                            viewingReceipt
-                              .payments
-                              .length -
+                            (viewingReceipt
+                              .paymentHistory
+                              ?.length ??
+                              0) -
                               1
                               ? "border-b border-[var(--st-border)]"
                               : ""
@@ -3363,21 +3807,40 @@ export default function AdminStudentsPage() {
                           <div className="min-w-0">
 
                             <p className="m-0 text-[9px] font-bold text-[var(--st-charcoal-dark)]">
-                              Payment{" "}
-                              {index +
-                                1}
-                              {item.isCurrent
+                              {
+                                item.label
+                              }
+
+                              {index ===
+                              (viewingReceipt
+                                .paymentHistory
+                                ?.length ??
+                                0) -
+                                1
                                 ? " · Latest"
                                 : ""}
                             </p>
 
                             <p className="mt-1 text-[8px] text-[var(--st-gray)]">
-                              {formatDate(
-                                item.paymentDate
-                              )}{" "}
-                              ·{" "}
-                              {item.paymentMethod.toUpperCase()}
+                              {item.date
+                                ? formatDate(
+                                    item.date
+                                  )
+                                : "—"}
+
+                              {item.method
+                                ? ` · ${item.method.toUpperCase()}`
+                                : ""}
                             </p>
+
+                            {item.reference && (
+                              <p className="mt-1 max-w-[170px] truncate text-[8px] text-[var(--st-gray)]">
+                                Ref:{" "}
+                                {
+                                  item.reference
+                                }
+                              </p>
+                            )}
 
                           </div>
 
@@ -3450,7 +3913,9 @@ export default function AdminStudentsPage() {
                     </span>
 
                     <span className="text-[9px] font-bold uppercase text-[var(--st-charcoal-dark)]">
-                      {viewingReceipt.paymentMethod}
+                      {
+                        viewingReceipt.paymentMethod
+                      }
                     </span>
 
                   </div>
@@ -3463,7 +3928,9 @@ export default function AdminStudentsPage() {
                       </span>
 
                       <span className="max-w-[170px] truncate text-[9px] font-bold text-[var(--st-charcoal-dark)]">
-                        {viewingReceipt.reference}
+                        {
+                          viewingReceipt.reference
+                        }
                       </span>
 
                     </div>
@@ -3474,15 +3941,12 @@ export default function AdminStudentsPage() {
                 <div className="mt-5 border-t border-[var(--st-border)] pt-4 text-center">
 
                   <p className="m-0 text-[8px] text-[var(--st-gray)]">
-                    Thank you for choosing
+                    Receipt generated from
+                    current business settings
                   </p>
 
                   <p className="mt-1 text-[10px] font-bold text-[var(--st-charcoal-dark)]">
                     Sauti Tamu Piano Center
-                  </p>
-
-                  <p className="mt-1 text-[8px] text-[var(--st-gray)]">
-                    Junction Trade Center · Nairobi CBD
                   </p>
 
                 </div>
@@ -3503,14 +3967,23 @@ export default function AdminStudentsPage() {
                   Close
                 </button>
 
-                {/* UPDATED: generator downloads internally */}
-
                 <button
                   type="button"
-                  onClick={() => {
-                    generatePaymentReceipt(
-                      viewingReceipt as PaymentReceiptData
-                    );
+                  onClick={async () => {
+                    try {
+                      await generatePaymentReceipt(
+                        viewingReceipt
+                      );
+                    } catch (err) {
+                      console.error(
+                        "Receipt generation error:",
+                        err
+                      );
+
+                      setError(
+                        "We couldn't generate the receipt. Please try again."
+                      );
+                    }
                   }}
                   className="st-button st-button-primary w-full !px-2 text-[9px]"
                 >
@@ -3522,14 +3995,14 @@ export default function AdminStudentsPage() {
                   type="button"
                   onClick={() => {
                     const totalPaid =
-                      viewingReceipt.payments.reduce(
+                      viewingReceipt.paymentHistory?.reduce(
                         (sum, item) =>
                           sum +
                           Number(
                             item.amount
                           ),
                         0
-                      );
+                      ) ?? 0;
 
                     const subject =
                       `Sauti Tamu Payment Receipt ${viewingReceipt.receiptNumber}`;
@@ -3554,10 +4027,6 @@ export default function AdminStudentsPage() {
                         `Current Balance: ${formatCurrency(
                           viewingReceipt.balanceAfterPayment
                         )}`,
-                        "",
-                        "Payment details:",
-                        "Paybill: 542 542",
-                        "Account: 466 170",
                         "",
                         "Kind regards,",
                         "Sauti Tamu Piano Center",
@@ -3720,7 +4189,8 @@ export default function AdminStudentsPage() {
                                 selectedStudent
                                   .enrollment
                                   .end_date
-                              ) <= 30
+                              ) <=
+                              30
                                 ? "text-[var(--st-red)]"
                                 : "text-[var(--st-charcoal-dark)]"
                             }`}
@@ -4052,7 +4522,8 @@ export default function AdminStudentsPage() {
 
                   {selectedStudent
                     .payments
-                    .length === 0 ? (
+                    .length ===
+                  0 ? (
                     <div className="mt-3 rounded-xl border border-dashed border-[var(--st-border)] p-5 text-center">
 
                       <Wallet
@@ -4234,7 +4705,7 @@ export default function AdminStudentsPage() {
                     className="st-button st-button-primary w-full disabled:opacity-40"
                   >
                     <Wallet size={15} />
-                    Payment
+                    Receive payment
                   </button>
 
                 </div>
@@ -4261,11 +4732,11 @@ export default function AdminStudentsPage() {
                 <div>
 
                   <p className="st-eyebrow">
-                    PAYMENT
+                    RECEIVE PAYMENT
                   </p>
 
                   <h2 className="mt-1 text-[20px] font-bold text-[var(--st-charcoal-dark)]">
-                    Record payment
+                    Receive payment
                   </h2>
 
                   <p className="mt-1 text-[10px] text-[var(--st-gray)]">
@@ -4303,8 +4774,12 @@ export default function AdminStudentsPage() {
                   <input
                     type="number"
                     min="1"
-                    value={paymentAmount}
-                    onChange={(event) =>
+                    value={
+                      paymentAmount
+                    }
+                    onChange={(
+                      event
+                    ) =>
                       setPaymentAmount(
                         event.target
                           .value
@@ -4328,7 +4803,9 @@ export default function AdminStudentsPage() {
                       value={
                         paymentMethod
                       }
-                      onChange={(event) =>
+                      onChange={(
+                        event
+                      ) =>
                         setPaymentMethod(
                           event.target
                             .value as PaymentMethod
@@ -4336,6 +4813,7 @@ export default function AdminStudentsPage() {
                       }
                       className="w-full appearance-none rounded-xl border border-[var(--st-border)] bg-white px-4 py-3.5 text-[11px] font-semibold outline-none focus:border-[var(--st-red)]"
                     >
+
                       <option value="mpesa">
                         M-Pesa
                       </option>
@@ -4355,6 +4833,7 @@ export default function AdminStudentsPage() {
                       <option value="other">
                         Other
                       </option>
+
                     </select>
 
                     <ChevronDown
@@ -4377,7 +4856,9 @@ export default function AdminStudentsPage() {
                     value={
                       paymentReference
                     }
-                    onChange={(event) =>
+                    onChange={(
+                      event
+                    ) =>
                       setPaymentReference(
                         event.target
                           .value
@@ -4438,6 +4919,7 @@ export default function AdminStudentsPage() {
                 }
                 className="st-button st-button-primary mt-6 w-full disabled:opacity-60"
               >
+
                 {updatingId ===
                 selectedStudent
                   .student.id ? (
@@ -4454,6 +4936,7 @@ export default function AdminStudentsPage() {
                     Record payment
                   </>
                 )}
+
               </button>
 
             </div>
@@ -4975,6 +5458,7 @@ export default function AdminStudentsPage() {
                             }
                             className="w-full appearance-none rounded-xl border border-[var(--st-border)] bg-white px-4 py-3.5 text-[10px] font-semibold outline-none focus:border-[var(--st-red)]"
                           >
+
                             <option value="mpesa">
                               M-Pesa
                             </option>
@@ -4994,6 +5478,7 @@ export default function AdminStudentsPage() {
                             <option value="other">
                               Other
                             </option>
+
                           </select>
 
                           <ChevronDown
@@ -5359,7 +5844,9 @@ export default function AdminStudentsPage() {
                   />
 
                   <p className="m-0 text-[10px] leading-relaxed text-red-700">
-                    {addStudentError}
+                    {
+                      addStudentError
+                    }
                   </p>
 
                 </div>
@@ -5390,6 +5877,7 @@ export default function AdminStudentsPage() {
                   }
                   className="st-button st-button-primary w-full disabled:opacity-60"
                 >
+
                   {addingStudent ? (
                     <>
                       <RefreshCw
@@ -5404,6 +5892,7 @@ export default function AdminStudentsPage() {
                       Add student
                     </>
                   )}
+
                 </button>
 
               </div>
