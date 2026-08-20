@@ -597,22 +597,12 @@ export default function StudentsPage() {
         {/* STATS */}
 
         <StudentStats
-          totalStudents={
-            stats.totalStudents
-          }
-          activeStudents={
-            stats.activeStudents
-          }
-          totalCollected={
-            stats.totalCollected
-          }
-          totalOutstanding={
-            stats.totalOutstanding
-          }
-          formatCurrency={
-            formatCurrency
-          }
-        />
+  totalStudents={stats.totalStudents}
+  activeStudents={stats.activeStudents}
+  totalOutstanding={stats.totalOutstanding}
+  studentsWithBalance={stats.studentsWithBalance}
+  formatCurrency={formatCurrency}
+/>
 
         {/* TOOLBAR */}
 
