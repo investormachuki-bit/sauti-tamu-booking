@@ -1087,110 +1087,139 @@ export default function AdminBookingsPage() {
    * =========================================================
    */
 
-  async function markBooked(
-    record: BookingRecord
-  ) {
-    const booking =
-      record.booking;
+  
+          
+        async function markBooked(
+  record: BookingRecord
+) {
+  const booking = record.booking;
 
-    if (
-      booking.status !==
-      "confirmed" &&
-      booking.status !==
-      "completed"
-    ) {
-      return;
+  if (
+    booking.status !== "confirmed" &&
+    booking.status !== "completed"
+  ) {
+    return;
+  }
+
+  setUpdatingId(booking.id);
+  setError("");
+
+  try {
+    /*
+     * =====================================================
+     * CREATE / REUSE STUDENT
+     * =====================================================
+     *
+     * The shared registration service handles:
+     * - finding an existing student
+     * - creating a new student when necessary
+     * - linking the student to the lead
+     *
+     * Do this FIRST so a failed registration does not
+     * change the booking status.
+     */
+
+    const lead = record.lead;
+
+    if (!lead) {
+      throw new Error(
+        "This booking has no linked lead."
+      );
     }
 
-    setUpdatingId(
-      booking.id
+    await ensureStudentFromLead({
+      leadId: lead.id,
+      fullName: lead.full_name,
+      email: lead.email,
+      whatsappNumber:
+        lead.whatsapp_number,
+    });
+
+    /*
+     * =====================================================
+     * MARK BOOKING COMPLETED
+     * =====================================================
+     */
+
+    const now =
+      new Date().toISOString();
+
+    const updatedBooking =
+      await updateBooking(
+        booking.id,
+        {
+          status: "completed",
+
+          attended_at:
+            booking.attended_at ??
+            now,
+
+          completed_at:
+            booking.completed_at ??
+            now,
+
+          cancelled_at: null,
+        }
+      );
+
+    const updatedRecord:
+      BookingRecord = {
+        ...record,
+        booking:
+          updatedBooking,
+      };
+
+    /*
+     * Update local state.
+     */
+
+    setRecords((current) =>
+      current.map(
+        (item) =>
+          item.booking.id ===
+          booking.id
+            ? updatedRecord
+            : item
+      )
     );
 
-    setError("");
+    /*
+     * Close booking details.
+     */
 
-    try {
-      /*
-       * Create/reuse student first.
-       *
-       * If this fails, booking remains untouched.
-       */
-      await ensureStudentFromLead(
-        record
-      );
+    setSelectedBooking(null);
 
-      const now =
-        new Date().toISOString();
+    /*
+     * Student now exists.
+     * Continue registration inside Students.
+     */
 
-      const updatedBooking =
-        await updateBooking(
-          booking.id,
-          {
-            status:
-              "completed",
-            attended_at:
-              booking.attended_at ??
-              now,
-            completed_at:
-              booking.completed_at ??
-              now,
-            cancelled_at:
-              null,
-          }
-        );
+    router.push(
+      "/admin/students"
+    );
+  } catch (err) {
+    console.error(
+      "Booked action error:",
+      err
+    );
 
-      const updatedRecord: BookingRecord =
-        {
-          ...record,
-          booking:
-            updatedBooking,
-        };
-
-      setRecords((current) =>
-        current.map(
-          (item) =>
-            item.booking.id ===
-            booking.id
-              ? updatedRecord
-              : item
-        )
-      );
-
-      setSelectedBooking(
-        null
-      );
-
-      /*
-       * The student is now available in the Students
-       * module where programme/enrollment/payment can
-       * continue.
-       */
-      router.push(
-        "/admin/students"
-      );
-    } catch (err) {
-      console.error(
-        "Booked action error:",
-        err
-      );
-
-      setError(
-        err &&
-        typeof err ===
-          "object" &&
-        "message" in err
-          ? String(
-              (
-                err as {
-                  message: string;
-                }
-              ).message
-            )
-          : "We couldn't register this learner as a student."
-      );
-    } finally {
-      setUpdatingId(null);
-    }
+    setError(
+      err &&
+      typeof err === "object" &&
+      "message" in err
+        ? String(
+            (
+              err as {
+                message: string;
+              }
+            ).message
+          )
+        : "We couldn't register this learner as a student."
+    );
+  } finally {
+    setUpdatingId(null);
   }
+}
 
   /*
    * =========================================================
