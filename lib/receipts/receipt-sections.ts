@@ -873,21 +873,40 @@ export function drawReceiptStamp(
     return y;
   }
 
-  y += 4;
+  /*
+   * Give the stamp its own visual space.
+   */
+
+  y += 6;
+
+  const stampWidth = 22;
+  const stampHeight = 16;
+
+  /*
+   * Centre the stamp on the 80mm receipt.
+   */
+
+  const stampX =
+    40 - stampWidth / 2;
 
   try {
     doc.addImage(
       stampDataUrl,
       "AUTO",
-      51,
+      stampX,
       y,
-      20,
-      14,
+      stampWidth,
+      stampHeight,
       undefined,
       "FAST"
     );
 
-    y += 16;
+    /*
+     * Move the cursor below the entire stamp
+     * plus a little breathing room.
+     */
+
+    y += stampHeight + 5;
   } catch (error) {
     console.error(
       "Could not add receipt stamp:",
@@ -909,11 +928,19 @@ export function drawReceiptFooter(
   business: ReceiptBusinessSettings,
   y: number
 ) {
+  /*
+   * Keep footer safely below the stamp.
+   */
+
   y += 3;
 
   drawLine(doc, y);
 
   y += 8;
+
+  /*
+   * Custom footer message
+   */
 
   if (business.receipt_footer) {
     y =
@@ -933,6 +960,10 @@ export function drawReceiptFooter(
     y += 3;
   }
 
+  /*
+   * Business name
+   */
+
   setText(
     doc,
     business.receipt_business_name ||
@@ -947,6 +978,10 @@ export function drawReceiptFooter(
   );
 
   y += 5;
+
+  /*
+   * Footer contact information
+   */
 
   const footerContact = [
     business.phone,
@@ -969,5 +1004,5 @@ export function drawReceiptFooter(
       );
   }
 
-  return y;
+  return y + 4;
 }
