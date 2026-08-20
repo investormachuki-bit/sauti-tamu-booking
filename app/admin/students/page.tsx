@@ -695,21 +695,13 @@ export default function StudentsPage() {
 
         <div className="mt-5">
           <StudentsToolbar
-            searchTerm={searchTerm}
-            setSearchTerm={setSearchTerm}
-            statusFilter={statusFilter}
-            setStatusFilter={
-              setStatusFilter
-            }
-            instrumentFilter={
-              instrumentFilter
-            }
-            setInstrumentFilter={
-              setInstrumentFilter
-            }
-            onRefresh={handleRefresh}
-            loading={loading}
-          />
+  searchTerm={searchTerm}
+  setSearchTerm={setSearchTerm}
+  statusFilter={statusFilter}
+  setStatusFilter={setStatusFilter}
+  instrumentFilter={instrumentFilter}
+  setInstrumentFilter={setInstrumentFilter}
+/>
         </div>
 
         {/* STUDENT LIST */}
