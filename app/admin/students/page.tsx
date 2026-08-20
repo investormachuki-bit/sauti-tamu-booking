@@ -955,54 +955,37 @@ export default function AdminStudentsPage() {
           </div>
         ) : (
           <StudentList
-            students={
-              filteredStudents
-            }
-            selectedStudentId={
-              selectedStudent?.student.id ??
-              null
-            }
-            onSelectStudent={
-              handleSelectStudent
-            }
-            formatCurrency={
-              formatCurrency
-            }
-            formatDate={
-              formatDate
-            }
-            instrumentName={(
-              instrument
-            ) => {
-              if (
-                !instrument
-              ) {
-                return "—";
-              }
+  students={filteredStudents}
+  selectedStudentId={
+    selectedStudent?.student.id ?? null
+  }
+  onSelectStudent={(student) => {
+    const record = students.find(
+      (item) =>
+        item.student.id === student.student.id
+    );
 
-              return instrument ===
-                "guitar"
-                ? "Acoustic Guitar"
-                : instrument
-                    .charAt(0)
-                    .toUpperCase() +
-                  instrument.slice(
-                    1
-                  );
-            }}
-            getBalance={
-              getBalance
-            }
-            openWhatsApp={
-              openWhatsApp
-            }
-            callStudent={
-              callStudent
-            }
-            emailStudent={
-              emailStudent
-            }
-          />
+    if (record) {
+      handleSelectStudent(record);
+    }
+  }}
+  formatCurrency={formatCurrency}
+  formatDate={formatDate}
+  instrumentName={(instrument) => {
+    if (!instrument) {
+      return "—";
+    }
+
+    return instrument === "guitar"
+      ? "Acoustic Guitar"
+      : instrument.charAt(0).toUpperCase() +
+        instrument.slice(1);
+  }}
+  getBalance={getBalance}
+  openWhatsApp={openWhatsApp}
+  callStudent={callStudent}
+  emailStudent={emailStudent}
+/>
         )}
 
       </div>
