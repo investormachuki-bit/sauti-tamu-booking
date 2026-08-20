@@ -159,13 +159,25 @@ function getBalance(
     total_fee?: number | string | null;
     status?: string | null;
   } | null,
-  payments: Payment[]
+  payments: {
+    id: string;
+    amount: number | string;
+    payment_date: string;
+    payment_method: string;
+    reference?: string | null;
+  }[]
 ) {
   if (!enrollment) return 0;
 
+  const totalPaid = payments.reduce(
+    (total, payment) =>
+      total + Number(payment.amount || 0),
+    0
+  );
+
   return Math.max(
     Number(enrollment.total_fee || 0) -
-      getTotalPaid(payments),
+      totalPaid,
     0
   );
 }
