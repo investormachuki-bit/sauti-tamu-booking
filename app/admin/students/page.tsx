@@ -2,8 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-import type { PaymentMethod } from "@/types/students";
-
 import StudentsHeader from "../../../components/students/StudentsHeader";
 import StudentStats from "../../../components/students/StudentStats";
 import StudentsToolbar from "../../../components/students/StudentsToolbar";
@@ -11,6 +9,15 @@ import StudentList from "../../../components/students/StudentList";
 import StudentDetails from "../../../components/students/StudentDetails";
 import PaymentModal from "../../../components/students/PaymentModal";
 import AddStudentModal from "../../../components/students/AddStudentModal";
+
+
+type PaymentMethod =
+  | "mpesa"
+  | "cash"
+  | "bank"
+  | "card"
+  | "other";
+
 
 type Student = {
   id: string;
