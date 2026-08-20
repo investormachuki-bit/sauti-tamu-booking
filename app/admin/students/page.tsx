@@ -776,29 +776,463 @@ export default function AdminStudentsPage() {
     );
   }
 
-  /* =====================================================
+   /* =====================================================
      RECEIPTS
   ===================================================== */
+
+  function buildReceiptHtml(
+    record: SelectedStudentRecord,
+    payment: Payment
+  ) {
+    const studentName =
+      record.student.full_name;
+
+    const programme =
+      record.enrollment?.programme_name ||
+      record.enrollment?.instrument ||
+      "Music Training";
+
+    const amount = formatCurrency(
+      Number(payment.amount || 0)
+    );
+
+    const paymentDate = formatDate(
+      payment.payment_date
+    );
+
+    const method =
+      payment.payment_method
+        .charAt(0)
+        .toUpperCase() +
+      payment.payment_method.slice(1);
+
+    const reference =
+      payment.reference || "—";
+
+    const totalFee = Number(
+      record.enrollment?.total_fee || 0
+    );
+
+    const totalPaid = getTotalPaid(
+      record.payments
+    );
+
+    const balance = record.enrollment
+      ? getBalance(
+          record.enrollment,
+          record.payments
+        )
+      : Math.max(
+          totalFee - totalPaid,
+          0
+        );
+
+    return `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+
+  <title>
+    Payment Receipt - ${studentName}
+  </title>
+
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      padding: 40px 20px;
+      background: #f5f5f5;
+      font-family: Arial, Helvetica, sans-serif;
+      color: #222;
+    }
+
+    .receipt {
+      width: 100%;
+      max-width: 520px;
+      margin: 0 auto;
+      background: #ffffff;
+      border-radius: 18px;
+      padding: 32px;
+      box-shadow: 0 10px 40px rgba(0,0,0,.08);
+    }
+
+    .header {
+      text-align: center;
+      border-bottom: 1px solid #e5e5e5;
+      padding-bottom: 24px;
+    }
+
+    .brand {
+      font-size: 22px;
+      font-weight: 800;
+      letter-spacing: .02em;
+      color: #222;
+    }
+
+    .eyebrow {
+      margin-top: 7px;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: .14em;
+      color: #777;
+      text-transform: uppercase;
+    }
+
+    .receipt-number {
+      margin-top: 18px;
+      font-size: 11px;
+      color: #777;
+    }
+
+    .section {
+      margin-top: 25px;
+    }
+
+    .section-title {
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+      color: #777;
+      margin-bottom: 12px;
+    }
+
+    .row {
+      display: flex;
+      justify-content: space-between;
+      gap: 20px;
+      padding: 9px 0;
+      border-bottom: 1px solid #f0f0f0;
+    }
+
+    .label {
+      font-size: 11px;
+      color: #777;
+    }
+
+    .value {
+      font-size: 11px;
+      font-weight: 700;
+      text-align: right;
+    }
+
+    .amount-box {
+      margin-top: 25px;
+      padding: 20px;
+      border-radius: 14px;
+      background: #f7f7f7;
+      text-align: center;
+    }
+
+    .amount-label {
+      font-size: 10px;
+      color: #777;
+      text-transform: uppercase;
+      letter-spacing: .08em;
+      font-weight: 700;
+    }
+
+    .amount {
+      margin-top: 8px;
+      font-size: 27px;
+      font-weight: 800;
+      color: #b21f24;
+    }
+
+    .balance {
+      margin-top: 20px;
+      padding-top: 18px;
+      border-top: 1px solid #e5e5e5;
+    }
+
+    .footer {
+      margin-top: 30px;
+      padding-top: 20px;
+      border-top: 1px solid #e5e5e5;
+      text-align: center;
+      font-size: 10px;
+      line-height: 1.6;
+      color: #777;
+    }
+
+    .print-button {
+      display: block;
+      margin: 25px auto 0;
+      padding: 11px 20px;
+      border: 0;
+      border-radius: 10px;
+      background: #222;
+      color: white;
+      cursor: pointer;
+      font-weight: 700;
+    }
+
+    @media print {
+      body {
+        background: white;
+        padding: 0;
+      }
+
+      .receipt {
+        box-shadow: none;
+        max-width: none;
+      }
+
+      .print-button {
+        display: none;
+      }
+    }
+  </style>
+</head>
+
+<body>
+
+  <div class="receipt">
+
+    <div class="header">
+
+      <div class="brand">
+        SAUTI TAMU
+      </div>
+
+      <div class="eyebrow">
+        Music School
+      </div>
+
+      <div class="receipt-number">
+        Payment Receipt · ${payment.id}
+      </div>
+
+    </div>
+
+    <div class="section">
+
+      <div class="section-title">
+        Student
+      </div>
+
+      <div class="row">
+        <span class="label">
+          Name
+        </span>
+
+        <span class="value">
+          ${studentName}
+        </span>
+      </div>
+
+      <div class="row">
+        <span class="label">
+          Programme
+        </span>
+
+        <span class="value">
+          ${programme}
+        </span>
+      </div>
+
+    </div>
+
+    <div class="section">
+
+      <div class="section-title">
+        Payment
+      </div>
+
+      <div class="row">
+        <span class="label">
+          Date
+        </span>
+
+        <span class="value">
+          ${paymentDate}
+        </span>
+      </div>
+
+      <div class="row">
+        <span class="label">
+          Method
+        </span>
+
+        <span class="value">
+          ${method}
+        </span>
+      </div>
+
+      <div class="row">
+        <span class="label">
+          Reference
+        </span>
+
+        <span class="value">
+          ${reference}
+        </span>
+      </div>
+
+    </div>
+
+    <div class="amount-box">
+
+      <div class="amount-label">
+        Amount Received
+      </div>
+
+      <div class="amount">
+        ${amount}
+      </div>
+
+    </div>
+
+    <div class="balance">
+
+      <div class="row">
+        <span class="label">
+          Programme Fee
+        </span>
+
+        <span class="value">
+          ${formatCurrency(totalFee)}
+        </span>
+      </div>
+
+      <div class="row">
+        <span class="label">
+          Total Paid
+        </span>
+
+        <span class="value">
+          ${formatCurrency(totalPaid)}
+        </span>
+      </div>
+
+      <div class="row">
+        <span class="label">
+          Balance
+        </span>
+
+        <span class="value">
+          ${formatCurrency(balance)}
+        </span>
+      </div>
+
+    </div>
+
+    <div class="footer">
+
+      Thank you for choosing Sauti Tamu Music School.
+
+      <br />
+
+      This receipt confirms that the payment above
+      has been received.
+
+    </div>
+
+    <button
+      class="print-button"
+      onclick="window.print()"
+    >
+      Print Receipt
+    </button>
+
+  </div>
+
+</body>
+</html>
+`;
+  }
 
   function viewReceipt(
     record: SelectedStudentRecord,
     payment: Payment
   ) {
-    console.log(
-      "View receipt",
-      record,
-      payment
+    const html =
+      buildReceiptHtml(
+        record,
+        payment
+      );
+
+    const receiptWindow =
+      window.open(
+        "",
+        "_blank",
+        "width=700,height=900"
+      );
+
+    if (!receiptWindow) {
+      alert(
+        "Please allow pop-ups to view the receipt."
+      );
+      return;
+    }
+
+    receiptWindow.document.open();
+    receiptWindow.document.write(
+      html
     );
+    receiptWindow.document.close();
   }
 
   function downloadReceipt(
     record: SelectedStudentRecord,
     payment: Payment
   ) {
-    console.log(
-      "Download receipt",
-      record,
-      payment
+    const html =
+      buildReceiptHtml(
+        record,
+        payment
+      );
+
+    const blob =
+      new Blob(
+        [html],
+        {
+          type: "text/html",
+        }
+      );
+
+    const url =
+      URL.createObjectURL(
+        blob
+      );
+
+    const link =
+      document.createElement(
+        "a"
+      );
+
+    link.href = url;
+
+    const safeName =
+      record.student.full_name
+        .replace(
+          /[^a-z0-9]+/gi,
+          "-"
+        )
+        .replace(
+          /^-|-$/g,
+          ""
+        );
+
+    link.download =
+      `Sauti-Tamu-Receipt-${safeName}-${payment.id}.html`;
+
+    document.body.appendChild(
+      link
+    );
+
+    link.click();
+
+    document.body.removeChild(
+      link
+    );
+
+    URL.revokeObjectURL(
+      url
     );
   }
 
@@ -809,6 +1243,9 @@ export default function AdminStudentsPage() {
     if (
       !record.student.email
     ) {
+      alert(
+        "This student does not have an email address."
+      );
       return;
     }
 
@@ -822,18 +1259,25 @@ export default function AdminStudentsPage() {
         [
           `Dear ${record.student.full_name},`,
           "",
-          `Payment received: ${formatCurrency(
-            Number(
-              payment.amount
-            )
+          "Thank you for your payment to Sauti Tamu Music School.",
+          "",
+          `Amount received: ${formatCurrency(
+            Number(payment.amount || 0)
           )}`,
           `Payment date: ${formatDate(
             payment.payment_date
           )}`,
           `Payment method: ${payment.payment_method}`,
           `Reference: ${
-            payment.reference ||
-            "—"
+            payment.reference || "—"
+          }`,
+          "",
+          `Programme: ${
+            record.enrollment
+              ?.programme_name ||
+            record.enrollment
+              ?.instrument ||
+            "Music Training"
           }`,
           "",
           "Sauti Tamu Music School",
@@ -844,7 +1288,6 @@ export default function AdminStudentsPage() {
       `mailto:${record.student.email}` +
       `?subject=${subject}&body=${body}`;
   }
-
   /* =====================================================
      PAGE
   ===================================================== */
