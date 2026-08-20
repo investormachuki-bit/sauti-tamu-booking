@@ -10,168 +10,133 @@ import {
   X,
 } from "lucide-react";
 
-export type Instrument = "piano" | "guitar";
+import type { PaymentMethod } from "@/types/students";
 
-export type PaymentMethod =
-  | "mpesa"
-  | "cash"
-  | "bank"
-  | "card"
-  | "other";
-
-type AddStudentModalProps = {
-  showAddStudent: boolean;
-  closeAddStudent: () => void;
-
+interface AddStudentModalProps {
+  show: boolean;
   addingStudent: boolean;
-  addStudent: () => void;
-
-  addStudentError: string | null;
+  error: string;
 
   studentName: string;
-  setStudentName: (value: string) => void;
-
   studentWhatsapp: string;
-  setStudentWhatsapp: (value: string) => void;
-
   studentEmail: string;
-  setStudentEmail: (value: string) => void;
-
   studentNotes: string;
-  setStudentNotes: (value: string) => void;
 
-  instrument: Instrument;
-  setInstrument: (value: Instrument) => void;
-
+  instrument: "piano" | "guitar";
   programmeName: string;
-  setProgrammeName: (value: string) => void;
 
   startDate: string;
-  setStartDate: (value: string) => void;
-
   endDate: string;
 
   totalFee: string;
-  setTotalFee: (value: string) => void;
+  initialPayment: string;
+  initialPaymentMethod: PaymentMethod;
+  initialPaymentReference: string;
+
+  nextPaymentAmount: string;
+  nextPaymentDueDate: string;
+  nextPaymentFollowUpDate: string;
+  nextPaymentNotes: string;
 
   numericTotalFee: number;
-  initialPayment: string;
-  setInitialPayment: (value: string) => void;
-
   numericInitialPayment: number;
-
-  initialPaymentMethod: PaymentMethod;
-  setInitialPaymentMethod: (
-    value: PaymentMethod
-  ) => void;
-
-  initialPaymentReference: string;
-  setInitialPaymentReference: (
-    value: string
-  ) => void;
-
   remainingAfterInitial: number;
   remainingAfterNextPayment: number;
 
-  nextPaymentAmount: string;
+  setStudentName: (value: string) => void;
+  setStudentWhatsapp: (value: string) => void;
+  setStudentEmail: (value: string) => void;
+  setStudentNotes: (value: string) => void;
+
+  setInstrument: (value: "piano" | "guitar") => void;
+  setProgrammeName: (value: string) => void;
+
+  setStartDate: (value: string) => void;
+
+  setTotalFee: (value: string) => void;
+  setInitialPayment: (value: string) => void;
+  setInitialPaymentMethod: (value: PaymentMethod) => void;
+  setInitialPaymentReference: (value: string) => void;
+
   setNextPaymentAmount: (value: string) => void;
-
-  nextPaymentDueDate: string;
   setNextPaymentDueDate: (value: string) => void;
-
-  nextPaymentFollowUpDate: string;
-  setNextPaymentFollowUpDate: (
-    value: string
-  ) => void;
-
-  nextPaymentNotes: string;
+  setNextPaymentFollowUpDate: (value: string) => void;
   setNextPaymentNotes: (value: string) => void;
 
+  closeAddStudent: () => void;
+  addStudent: () => void;
+
   formatCurrency: (amount: number) => string;
-  formatDate: (value: string) => string;
-  instrumentName: (
-    value: Instrument
-  ) => string;
-};
+  formatDate: (date: string) => string;
+  instrumentName: (instrument: "piano" | "guitar") => string;
+}
 
 export default function AddStudentModal({
-  showAddStudent,
-  closeAddStudent,
+  show,
   addingStudent,
-  addStudent,
-  addStudentError,
+  error,
 
   studentName,
-  setStudentName,
-
   studentWhatsapp,
-  setStudentWhatsapp,
-
   studentEmail,
-  setStudentEmail,
-
   studentNotes,
-  setStudentNotes,
 
   instrument,
-  setInstrument,
-
   programmeName,
-  setProgrammeName,
 
   startDate,
-  setStartDate,
-
   endDate,
 
   totalFee,
-  setTotalFee,
+  initialPayment,
+  initialPaymentMethod,
+  initialPaymentReference,
+
+  nextPaymentAmount,
+  nextPaymentDueDate,
+  nextPaymentFollowUpDate,
+  nextPaymentNotes,
 
   numericTotalFee,
-
-  initialPayment,
-  setInitialPayment,
-
   numericInitialPayment,
-
-  initialPaymentMethod,
-  setInitialPaymentMethod,
-
-  initialPaymentReference,
-  setInitialPaymentReference,
-
   remainingAfterInitial,
   remainingAfterNextPayment,
 
-  nextPaymentAmount,
+  setStudentName,
+  setStudentWhatsapp,
+  setStudentEmail,
+  setStudentNotes,
+
+  setInstrument,
+  setProgrammeName,
+
+  setStartDate,
+
+  setTotalFee,
+  setInitialPayment,
+  setInitialPaymentMethod,
+  setInitialPaymentReference,
+
   setNextPaymentAmount,
-
-  nextPaymentDueDate,
   setNextPaymentDueDate,
-
-  nextPaymentFollowUpDate,
   setNextPaymentFollowUpDate,
-
-  nextPaymentNotes,
   setNextPaymentNotes,
+
+  closeAddStudent,
+  addStudent,
 
   formatCurrency,
   formatDate,
   instrumentName,
 }: AddStudentModalProps) {
-  if (!showAddStudent) {
-    return null;
-  }
+  if (!show) return null;
 
   return (
     <div className="fixed inset-0 z-[110] flex items-end justify-center bg-black/50 sm:items-center sm:p-5">
-
       <div className="max-h-[94vh] w-full max-w-[560px] overflow-y-auto rounded-t-3xl bg-white shadow-2xl sm:rounded-3xl">
 
         {/* HEADER */}
-
         <div className="sticky top-0 z-20 border-b border-[var(--st-border)] bg-white px-5 py-4">
-
           <div className="flex items-start justify-between gap-4">
 
             <div>
@@ -184,9 +149,7 @@ export default function AddStudentModal({
               </h2>
 
               <p className="mt-1 text-[10px] text-[var(--st-gray)]">
-                Register the student,
-                programme and payment
-                plan.
+                Register the student, programme and payment plan.
               </p>
             </div>
 
@@ -195,14 +158,11 @@ export default function AddStudentModal({
               onClick={closeAddStudent}
               disabled={addingStudent}
               className="st-icon-button disabled:opacity-40"
-              aria-label="Close add student form"
-              title="Close"
             >
               <X size={17} />
             </button>
 
           </div>
-
         </div>
 
         <div className="p-5">
@@ -212,7 +172,6 @@ export default function AddStudentModal({
           ===================================================== */}
 
           <div>
-
             <div className="mb-4">
               <p className="st-eyebrow">
                 01 · STUDENT INFORMATION
@@ -225,10 +184,7 @@ export default function AddStudentModal({
 
             <div className="space-y-4">
 
-              {/* FULL NAME */}
-
               <div>
-
                 <label className="mb-2 block text-[9px] font-bold uppercase tracking-[0.08em] text-[var(--st-charcoal)]">
                   Full name *
                 </label>
@@ -237,23 +193,16 @@ export default function AddStudentModal({
                   type="text"
                   value={studentName}
                   onChange={(event) =>
-                    setStudentName(
-                      event.target.value
-                    )
+                    setStudentName(event.target.value)
                   }
                   placeholder="e.g. Jane Wanjiku"
-                  disabled={addingStudent}
-                  className="w-full rounded-xl border border-[var(--st-border)] px-4 py-3.5 text-[12px] outline-none transition focus:border-[var(--st-red)] focus:ring-2 focus:ring-[var(--st-red)]/10 disabled:bg-[var(--st-bg-soft)]"
+                  className="w-full rounded-xl border border-[var(--st-border)] px-4 py-3.5 text-[12px] outline-none transition focus:border-[var(--st-red)] focus:ring-2 focus:ring-[var(--st-red)]/10"
                 />
-
               </div>
-
-              {/* CONTACT */}
 
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
 
                 <div>
-
                   <label className="mb-2 block text-[9px] font-bold uppercase tracking-[0.08em] text-[var(--st-charcoal)]">
                     WhatsApp number *
                   </label>
@@ -262,19 +211,14 @@ export default function AddStudentModal({
                     type="tel"
                     value={studentWhatsapp}
                     onChange={(event) =>
-                      setStudentWhatsapp(
-                        event.target.value
-                      )
+                      setStudentWhatsapp(event.target.value)
                     }
                     placeholder="e.g. 254712345678"
-                    disabled={addingStudent}
-                    className="w-full rounded-xl border border-[var(--st-border)] px-4 py-3.5 text-[11px] outline-none focus:border-[var(--st-red)] disabled:bg-[var(--st-bg-soft)]"
+                    className="w-full rounded-xl border border-[var(--st-border)] px-4 py-3.5 text-[11px] outline-none focus:border-[var(--st-red)]"
                   />
-
                 </div>
 
                 <div>
-
                   <label className="mb-2 block text-[9px] font-bold uppercase tracking-[0.08em] text-[var(--st-charcoal)]">
                     Email *
                   </label>
@@ -283,23 +227,16 @@ export default function AddStudentModal({
                     type="email"
                     value={studentEmail}
                     onChange={(event) =>
-                      setStudentEmail(
-                        event.target.value
-                      )
+                      setStudentEmail(event.target.value)
                     }
                     placeholder="student@email.com"
-                    disabled={addingStudent}
-                    className="w-full rounded-xl border border-[var(--st-border)] px-4 py-3.5 text-[11px] outline-none focus:border-[var(--st-red)] disabled:bg-[var(--st-bg-soft)]"
+                    className="w-full rounded-xl border border-[var(--st-border)] px-4 py-3.5 text-[11px] outline-none focus:border-[var(--st-red)]"
                   />
-
                 </div>
 
               </div>
 
-              {/* NOTES */}
-
               <div>
-
                 <label className="mb-2 block text-[9px] font-bold uppercase tracking-[0.08em] text-[var(--st-charcoal)]">
                   Notes
                 </label>
@@ -307,20 +244,15 @@ export default function AddStudentModal({
                 <textarea
                   value={studentNotes}
                   onChange={(event) =>
-                    setStudentNotes(
-                      event.target.value
-                    )
+                    setStudentNotes(event.target.value)
                   }
                   rows={3}
                   placeholder="Optional student notes..."
-                  disabled={addingStudent}
-                  className="w-full resize-none rounded-xl border border-[var(--st-border)] px-4 py-3 text-[11px] outline-none focus:border-[var(--st-red)] disabled:bg-[var(--st-bg-soft)]"
+                  className="w-full resize-none rounded-xl border border-[var(--st-border)] px-4 py-3 text-[11px] outline-none focus:border-[var(--st-red)]"
                 />
-
               </div>
 
             </div>
-
           </div>
 
           {/* =====================================================
@@ -330,7 +262,6 @@ export default function AddStudentModal({
           <div className="mt-7 border-t border-[var(--st-border)] pt-7">
 
             <div className="mb-4">
-
               <p className="st-eyebrow">
                 02 · PROGRAMME
               </p>
@@ -338,15 +269,12 @@ export default function AddStudentModal({
               <h3 className="mt-1 text-[14px] font-bold text-[var(--st-charcoal-dark)]">
                 Training programme
               </h3>
-
             </div>
 
             <div className="space-y-4">
 
               {/* INSTRUMENT */}
-
               <div>
-
                 <label className="mb-2 block text-[9px] font-bold uppercase tracking-[0.08em] text-[var(--st-charcoal)]">
                   Instrument *
                 </label>
@@ -355,17 +283,13 @@ export default function AddStudentModal({
 
                   <button
                     type="button"
-                    onClick={() =>
-                      setInstrument("piano")
-                    }
-                    disabled={addingStudent}
+                    onClick={() => setInstrument("piano")}
                     className={`rounded-xl border px-4 py-3.5 text-left transition ${
                       instrument === "piano"
                         ? "border-[var(--st-red)] bg-red-50"
                         : "border-[var(--st-border)] bg-white"
-                    } disabled:opacity-60`}
+                    }`}
                   >
-
                     <p
                       className={`m-0 text-[11px] font-bold ${
                         instrument === "piano"
@@ -379,22 +303,17 @@ export default function AddStudentModal({
                     <p className="mt-1 mb-0 text-[8px] text-[var(--st-gray)]">
                       Piano training
                     </p>
-
                   </button>
 
                   <button
                     type="button"
-                    onClick={() =>
-                      setInstrument("guitar")
-                    }
-                    disabled={addingStudent}
+                    onClick={() => setInstrument("guitar")}
                     className={`rounded-xl border px-4 py-3.5 text-left transition ${
                       instrument === "guitar"
                         ? "border-[var(--st-red)] bg-red-50"
                         : "border-[var(--st-border)] bg-white"
-                    } disabled:opacity-60`}
+                    }`}
                   >
-
                     <p
                       className={`m-0 text-[11px] font-bold ${
                         instrument === "guitar"
@@ -406,20 +325,15 @@ export default function AddStudentModal({
                     </p>
 
                     <p className="mt-1 mb-0 text-[8px] text-[var(--st-gray)]">
-                      Acoustic guitar
-                      training
+                      Acoustic guitar training
                     </p>
-
                   </button>
 
                 </div>
-
               </div>
 
               {/* PROGRAMME NAME */}
-
               <div>
-
                 <label className="mb-2 block text-[9px] font-bold uppercase tracking-[0.08em] text-[var(--st-charcoal)]">
                   Programme name
                 </label>
@@ -428,28 +342,21 @@ export default function AddStudentModal({
                   type="text"
                   value={programmeName}
                   onChange={(event) =>
-                    setProgrammeName(
-                      event.target.value
-                    )
+                    setProgrammeName(event.target.value)
                   }
-                  disabled={addingStudent}
-                  className="w-full rounded-xl border border-[var(--st-border)] px-4 py-3.5 text-[11px] outline-none focus:border-[var(--st-red)] disabled:bg-[var(--st-bg-soft)]"
+                  className="w-full rounded-xl border border-[var(--st-border)] px-4 py-3.5 text-[11px] outline-none focus:border-[var(--st-red)]"
                 />
-
               </div>
 
               {/* DATES */}
-
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
 
                 <div>
-
                   <label className="mb-2 block text-[9px] font-bold uppercase tracking-[0.08em] text-[var(--st-charcoal)]">
                     Start date *
                   </label>
 
                   <div className="relative">
-
                     <CalendarDays
                       size={14}
                       className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-[var(--st-red)]"
@@ -459,48 +366,33 @@ export default function AddStudentModal({
                       type="date"
                       value={startDate}
                       onChange={(event) =>
-                        setStartDate(
-                          event.target.value
-                        )
+                        setStartDate(event.target.value)
                       }
-                      disabled={addingStudent}
-                      className="w-full rounded-xl border border-[var(--st-border)] bg-white py-3.5 pl-10 pr-3 text-[11px] outline-none focus:border-[var(--st-red)] disabled:bg-[var(--st-bg-soft)]"
+                      className="w-full rounded-xl border border-[var(--st-border)] bg-white py-3.5 pl-10 pr-3 text-[11px] outline-none focus:border-[var(--st-red)]"
                     />
-
                   </div>
-
                 </div>
 
                 <div>
-
                   <label className="mb-2 block text-[9px] font-bold uppercase tracking-[0.08em] text-[var(--st-charcoal)]">
                     End date
                   </label>
 
                   <div className="rounded-xl border border-[var(--st-border)] bg-[var(--st-bg-soft)] px-4 py-3.5">
-
                     <p className="m-0 text-[11px] font-bold text-[var(--st-charcoal-dark)]">
-                      {endDate
-                        ? formatDate(endDate)
-                        : "—"}
+                      {endDate ? formatDate(endDate) : "—"}
                     </p>
 
                     <p className="mt-1 mb-0 text-[8px] text-[var(--st-gray)]">
-                      Automatically
-                      calculated
+                      Automatically calculated
                     </p>
-
                   </div>
-
                 </div>
 
               </div>
 
-              {/* PERIOD */}
-
               {endDate && (
                 <div className="rounded-xl bg-[var(--st-bg-soft)] p-3">
-
                   <div className="flex items-center gap-2">
 
                     <Clock3
@@ -517,12 +409,10 @@ export default function AddStudentModal({
                     </p>
 
                   </div>
-
                 </div>
               )}
 
             </div>
-
           </div>
 
           {/* =====================================================
@@ -532,7 +422,6 @@ export default function AddStudentModal({
           <div className="mt-7 border-t border-[var(--st-border)] pt-7">
 
             <div className="mb-4">
-
               <p className="st-eyebrow">
                 03 · PAYMENT PLAN
               </p>
@@ -542,27 +431,20 @@ export default function AddStudentModal({
               </h3>
 
               <p className="mt-1 text-[9px] leading-relaxed text-[var(--st-gray)]">
-                The student can start
-                with any amount. The
-                remaining balance can be
-                followed up through
-                scheduled payments.
+                The student can start with any amount. The remaining
+                balance can be followed up through scheduled payments.
               </p>
-
             </div>
 
             <div className="space-y-4">
 
               {/* TOTAL FEE */}
-
               <div>
-
                 <label className="mb-2 block text-[9px] font-bold uppercase tracking-[0.08em] text-[var(--st-charcoal)]">
                   Total programme fee *
                 </label>
 
                 <div className="relative">
-
                   <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[10px] font-bold text-[var(--st-gray)]">
                     KES
                   </span>
@@ -572,27 +454,20 @@ export default function AddStudentModal({
                     min="0"
                     value={totalFee}
                     onChange={(event) =>
-                      setTotalFee(
-                        event.target.value
-                      )
+                      setTotalFee(event.target.value)
                     }
                     placeholder="e.g. 26850"
-                    disabled={addingStudent}
-                    className="w-full rounded-xl border border-[var(--st-border)] py-3.5 pl-14 pr-4 text-[12px] font-semibold outline-none focus:border-[var(--st-red)] disabled:bg-[var(--st-bg-soft)]"
+                    className="w-full rounded-xl border border-[var(--st-border)] py-3.5 pl-14 pr-4 text-[12px] font-semibold outline-none focus:border-[var(--st-red)]"
                   />
-
                 </div>
-
               </div>
 
               {/* INITIAL PAYMENT */}
-
               <div className="rounded-2xl bg-[var(--st-bg-soft)] p-4">
 
                 <div className="flex items-center justify-between gap-3">
 
                   <div>
-
                     <p className="m-0 text-[9px] font-bold uppercase tracking-[0.06em] text-[var(--st-gray)]">
                       Initial payment
                     </p>
@@ -600,36 +475,26 @@ export default function AddStudentModal({
                     <p className="mt-1 mb-0 text-[8px] text-[var(--st-gray)]">
                       Amount paid today
                     </p>
-
                   </div>
 
                   <p className="m-0 text-[13px] font-bold text-[var(--st-charcoal-dark)]">
-                    {formatCurrency(
-                      numericInitialPayment
-                    )}
+                    {formatCurrency(numericInitialPayment)}
                   </p>
 
                 </div>
 
                 <div className="mt-3">
-
                   <input
                     type="number"
                     min="0"
                     value={initialPayment}
                     onChange={(event) =>
-                      setInitialPayment(
-                        event.target.value
-                      )
+                      setInitialPayment(event.target.value)
                     }
                     placeholder="0"
-                    disabled={addingStudent}
-                    className="w-full rounded-xl border border-[var(--st-border)] bg-white px-4 py-3.5 text-[12px] font-semibold outline-none focus:border-[var(--st-red)] disabled:bg-gray-100"
+                    className="w-full rounded-xl border border-[var(--st-border)] bg-white px-4 py-3.5 text-[12px] font-semibold outline-none focus:border-[var(--st-red)]"
                   />
-
                 </div>
-
-                {/* INITIAL PAYMENT METHOD */}
 
                 {numericInitialPayment > 0 && (
                   <div className="mt-3">
@@ -639,52 +504,29 @@ export default function AddStudentModal({
                     </label>
 
                     <div className="relative">
-
                       <select
                         value={initialPaymentMethod}
                         onChange={(event) =>
                           setInitialPaymentMethod(
-                            event.target
-                              .value as PaymentMethod
+                            event.target.value as PaymentMethod
                           )
                         }
-                        disabled={addingStudent}
-                        className="w-full appearance-none rounded-xl border border-[var(--st-border)] bg-white px-4 py-3.5 text-[10px] font-semibold outline-none focus:border-[var(--st-red)] disabled:bg-gray-100"
+                        className="w-full appearance-none rounded-xl border border-[var(--st-border)] bg-white px-4 py-3.5 text-[10px] font-semibold outline-none focus:border-[var(--st-red)]"
                       >
-
-                        <option value="mpesa">
-                          M-Pesa
-                        </option>
-
-                        <option value="cash">
-                          Cash
-                        </option>
-
-                        <option value="bank">
-                          Bank
-                        </option>
-
-                        <option value="card">
-                          Card
-                        </option>
-
-                        <option value="other">
-                          Other
-                        </option>
-
+                        <option value="mpesa">M-Pesa</option>
+                        <option value="cash">Cash</option>
+                        <option value="bank">Bank</option>
+                        <option value="card">Card</option>
+                        <option value="other">Other</option>
                       </select>
 
                       <ChevronDown
                         size={14}
                         className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-[var(--st-gray)]"
                       />
-
                     </div>
-
                   </div>
                 )}
-
-                {/* INITIAL REFERENCE */}
 
                 {numericInitialPayment > 0 && (
                   <div className="mt-3">
@@ -695,60 +537,46 @@ export default function AddStudentModal({
 
                     <input
                       type="text"
-                      value={
-                        initialPaymentReference
-                      }
+                      value={initialPaymentReference}
                       onChange={(event) =>
                         setInitialPaymentReference(
                           event.target.value
                         )
                       }
                       placeholder="M-Pesa code / receipt number"
-                      disabled={addingStudent}
-                      className="w-full rounded-xl border border-[var(--st-border)] bg-white px-4 py-3 text-[10px] outline-none focus:border-[var(--st-red)] disabled:bg-gray-100"
+                      className="w-full rounded-xl border border-[var(--st-border)] bg-white px-4 py-3 text-[10px] outline-none focus:border-[var(--st-red)]"
                     />
-
                   </div>
                 )}
 
               </div>
 
-              {/* BALANCE CARDS */}
-
+              {/* BALANCES */}
               <div className="grid grid-cols-2 gap-2">
 
                 <div className="rounded-xl border border-[var(--st-border)] p-3">
-
                   <p className="m-0 text-[8px] font-bold uppercase tracking-[0.06em] text-[var(--st-gray)]">
                     Balance after initial
                   </p>
 
                   <p className="mt-2 text-[16px] font-bold text-[var(--st-red)]">
-                    {formatCurrency(
-                      remainingAfterInitial
-                    )}
+                    {formatCurrency(remainingAfterInitial)}
                   </p>
-
                 </div>
 
                 <div className="rounded-xl border border-[var(--st-border)] p-3">
-
                   <p className="m-0 text-[8px] font-bold uppercase tracking-[0.06em] text-[var(--st-gray)]">
                     After next payment
                   </p>
 
                   <p className="mt-2 text-[16px] font-bold text-[var(--st-charcoal-dark)]">
-                    {formatCurrency(
-                      remainingAfterNextPayment
-                    )}
+                    {formatCurrency(remainingAfterNextPayment)}
                   </p>
-
                 </div>
 
               </div>
 
             </div>
-
           </div>
 
           {/* =====================================================
@@ -759,7 +587,6 @@ export default function AddStudentModal({
             <div className="mt-7 border-t border-[var(--st-border)] pt-7">
 
               <div className="mb-4">
-
                 <p className="st-eyebrow">
                   04 · NEXT FOLLOW-UP
                 </p>
@@ -769,26 +596,19 @@ export default function AddStudentModal({
                 </h3>
 
                 <p className="mt-1 text-[9px] leading-relaxed text-[var(--st-gray)]">
-                  Tell the system exactly
-                  when and how much you
-                  intend to follow up for
-                  next.
+                  Tell the system exactly when and how much you intend
+                  to follow up for next.
                 </p>
-
               </div>
 
               <div className="space-y-4">
 
-                {/* NEXT PAYMENT AMOUNT */}
-
                 <div>
-
                   <label className="mb-2 block text-[9px] font-bold uppercase tracking-[0.08em] text-[var(--st-charcoal)]">
                     Next payment amount *
                   </label>
 
                   <div className="relative">
-
                     <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[10px] font-bold text-[var(--st-gray)]">
                       KES
                     </span>
@@ -799,39 +619,27 @@ export default function AddStudentModal({
                       max={remainingAfterInitial}
                       value={nextPaymentAmount}
                       onChange={(event) =>
-                        setNextPaymentAmount(
-                          event.target.value
-                        )
+                        setNextPaymentAmount(event.target.value)
                       }
                       placeholder="e.g. 5000"
-                      disabled={addingStudent}
-                      className="w-full rounded-xl border border-[var(--st-border)] py-3.5 pl-14 pr-4 text-[12px] font-semibold outline-none focus:border-[var(--st-red)] disabled:bg-[var(--st-bg-soft)]"
+                      className="w-full rounded-xl border border-[var(--st-border)] py-3.5 pl-14 pr-4 text-[12px] font-semibold outline-none focus:border-[var(--st-red)]"
                     />
-
                   </div>
 
                   <p className="mt-1.5 mb-0 text-[8px] text-[var(--st-gray)]">
-                    Remaining balance
-                    available:{" "}
-                    {formatCurrency(
-                      remainingAfterInitial
-                    )}
+                    Remaining balance available:{" "}
+                    {formatCurrency(remainingAfterInitial)}
                   </p>
-
                 </div>
-
-                {/* DATES */}
 
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
 
                   <div>
-
                     <label className="mb-2 block text-[9px] font-bold uppercase tracking-[0.08em] text-[var(--st-charcoal)]">
                       Due date *
                     </label>
 
                     <div className="relative">
-
                       <CalendarDays
                         size={14}
                         className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-[var(--st-red)]"
@@ -841,26 +649,19 @@ export default function AddStudentModal({
                         type="date"
                         value={nextPaymentDueDate}
                         onChange={(event) =>
-                          setNextPaymentDueDate(
-                            event.target.value
-                          )
+                          setNextPaymentDueDate(event.target.value)
                         }
-                        disabled={addingStudent}
-                        className="w-full rounded-xl border border-[var(--st-border)] bg-white py-3.5 pl-10 pr-3 text-[10px] outline-none focus:border-[var(--st-red)] disabled:bg-[var(--st-bg-soft)]"
+                        className="w-full rounded-xl border border-[var(--st-border)] bg-white py-3.5 pl-10 pr-3 text-[10px] outline-none focus:border-[var(--st-red)]"
                       />
-
                     </div>
-
                   </div>
 
                   <div>
-
                     <label className="mb-2 block text-[9px] font-bold uppercase tracking-[0.08em] text-[var(--st-charcoal)]">
                       Follow-up date
                     </label>
 
                     <div className="relative">
-
                       <Clock3
                         size={14}
                         className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-[var(--st-red)]"
@@ -868,28 +669,20 @@ export default function AddStudentModal({
 
                       <input
                         type="date"
-                        value={
-                          nextPaymentFollowUpDate
-                        }
+                        value={nextPaymentFollowUpDate}
                         onChange={(event) =>
                           setNextPaymentFollowUpDate(
                             event.target.value
                           )
                         }
-                        disabled={addingStudent}
-                        className="w-full rounded-xl border border-[var(--st-border)] bg-white py-3.5 pl-10 pr-3 text-[10px] outline-none focus:border-[var(--st-red)] disabled:bg-[var(--st-bg-soft)]"
+                        className="w-full rounded-xl border border-[var(--st-border)] bg-white py-3.5 pl-10 pr-3 text-[10px] outline-none focus:border-[var(--st-red)]"
                       />
-
                     </div>
-
                   </div>
 
                 </div>
 
-                {/* NOTES */}
-
                 <div>
-
                   <label className="mb-2 block text-[9px] font-bold uppercase tracking-[0.08em] text-[var(--st-charcoal)]">
                     Follow-up notes
                   </label>
@@ -897,25 +690,20 @@ export default function AddStudentModal({
                   <textarea
                     value={nextPaymentNotes}
                     onChange={(event) =>
-                      setNextPaymentNotes(
-                        event.target.value
-                      )
+                      setNextPaymentNotes(event.target.value)
                     }
                     rows={3}
                     placeholder="e.g. Call student before the due date..."
-                    disabled={addingStudent}
-                    className="w-full resize-none rounded-xl border border-[var(--st-border)] px-4 py-3 text-[10px] outline-none focus:border-[var(--st-red)] disabled:bg-[var(--st-bg-soft)]"
+                    className="w-full resize-none rounded-xl border border-[var(--st-border)] px-4 py-3 text-[10px] outline-none focus:border-[var(--st-red)]"
                   />
-
                 </div>
 
               </div>
-
             </div>
           )}
 
           {/* =====================================================
-              REGISTRATION SUMMARY
+              SUMMARY
           ===================================================== */}
 
           <div className="mt-7 rounded-2xl bg-[var(--st-bg-soft)] p-4">
@@ -926,112 +714,76 @@ export default function AddStudentModal({
 
             <div className="mt-4 space-y-3">
 
-              {/* STUDENT */}
-
               <div className="flex items-center justify-between gap-3">
-
                 <span className="text-[9px] text-[var(--st-gray)]">
                   Student
                 </span>
 
-                <span className="text-right text-[10px] font-bold text-[var(--st-charcoal-dark)]">
-                  {studentName ||
-                    "Not entered"}
+                <span className="text-[10px] font-bold text-[var(--st-charcoal-dark)]">
+                  {studentName || "Not entered"}
                 </span>
-
               </div>
 
-              {/* PROGRAMME */}
-
               <div className="flex items-center justify-between gap-3">
-
                 <span className="text-[9px] text-[var(--st-gray)]">
                   Programme
                 </span>
 
-                <span className="text-right text-[10px] font-bold text-[var(--st-charcoal-dark)]">
-                  {instrumentName(
-                    instrument
-                  )}
+                <span className="text-[10px] font-bold text-[var(--st-charcoal-dark)]">
+                  {instrumentName(instrument)}
                 </span>
-
               </div>
 
-              {/* PERIOD */}
-
               <div className="flex items-center justify-between gap-3">
-
                 <span className="text-[9px] text-[var(--st-gray)]">
                   Programme period
                 </span>
 
-                <span className="text-right text-[10px] font-bold text-[var(--st-charcoal-dark)]">
+                <span className="text-[10px] font-bold text-[var(--st-charcoal-dark)]">
                   {startDate && endDate
-                    ? `${formatDate(
-                        startDate
-                      )} – ${formatDate(
-                        endDate
-                      )}`
+                    ? `${formatDate(startDate)} – ${formatDate(endDate)}`
                     : "Not entered"}
                 </span>
-
               </div>
-
-              {/* FINANCIAL SUMMARY */}
 
               <div className="border-t border-[var(--st-border)] pt-3">
 
                 <div className="flex items-center justify-between gap-3">
-
                   <span className="text-[9px] text-[var(--st-gray)]">
                     Total fee
                   </span>
 
                   <span className="text-[11px] font-bold text-[var(--st-charcoal-dark)]">
-                    {formatCurrency(
-                      numericTotalFee
-                    )}
+                    {formatCurrency(numericTotalFee)}
                   </span>
-
                 </div>
 
                 <div className="mt-2 flex items-center justify-between gap-3">
-
                   <span className="text-[9px] text-[var(--st-gray)]">
                     Initial payment
                   </span>
 
                   <span className="text-[11px] font-bold text-green-700">
-                    {formatCurrency(
-                      numericInitialPayment
-                    )}
+                    {formatCurrency(numericInitialPayment)}
                   </span>
-
                 </div>
 
                 <div className="mt-2 flex items-center justify-between gap-3">
-
                   <span className="text-[9px] text-[var(--st-gray)]">
                     Remaining balance
                   </span>
 
                   <span className="text-[13px] font-bold text-[var(--st-red)]">
-                    {formatCurrency(
-                      remainingAfterInitial
-                    )}
+                    {formatCurrency(remainingAfterInitial)}
                   </span>
-
                 </div>
 
               </div>
-
             </div>
-
           </div>
 
           {/* ERROR */}
-
-          {addStudentError && (
+          {error && (
             <div className="mt-5 flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3">
 
               <AlertCircle
@@ -1040,14 +792,13 @@ export default function AddStudentModal({
               />
 
               <p className="m-0 text-[10px] leading-relaxed text-red-700">
-                {addStudentError}
+                {error}
               </p>
 
             </div>
           )}
 
           {/* ACTIONS */}
-
           <div className="mt-6 grid grid-cols-2 gap-2">
 
             <button
@@ -1065,7 +816,6 @@ export default function AddStudentModal({
               disabled={addingStudent}
               className="st-button st-button-primary w-full disabled:opacity-60"
             >
-
               {addingStudent ? (
                 <>
                   <RefreshCw
@@ -1080,21 +830,16 @@ export default function AddStudentModal({
                   Add student
                 </>
               )}
-
             </button>
 
           </div>
 
           <p className="mt-4 text-center text-[8px] leading-relaxed text-[var(--st-gray)]">
-            Student, programme and
-            payment information will be
-            saved together.
+            Student, programme and payment information will be saved together.
           </p>
 
         </div>
-
       </div>
-
     </div>
   );
 }
