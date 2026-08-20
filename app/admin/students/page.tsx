@@ -1003,9 +1003,51 @@ export default function AdminStudentsPage() {
         instrument.slice(1);
   }}
   getBalance={getBalance}
-  openWhatsApp={openWhatsApp}
-  callStudent={callStudent}
-  emailStudent={emailStudent}
+
+  openWhatsApp={(student) => {
+    const record = students.find(
+      (item) =>
+        item.student.id === student.student.id
+    );
+
+    if (record) {
+      openWhatsApp({
+        student: record.student,
+        enrollment: record.enrollment,
+        payments: record.payments,
+      });
+    }
+  }}
+
+  callStudent={(student) => {
+    const record = students.find(
+      (item) =>
+        item.student.id === student.student.id
+    );
+
+    if (record) {
+      callStudent({
+        student: record.student,
+        enrollment: record.enrollment,
+        payments: record.payments,
+      });
+    }
+  }}
+
+  emailStudent={(student) => {
+    const record = students.find(
+      (item) =>
+        item.student.id === student.student.id
+    );
+
+    if (record) {
+      emailStudent({
+        student: record.student,
+        enrollment: record.enrollment,
+        payments: record.payments,
+      });
+    }
+  }}
 />
         )}
 
