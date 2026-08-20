@@ -30,24 +30,25 @@ import {
  * PAYMENT RECEIPT GENERATOR
  * =========================================================
  *
- * mode:
- *  - "download" → downloads the PDF
- *  - "view"     → opens the PDF in a new browser tab
- *  - "blob"     → returns the PDF Blob
+ * Generates the receipt PDF and RETURNS the jsPDF document.
  *
- * Default mode is "download" to preserve existing behaviour.
+ * IMPORTANT:
+ *
+ * This function does NOT automatically download the PDF.
+ *
+ * The caller decides whether to:
+ *
+ * - View
+ * - Download
+ * - Email
+ *
+ * This keeps receipt generation separate from receipt actions.
  * =========================================================
  */
 
-export type ReceiptMode =
-  | "download"
-  | "view"
-  | "blob";
-
 export async function generatePaymentReceipt(
-  data: PaymentReceiptData,
-  mode: ReceiptMode = "download"
-) {
+  data: PaymentReceiptData
+): Promise<jsPDF> {
   /*
    * =========================================================
    * 1. LOAD CURRENT SAVED SETTINGS
@@ -80,22 +81,37 @@ export async function generatePaymentReceipt(
 
   /*
    * =========================================================
-   * 3. DETERMINE RECEIPT HEIGHT
+   * 3. CALCULATE RECEIPT HEIGHT
    * =========================================================
+   *
+   * The previous version used a small fixed estimate.
+   *
+   * That could cause the lower sections, stamp or footer
+   * to be placed beyond the actual PDF page.
+   *
+   * Give the receipt enough room based on payment history,
+   * then add generous bottom space.
    */
 
   const history =
     data.paymentHistory ?? [];
 
+  const historyHeight =
+    Math.max(
+      0,
+      history.length - 3
+    ) * 8;
+
+  /*
+   * Base receipt height + payment history growth
+   * + stamp/footer safety space.
+   */
+
   const estimatedHeight =
     Math.max(
-      220,
-      220 +
-        Math.max(
-          0,
-          history.length - 3
-        ) *
-          8
+      280,
+      250 +
+        historyHeight
     );
 
   /*
@@ -140,13 +156,13 @@ export async function generatePaymentReceipt(
       "Sauti Tamu",
   });
 
-  let y = 7;
-
   /*
    * =========================================================
-   * 6. BUSINESS HEADER
+   * 6. DRAW RECEIPT
    * =========================================================
    */
+
+  let y = 7;
 
   y =
     drawReceiptHeader(
@@ -157,12 +173,6 @@ export async function generatePaymentReceipt(
       y
     );
 
-  /*
-   * =========================================================
-   * 7. RECEIPT TITLE
-   * =========================================================
-   */
-
   y =
     drawReceiptTitle(
       doc,
@@ -170,24 +180,12 @@ export async function generatePaymentReceipt(
       y
     );
 
-  /*
-   * =========================================================
-   * 8. STUDENT
-   * =========================================================
-   */
-
   y =
     drawStudentSection(
       doc,
       data,
       y
     );
-
-  /*
-   * =========================================================
-   * 9. PROGRAMME
-   * =========================================================
-   */
 
   y =
     drawProgrammeSection(
@@ -197,12 +195,6 @@ export async function generatePaymentReceipt(
       y
     );
 
-  /*
-   * =========================================================
-   * 10. PAYMENT HISTORY
-   * =========================================================
-   */
-
   y =
     drawPaymentProgress(
       doc,
@@ -210,12 +202,6 @@ export async function generatePaymentReceipt(
       currency,
       y
     );
-
-  /*
-   * =========================================================
-   * 11. BALANCE
-   * =========================================================
-   */
 
   y =
     drawBalanceSection(
@@ -225,24 +211,12 @@ export async function generatePaymentReceipt(
       y
     );
 
-  /*
-   * =========================================================
-   * 12. PAYMENT INFORMATION
-   * =========================================================
-   */
-
   y =
     drawPaymentInformation(
       doc,
       data,
       y
     );
-
-  /*
-   * =========================================================
-   * 13. PAYMENT INSTRUCTIONS
-   * =========================================================
-   */
 
   y =
     drawPaymentInstructions(
@@ -253,20 +227,25 @@ export async function generatePaymentReceipt(
 
   /*
    * =========================================================
-   * 14. STAMP
+   * 7. STAMP
    * =========================================================
    */
 
-  y =
-    drawReceiptStamp(
-      doc,
-      stampDataUrl,
-      y
-    );
+  if (
+    business.receipt_show_stamp &&
+    stampDataUrl
+  ) {
+    y =
+      drawReceiptStamp(
+        doc,
+        stampDataUrl,
+        y
+      );
+  }
 
   /*
    * =========================================================
-   * 15. FOOTER
+   * 8. FOOTER
    * =========================================================
    */
 
@@ -278,61 +257,15 @@ export async function generatePaymentReceipt(
 
   /*
    * =========================================================
-   * 16. OUTPUT
+   * 9. RETURN PDF
    * =========================================================
-   */
-
-  /*
-   * VIEW
    *
-   * Convert PDF to Blob and open it in a new tab.
-   * Nothing is downloaded.
-   */
-
-  if (mode === "view") {
-    const blob =
-      doc.output("blob");
-
-    const blobUrl =
-      URL.createObjectURL(blob);
-
-    window.open(
-      blobUrl,
-      "_blank",
-      "noopener,noreferrer"
-    );
-
-    /*
-     * Give the browser time to load the
-     * document before releasing the URL.
-     */
-
-    setTimeout(() => {
-      URL.revokeObjectURL(
-        blobUrl
-      );
-    }, 60_000);
-
-    return;
-  }
-
-  /*
-   * BLOB
+   * DO NOT doc.save() HERE.
    *
-   * Useful later for email/upload/printing.
+   * The caller decides what action to perform.
    */
 
-  if (mode === "blob") {
-    return doc.output("blob");
-  }
-
-  /*
-   * DOWNLOAD
-   */
-
-  doc.save(
-    `${receiptBusinessName}-Receipt-${data.receiptNumber}.pdf`
-  );
+  return doc;
 }
 
 export default generatePaymentReceipt;
