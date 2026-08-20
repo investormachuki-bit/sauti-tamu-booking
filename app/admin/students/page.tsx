@@ -945,10 +945,8 @@ async function viewReceipt(
 ) {
   try {
     await generatePaymentReceipt(
-      buildReceiptData(
-        record,
-        payment
-      )
+      buildReceiptData(record, payment),
+      "view"
     );
   } catch (error) {
     console.error(
@@ -957,7 +955,7 @@ async function viewReceipt(
     );
 
     alert(
-      "We couldn't generate the receipt. Please try again."
+      "We couldn't open the receipt. Please try again."
     );
   }
 }
