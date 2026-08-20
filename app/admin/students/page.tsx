@@ -944,10 +944,9 @@ async function viewReceipt(
   payment: Payment
 ) {
   try {
-    await generatePaymentReceipt(
-      buildReceiptData(record, payment),
-      "view"
-    );
+   await generatePaymentReceipt(
+  buildReceiptData(record, payment)
+);
   } catch (error) {
     console.error(
       "View receipt error:",
