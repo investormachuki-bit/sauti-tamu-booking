@@ -1141,10 +1141,32 @@ export default function AdminStudentsPage() {
     });
   }
 }}
-    downloadReceipt={
-      downloadReceipt
-    }
+   downloadReceipt={(student, payment) => {
+  const record = students.find(
+    (item) =>
+      item.student.id === student.student.id
+  );
 
+  if (record) {
+    downloadReceipt(
+      record,
+      {
+        id: payment.id,
+        student_id: record.student.id,
+        enrollment_id:
+          record.enrollment?.id ?? "",
+        payment_schedule_id: null,
+        amount: Number(payment.amount || 0),
+        payment_date: payment.payment_date,
+        payment_method:
+          payment.payment_method as PaymentMethod,
+        reference: payment.reference ?? null,
+        notes: null,
+        created_at: payment.payment_date,
+      }
+    );
+  }
+}}
     emailReceipt={
       emailReceipt
     }
