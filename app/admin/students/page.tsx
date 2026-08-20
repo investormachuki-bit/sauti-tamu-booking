@@ -151,7 +151,14 @@ function getTotalPaid(
 }
 
 function getBalance(
-  enrollment: Enrollment | null,
+  enrollment: {
+    instrument?: string | null;
+    programme_name?: string | null;
+    start_date?: string | null;
+    end_date?: string | null;
+    total_fee?: number | string | null;
+    status?: string | null;
+  } | null,
   payments: Payment[]
 ) {
   if (!enrollment) return 0;
