@@ -22,6 +22,9 @@ import {
 
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
+import {
+  ensureStudentFromLead,
+} from "@/lib/services/studentRegistration";
 
 type BookingStatus =
   | "confirmed"
@@ -658,18 +661,6 @@ export default function AdminBookingsPage() {
    * Enrollment remains a separate step in Students.
    * =========================================================
    */
-
-  async function ensureStudentFromLead(
-    record: BookingRecord
-  ): Promise<Student> {
-    const lead =
-      record.lead;
-
-    if (!lead) {
-      throw new Error(
-        "This booking has no linked lead."
-      );
-    }
 
     /*
      * Check existing student by lead.
