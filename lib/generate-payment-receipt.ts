@@ -30,28 +30,23 @@ import {
  * PAYMENT RECEIPT GENERATOR
  * =========================================================
  *
- * This file:
+ * mode:
+ *  - "download" → downloads the PDF
+ *  - "view"     → opens the PDF in a new browser tab
+ *  - "blob"     → returns the PDF Blob
  *
- * 1. Loads the current receipt settings
- * 2. Loads the receipt assets
- * 3. Creates the PDF
- * 4. Draws all receipt sections
- * 5. Either:
- *
- *    - VIEW     → opens the PDF in a new browser tab
- *    - DOWNLOAD → downloads the PDF
- *
- * The actual receipt design lives inside /receipts.
+ * Default mode is "download" to preserve existing behaviour.
  * =========================================================
  */
 
-export type ReceiptAction =
+export type ReceiptMode =
+  | "download"
   | "view"
-  | "download";
+  | "blob";
 
 export async function generatePaymentReceipt(
   data: PaymentReceiptData,
-  action: ReceiptAction = "view"
+  mode: ReceiptMode = "download"
 ) {
   /*
    * =========================================================
@@ -283,78 +278,61 @@ export async function generatePaymentReceipt(
 
   /*
    * =========================================================
-   * 16. RECEIPT FILE NAME
+   * 16. OUTPUT
    * =========================================================
    */
-
-  const fileName =
-    `${receiptBusinessName}-Receipt-${data.receiptNumber}.pdf`;
 
   /*
-   * =========================================================
-   * 17. VIEW / DOWNLOAD
-   * =========================================================
+   * VIEW
    *
-   * VIEW:
-   * - Creates a Blob URL
-   * - Opens the PDF in a new browser tab
-   * - Does NOT call doc.save()
-   *
-   * DOWNLOAD:
-   * - Uses jsPDF's save()
+   * Convert PDF to Blob and open it in a new tab.
+   * Nothing is downloaded.
    */
 
-  if (action === "view") {
-    const pdfBlob =
+  if (mode === "view") {
+    const blob =
       doc.output("blob");
 
     const blobUrl =
-      URL.createObjectURL(
-        pdfBlob
-      );
+      URL.createObjectURL(blob);
 
-    const receiptWindow =
-      window.open(
-        blobUrl,
-        "_blank"
-      );
+    window.open(
+      blobUrl,
+      "_blank",
+      "noopener,noreferrer"
+    );
 
     /*
-     * If the browser blocks the new tab,
-     * revoke later rather than immediately.
+     * Give the browser time to load the
+     * document before releasing the URL.
      */
 
-    if (receiptWindow) {
-      setTimeout(() => {
-        URL.revokeObjectURL(
-          blobUrl
-        );
-      }, 60_000);
-    } else {
-      /*
-       * If popup is blocked, clean up
-       * immediately.
-       */
-
+    setTimeout(() => {
       URL.revokeObjectURL(
         blobUrl
       );
-
-      throw new Error(
-        "Please allow pop-ups to view the receipt."
-      );
-    }
+    }, 60_000);
 
     return;
   }
 
   /*
-   * =========================================================
-   * DOWNLOAD
-   * =========================================================
+   * BLOB
+   *
+   * Useful later for email/upload/printing.
    */
 
-  doc.save(fileName);
+  if (mode === "blob") {
+    return doc.output("blob");
+  }
+
+  /*
+   * DOWNLOAD
+   */
+
+  doc.save(
+    `${receiptBusinessName}-Receipt-${data.receiptNumber}.pdf`
+  );
 }
 
 export default generatePaymentReceipt;
