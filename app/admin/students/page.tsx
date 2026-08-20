@@ -944,40 +944,30 @@ async function viewReceipt(
   payment: Payment
 ) {
   try {
-   await generatePaymentReceipt(
-  buildReceiptData(record, payment)
-);
+    await generatePaymentReceipt(
+      buildReceiptData(record, payment),
+      "view"
+    );
   } catch (error) {
     console.error(
       "View receipt error:",
       error
     );
-
-    alert(
-      "We couldn't open the receipt. Please try again."
-    );
   }
 }
-
 async function downloadReceipt(
   record: SelectedStudentRecord,
   payment: Payment
 ) {
   try {
     await generatePaymentReceipt(
-      buildReceiptData(
-        record,
-        payment
-      )
+      buildReceiptData(record, payment),
+      "download"
     );
   } catch (error) {
     console.error(
       "Download receipt error:",
       error
-    );
-
-    alert(
-      "We couldn't download the receipt. Please try again."
     );
   }
 }
