@@ -13,14 +13,14 @@ import type {
 
 import type { PaymentMethod } from "@/types/students";
 
-import StudentsHeader from "./StudentsHeader";
-import StudentsStats from "./StudentsStats";
-import StudentsToolbar from "./StudentsToolbar";
-import StudentList from "./StudentList";
-import StudentDetails from "./StudentDetails";
-import AddStudentModal from "./AddStudentModal";
-import PaymentModal from "./PaymentModal";
-
+iimport StudentsHeader from "../../../components/students/StudentsHeader";
+import StudentStats from "../../../components/students/StudentStats";
+import StudentsToolbar from "../../../components/students/StudentsToolbar";
+import StudentList from "../../../components/students/StudentList";
+import StudentDetails from "../../../components/students/StudentDetails";
+import PaymentModal from "../../../components/students/PaymentModal";
+import StudentActions from "../../../components/students/StudentActions";
+import AddStudentModal from "../../../components/students/AddStudentModal";
 type StudentStatus =
   | "active"
   | "completed"
