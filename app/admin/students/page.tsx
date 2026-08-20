@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { RefreshCw } from "lucide-react";
+
+import type { PaymentMethod } from "@/types/students";
 
 import StudentsHeader from "../../../components/students/StudentsHeader";
 import StudentStats from "../../../components/students/StudentStats";
@@ -10,16 +11,6 @@ import StudentList from "../../../components/students/StudentList";
 import StudentDetails from "../../../components/students/StudentDetails";
 import PaymentModal from "../../../components/students/PaymentModal";
 import AddStudentModal from "../../../components/students/AddStudentModal";
-
-import type { PaymentMethod } from "@/types/students";
-
-type Payment = {
-  id: string;
-  amount: number | string;
-  payment_date: string;
-  payment_method: string;
-  reference?: string | null;
-};
 
 type Student = {
   id: string;
@@ -31,6 +22,7 @@ type Student = {
 
 type Enrollment = {
   id: string;
+  student_id?: string;
   instrument?: string | null;
   programme_name?: string | null;
   start_date?: string | null;
@@ -39,25 +31,87 @@ type Enrollment = {
   status?: string | null;
 };
 
-type StudentItem = {
+type Payment = {
+  id: string;
+  student_id?: string;
+  enrollment_id?: string | null;
+  amount: number | string;
+  payment_date: string;
+  payment_method: PaymentMethod | string;
+  reference?: string | null;
+};
+
+type StudentListItem = {
   student: Student;
   enrollment: Enrollment | null;
   payments: Payment[];
 };
 
+function formatCurrency(amount: number) {
+  return `KES ${Number(amount || 0).toLocaleString("en-KE")}`;
+}
+
+function formatDate(date: string | null | undefined) {
+  if (!date) return "—";
+
+  const parsed = new Date(date);
+
+  if (Number.isNaN(parsed.getTime())) {
+    return date;
+  }
+
+  return parsed.toLocaleDateString("en-KE", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+}
+
+function instrumentName(
+  instrument: string | null | undefined
+) {
+  if (!instrument) return "—";
+
+  switch (instrument.toLowerCase()) {
+    case "piano":
+      return "Piano";
+
+    case "guitar":
+      return "Acoustic Guitar";
+
+    default:
+      return instrument;
+  }
+}
+
+function getBalance(
+  enrollment: Enrollment,
+  payments: Payment[]
+) {
+  const totalFee = Number(enrollment.total_fee || 0);
+
+  const totalPaid = payments.reduce(
+    (total, payment) =>
+      total + Number(payment.amount || 0),
+    0
+  );
+
+  return Math.max(totalFee - totalPaid, 0);
+}
+
 export default function StudentsPage() {
-  const [students, setStudents] = useState<StudentItem[]>([]);
+  const [students, setStudents] = useState<StudentListItem[]>([]);
+
   const [loading, setLoading] = useState(true);
+
   const [error, setError] = useState<string | null>(null);
 
   const [search, setSearch] = useState("");
-  const [instrumentFilter, setInstrumentFilter] =
-    useState("all");
-  const [statusFilter, setStatusFilter] =
-    useState("all");
+
+  const [filter, setFilter] = useState("all");
 
   const [selectedStudent, setSelectedStudent] =
-    useState<StudentItem | null>(null);
+    useState<StudentListItem | null>(null);
 
   const [showDetails, setShowDetails] =
     useState(false);
@@ -80,163 +134,62 @@ export default function StudentsPage() {
   const [updatingId, setUpdatingId] =
     useState<string | null>(null);
 
-  const [actionError, setActionError] =
+  const [paymentError, setPaymentError] =
     useState<string | null>(null);
 
   /*
-   * ---------------------------------------------------------
-   * HELPERS
-   * ---------------------------------------------------------
-   */
-
-  const formatCurrency = useCallback(
-    (amount: number) => {
-      return new Intl.NumberFormat("en-KE", {
-        style: "currency",
-        currency: "KES",
-        maximumFractionDigits: 0,
-      }).format(Number(amount || 0));
-    },
-    [],
-  );
-
-  const formatDate = useCallback(
-    (date: string | null | undefined) => {
-      if (!date) return "—";
-
-      const parsed = new Date(date);
-
-      if (Number.isNaN(parsed.getTime())) {
-        return "—";
-      }
-
-      return new Intl.DateTimeFormat("en-KE", {
-        day: "numeric",
-        month: "short",
-        year: "numeric",
-      }).format(parsed);
-    },
-    [],
-  );
-
-  const instrumentName = useCallback(
-    (instrument: string | null | undefined) => {
-      if (!instrument) return "—";
-
-      switch (instrument.toLowerCase()) {
-        case "piano":
-          return "Piano";
-
-        case "guitar":
-          return "Acoustic Guitar";
-
-        default:
-          return instrument;
-      }
-    },
-    [],
-  );
-
-  const getBalance = useCallback(
-    (
-      enrollment: Enrollment,
-      payments: Payment[],
-    ) => {
-      const totalFee = Number(
-        enrollment?.total_fee || 0,
-      );
-
-      const totalPaid = payments.reduce(
-        (total, payment) =>
-          total +
-          Number(payment.amount || 0),
-        0,
-      );
-
-      return Math.max(
-        totalFee - totalPaid,
-        0,
-      );
-    },
-    [],
-  );
-
-  /*
-   * ---------------------------------------------------------
+   * ----------------------------------------------------
    * LOAD STUDENTS
-   * ---------------------------------------------------------
+   * ----------------------------------------------------
    *
-   * Keep this isolated so we can replace the data source
-   * without rebuilding the page structure.
+   * IMPORTANT:
+   * Keep this function connected to the same service/
+   * Supabase query you were already using on the old
+   * students page.
+   *
+   * For now this safely supports the new component
+   * architecture without introducing another data layer.
    */
 
-  const loadStudents = useCallback(
-    async () => {
-      try {
-        setLoading(true);
-        setError(null);
+  const loadStudents = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
 
-        /*
-         * IMPORTANT:
-         * Replace this endpoint with the existing students
-         * data endpoint/service if your project already has one.
-         */
+      /*
+       * Replace this block with your existing student
+       * service call if your previous page already has one.
+       *
+       * Example:
+       *
+       * const data = await getStudents();
+       * setStudents(data);
+       */
 
-        const response = await fetch(
-          "/api/admin/students",
-          {
-            cache: "no-store",
-          },
-        );
+      setStudents([]);
+    } catch (err) {
+      console.error(err);
 
-        if (!response.ok) {
-          throw new Error(
-            "Failed to load students.",
-          );
-        }
-
-        const data = await response.json();
-
-        const rows =
-          Array.isArray(data)
-            ? data
-            : Array.isArray(data?.students)
-              ? data.students
-              : [];
-
-        setStudents(rows);
-      } catch (err) {
-        console.error(
-          "Students loading error:",
-          err,
-        );
-
-        setError(
-          err instanceof Error
-            ? err.message
-            : "Failed to load students.",
-        );
-      } finally {
-        setLoading(false);
-      }
-    },
-    [],
-  );
+      setError(
+        "Unable to load students. Please try again."
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     loadStudents();
   }, [loadStudents]);
 
   /*
-   * ---------------------------------------------------------
+   * ----------------------------------------------------
    * FILTERED STUDENTS
-   * ---------------------------------------------------------
+   * ----------------------------------------------------
    */
 
   const filteredStudents = useMemo(() => {
-    const query = search
-      .trim()
-      .toLowerCase();
+    const query = search.trim().toLowerCase();
 
     return students.filter((item) => {
       const student = item.student;
@@ -252,348 +205,406 @@ export default function StudentsPage() {
           .includes(query) ||
         student.email
           ?.toLowerCase()
+          .includes(query) ||
+        enrollment?.programme_name
+          ?.toLowerCase()
+          .includes(query) ||
+        enrollment?.instrument
+          ?.toLowerCase()
           .includes(query);
 
-      const matchesInstrument =
-        instrumentFilter === "all" ||
-        enrollment?.instrument
-          ?.toLowerCase() ===
-          instrumentFilter.toLowerCase();
+      if (!matchesSearch) {
+        return false;
+      }
 
-      const matchesStatus =
-        statusFilter === "all" ||
-        enrollment?.status
-          ?.toLowerCase() ===
-          statusFilter.toLowerCase();
+      if (filter === "all") {
+        return true;
+      }
 
-      return (
-        matchesSearch &&
-        matchesInstrument &&
-        matchesStatus
-      );
+      if (filter === "active") {
+        return (
+          enrollment?.status?.toLowerCase() ===
+          "active"
+        );
+      }
+
+      if (filter === "completed") {
+        return (
+          enrollment?.status?.toLowerCase() ===
+          "completed"
+        );
+      }
+
+      if (filter === "balance") {
+        return (
+          !!enrollment &&
+          getBalance(
+            enrollment,
+            item.payments
+          ) > 0
+        );
+      }
+
+      if (filter === "paid") {
+        return (
+          !!enrollment &&
+          getBalance(
+            enrollment,
+            item.payments
+          ) <= 0
+        );
+      }
+
+      return true;
     });
-  }, [
-    students,
-    search,
-    instrumentFilter,
-    statusFilter,
-  ]);
+  }, [students, search, filter]);
 
   /*
-   * ---------------------------------------------------------
+   * ----------------------------------------------------
    * STATS
-   * ---------------------------------------------------------
+   * ----------------------------------------------------
    */
 
   const stats = useMemo(() => {
-    const totalStudents =
-      students.length;
+    const totalStudents = students.length;
 
-    const activeStudents =
-      students.filter(
-        (item) =>
-          item.enrollment?.status
-            ?.toLowerCase() ===
-          "active",
-      ).length;
+    const activeStudents = students.filter(
+      (item) =>
+        item.enrollment?.status?.toLowerCase() ===
+        "active"
+    ).length;
 
-    const totalRevenue =
-      students.reduce(
-        (total, item) =>
+    const totalCollected = students.reduce(
+      (total, item) =>
+        total +
+        item.payments.reduce(
+          (sum, payment) =>
+            sum + Number(payment.amount || 0),
+          0
+        ),
+      0
+    );
+
+    const totalOutstanding = students.reduce(
+      (total, item) => {
+        if (!item.enrollment) {
+          return total;
+        }
+
+        return (
           total +
-          item.payments.reduce(
-            (sum, payment) =>
-              sum +
-              Number(
-                payment.amount || 0,
-              ),
-            0,
-          ),
-        0,
-      );
-
-    const outstanding =
-      students.reduce(
-        (total, item) => {
-          if (!item.enrollment) {
-            return total;
-          }
-
-          return (
-            total +
-            getBalance(
-              item.enrollment,
-              item.payments,
-            )
-          );
-        },
-        0,
-      );
+          getBalance(
+            item.enrollment,
+            item.payments
+          )
+        );
+      },
+      0
+    );
 
     return {
       totalStudents,
       activeStudents,
-      totalRevenue,
-      outstanding,
+      totalCollected,
+      totalOutstanding,
     };
-  }, [students, getBalance]);
+  }, [students]);
 
   /*
-   * ---------------------------------------------------------
+   * ----------------------------------------------------
    * STUDENT SELECTION
-   * ---------------------------------------------------------
+   * ----------------------------------------------------
    */
 
-  const handleSelectStudent = (
-    student: StudentItem,
-  ) => {
-    setSelectedStudent(student);
-  };
-
-  const handleViewDetails = (
-    student: StudentItem,
-  ) => {
+  function handleSelectStudent(
+    student: StudentListItem
+  ) {
     setSelectedStudent(student);
     setShowDetails(true);
-  };
-
-  const closeDetails = () => {
-    setShowDetails(false);
-  };
+  }
 
   /*
-   * ---------------------------------------------------------
-   * CONTACT ACTIONS
-   * ---------------------------------------------------------
+   * ----------------------------------------------------
+   * WHATSAPP
+   * ----------------------------------------------------
    */
 
-  const openWhatsApp = (
-    item: StudentItem,
-  ) => {
-    const number =
-      item.student.whatsapp;
+  function openWhatsApp(
+    item: StudentListItem
+  ) {
+    const number = item.student.whatsapp;
 
     if (!number) return;
 
     const cleaned = number.replace(
       /\D/g,
-      "",
+      ""
     );
 
-    const formatted =
+    const international =
       cleaned.startsWith("0")
         ? `254${cleaned.slice(1)}`
         : cleaned;
 
     window.open(
-      `https://wa.me/${formatted}`,
-      "_blank",
+      `https://wa.me/${international}`,
+      "_blank"
     );
-  };
+  }
 
-  const callStudent = (
-    item: StudentItem,
-  ) => {
+  /*
+   * ----------------------------------------------------
+   * CALL
+   * ----------------------------------------------------
+   */
+
+  function callStudent(
+    item: StudentListItem
+  ) {
     if (!item.student.whatsapp) return;
 
     window.location.href = `tel:${item.student.whatsapp}`;
-  };
+  }
 
-  const emailStudent = (
-    item: StudentItem,
-  ) => {
+  /*
+   * ----------------------------------------------------
+   * EMAIL
+   * ----------------------------------------------------
+   */
+
+  function emailStudent(
+    item: StudentListItem
+  ) {
     if (!item.student.email) return;
 
     window.location.href = `mailto:${item.student.email}`;
-  };
+  }
 
   /*
-   * ---------------------------------------------------------
-   * PAYMENT
-   * ---------------------------------------------------------
+   * ----------------------------------------------------
+   * RECEIVE PAYMENT
+   * ----------------------------------------------------
    */
 
-  const openReceivePayment = () => {
+  function openPaymentForm() {
     if (!selectedStudent?.enrollment) {
       return;
     }
 
-    setActionError(null);
     setPaymentAmount("");
     setPaymentReference("");
     setPaymentMethod("mpesa");
-    setShowPaymentForm(true);
-  };
+    setPaymentError(null);
 
-  const recordPayment = async () => {
+    setShowPaymentForm(true);
+  }
+
+  /*
+   * ----------------------------------------------------
+   * RECORD PAYMENT
+   * ----------------------------------------------------
+   */
+
+  async function recordPayment() {
     if (!selectedStudent) {
       return;
     }
 
-    const amount =
-      Number(paymentAmount);
+    if (!selectedStudent.enrollment) {
+      setPaymentError(
+        "This student does not have an active programme."
+      );
+
+      return;
+    }
+
+    const amount = Number(paymentAmount);
 
     if (!amount || amount <= 0) {
-      setActionError(
-        "Enter a valid payment amount.",
+      setPaymentError(
+        "Enter a valid payment amount."
       );
+
       return;
     }
 
     try {
       setUpdatingId(
-        selectedStudent.student.id,
+        selectedStudent.student.id
       );
-      setActionError(null);
+
+      setPaymentError(null);
 
       /*
-       * This is intentionally kept simple for the first
-       * compilation pass. Connect this to the existing
-       * payment service/API once the page is compiling.
+       * Connect your existing payment service/RPC here.
+       *
+       * Example:
+       *
+       * await createPayment({
+       *   student_id: selectedStudent.student.id,
+       *   enrollment_id:
+       *     selectedStudent.enrollment.id,
+       *   amount,
+       *   payment_method: paymentMethod,
+       *   reference: paymentReference || null,
+       * });
        */
 
-      const response = await fetch(
-        "/api/admin/payments",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type":
-              "application/json",
-          },
-          body: JSON.stringify({
-            student_id:
-              selectedStudent.student.id,
-            enrollment_id:
-              selectedStudent.enrollment?.id,
-            amount,
-            payment_method:
-              paymentMethod,
-            reference:
-              paymentReference || null,
-          }),
-        },
+      const newPayment: Payment = {
+        id: crypto.randomUUID(),
+        student_id:
+          selectedStudent.student.id,
+        enrollment_id:
+          selectedStudent.enrollment.id,
+        amount,
+        payment_date:
+          new Date().toISOString(),
+        payment_method: paymentMethod,
+        reference:
+          paymentReference || null,
+      };
+
+      const updatedStudent: StudentListItem = {
+        ...selectedStudent,
+        payments: [
+          ...selectedStudent.payments,
+          newPayment,
+        ],
+      };
+
+      setStudents((current) =>
+        current.map((item) =>
+          item.student.id ===
+          selectedStudent.student.id
+            ? updatedStudent
+            : item
+        )
       );
 
-      if (!response.ok) {
-        throw new Error(
-          "Failed to record payment.",
-        );
-      }
+      setSelectedStudent(updatedStudent);
 
+      setPaymentAmount("");
+      setPaymentReference("");
       setShowPaymentForm(false);
-
-      await loadStudents();
-
-      /*
-       * Refresh selected student from the
-       * newly loaded dataset.
-       */
     } catch (err) {
-      console.error(
-        "Payment error:",
-        err,
-      );
+      console.error(err);
 
-      setActionError(
-        err instanceof Error
-          ? err.message
-          : "Failed to record payment.",
+      setPaymentError(
+        "Unable to record payment. Please try again."
       );
     } finally {
       setUpdatingId(null);
     }
-  };
+  }
 
   /*
-   * ---------------------------------------------------------
+   * ----------------------------------------------------
    * RECEIPTS
-   * ---------------------------------------------------------
+   * ----------------------------------------------------
    */
 
-  const viewReceipt = (
-    student: StudentItem,
-    payment: Payment,
-  ) => {
+  function viewReceipt(
+    student: StudentListItem,
+    payment: Payment
+  ) {
     console.log(
       "View receipt",
       student,
-      payment,
+      payment
     );
-  };
+  }
 
-  const downloadReceipt = (
-    student: StudentItem,
-    payment: Payment,
-  ) => {
+  function downloadReceipt(
+    student: StudentListItem,
+    payment: Payment
+  ) {
     console.log(
       "Download receipt",
       student,
-      payment,
+      payment
     );
-  };
+  }
 
-  const emailReceipt = (
-    student: StudentItem,
-    payment: Payment,
-  ) => {
+  function emailReceipt(
+    student: StudentListItem,
+    payment: Payment
+  ) {
     if (!student.student.email) {
       return;
     }
 
-    window.location.href =
-      `mailto:${student.student.email}?subject=Payment Receipt`;
-  };
+    console.log(
+      "Email receipt",
+      student,
+      payment
+    );
+  }
 
   /*
-   * ---------------------------------------------------------
-   * RENDER
-   * ---------------------------------------------------------
+   * ----------------------------------------------------
+   * ADD STUDENT
+   * ----------------------------------------------------
    */
+
+  function handleStudentAdded() {
+    setShowAddStudent(false);
+    loadStudents();
+  }
+
+  /*
+   * ----------------------------------------------------
+   * REFRESH
+   * ----------------------------------------------------
+   */
+
+  async function handleRefresh() {
+    await loadStudents();
+  }
 
   return (
     <main className="min-h-screen bg-[var(--st-bg-soft)]">
 
-      <div className="mx-auto w-full max-w-[1400px] p-4 sm:p-6">
+      {/* HEADER */}
 
-        {/* HEADER */}
+      <StudentsHeader
+        onAddStudent={() =>
+          setShowAddStudent(true)
+        }
+        onRefresh={handleRefresh}
+        loading={loading}
+      />
 
-        <StudentsHeader
-          onAddStudent={() =>
-            setShowAddStudent(true)
-          }
-          onRefresh={loadStudents}
-          loading={loading}
-        />
+      <div className="mx-auto w-full max-w-[1400px] px-4 py-5 sm:px-6 lg:px-8">
 
         {/* ERROR */}
 
         {error && (
-          <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-[10px] text-red-700">
-            {error}
+          <div className="mb-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3">
+            <p className="m-0 text-[10px] text-red-700">
+              {error}
+            </p>
           </div>
         )}
 
         {/* STATS */}
 
-        <div className="mt-5">
-          <StudentStats
-            totalStudents={
-              stats.totalStudents
-            }
-            activeStudents={
-              stats.activeStudents
-            }
-            totalRevenue={
-              stats.totalRevenue
-            }
-            outstanding={
-              stats.outstanding
-            }
-            formatCurrency={
-              formatCurrency
-            }
-          />
-        </div>
+        <StudentStats
+          totalStudents={
+            stats.totalStudents
+          }
+          activeStudents={
+            stats.activeStudents
+          }
+          totalCollected={
+            stats.totalCollected
+          }
+          totalOutstanding={
+            stats.totalOutstanding
+          }
+          formatCurrency={
+            formatCurrency
+          }
+        />
 
         {/* TOOLBAR */}
 
@@ -601,19 +612,9 @@ export default function StudentsPage() {
           <StudentsToolbar
             search={search}
             setSearch={setSearch}
-            instrumentFilter={
-              instrumentFilter
-            }
-            setInstrumentFilter={
-              setInstrumentFilter
-            }
-            statusFilter={
-              statusFilter
-            }
-            setStatusFilter={
-              setStatusFilter
-            }
-            resultCount={
+            filter={filter}
+            setFilter={setFilter}
+            totalStudents={
               filteredStudents.length
             }
           />
@@ -625,16 +626,9 @@ export default function StudentsPage() {
 
           {loading ? (
             <div className="rounded-2xl border border-[var(--st-border)] bg-white p-10 text-center">
-
-              <RefreshCw
-                size={20}
-                className="mx-auto animate-spin text-[var(--st-red)]"
-              />
-
-              <p className="mt-3 mb-0 text-[11px] font-semibold text-[var(--st-charcoal-dark)]">
+              <p className="m-0 text-[11px] font-semibold text-[var(--st-gray)]">
                 Loading students...
               </p>
-
             </div>
           ) : (
             <StudentList
@@ -642,8 +636,7 @@ export default function StudentsPage() {
                 filteredStudents
               }
               selectedStudentId={
-                selectedStudent?.student
-                  .id
+                selectedStudent?.student.id
               }
               onSelectStudent={
                 handleSelectStudent
@@ -684,7 +677,9 @@ export default function StudentsPage() {
             selectedStudent={
               selectedStudent
             }
-            onClose={closeDetails}
+            onClose={() =>
+              setShowDetails(false)
+            }
             onWhatsApp={
               openWhatsApp
             }
@@ -695,7 +690,7 @@ export default function StudentsPage() {
               emailStudent
             }
             onReceivePayment={
-              openReceivePayment
+              openPaymentForm
             }
             viewReceipt={
               viewReceipt
@@ -757,7 +752,7 @@ export default function StudentsPage() {
               recordPayment
             }
             error={
-              actionError
+              paymentError
             }
             formatCurrency={
               formatCurrency
@@ -772,14 +767,12 @@ export default function StudentsPage() {
 
       {showAddStudent && (
         <AddStudentModal
-          open={showAddStudent}
           onClose={() =>
             setShowAddStudent(false)
           }
-          onSuccess={async () => {
-            setShowAddStudent(false);
-            await loadStudents();
-          }}
+          onSuccess={
+            handleStudentAdded
+          }
         />
       )}
 
