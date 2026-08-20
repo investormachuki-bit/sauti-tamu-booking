@@ -701,6 +701,13 @@ export default function StudentsPage() {
   setStatusFilter={setStatusFilter}
   instrumentFilter={instrumentFilter}
   setInstrumentFilter={setInstrumentFilter}
+  paymentFilter={paymentFilter}
+  setPaymentFilter={setPaymentFilter}
+  showFilters={showFilters}
+  setShowFilters={setShowFilters}
+  onAddStudent={() => setShowAddStudent(true)}
+  totalStudents={students.length}
+  filteredStudents={filteredStudents.length}
 />
         </div>
 
