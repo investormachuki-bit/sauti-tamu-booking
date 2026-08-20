@@ -119,7 +119,9 @@ function formatCurrency(amount: number) {
   }).format(Number(amount) || 0);
 }
 
-function formatDate(value: string) {
+function formatDate(
+  value: string | null | undefined
+) {
   if (!value) return "—";
 
   const date = new Date(
