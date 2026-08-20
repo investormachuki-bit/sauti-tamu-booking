@@ -2482,7 +2482,7 @@ export default function AdminBookingsPage() {
                 Close
               </button>
 
-              {/* BOOKING ID */}
+                         {/* BOOKING ID */}
 
               <div className="mt-6 border-t border-[var(--st-border)] pt-4">
 
@@ -2491,18 +2491,13 @@ export default function AdminBookingsPage() {
                 </p>
 
                 <p className="mt-1 mb-0 break-all font-mono text-[8px] text-[var(--st-gray)]">
-                  {
-                    selectedBooking
-                      .booking.id
-                  }
+                  {selectedBooking.booking.id}
                 </p>
 
               </div>
 
             </div>
-
           </div>
-
         </div>
       )}
 
