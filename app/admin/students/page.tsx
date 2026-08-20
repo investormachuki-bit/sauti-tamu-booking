@@ -574,12 +574,10 @@ export default function StudentsPage() {
       {/* HEADER */}
 
       <StudentsHeader
-        onAddStudent={() =>
-          setShowAddStudent(true)
-        }
-        onRefresh={handleRefresh}
-        loading={loading}
-      />
+  onAddStudent={() =>
+    setShowAddStudent(true)
+  }
+/>
 
       <div className="mx-auto w-full max-w-[1400px] px-4 py-5 sm:px-6 lg:px-8">
 
