@@ -1118,9 +1118,16 @@ export default function AdminStudentsPage() {
       )
     }
 
-    viewReceipt={
-      viewReceipt
-    }
+    viewReceipt={(student, payment) => {
+  const record = students.find(
+    (item) =>
+      item.student.id === student.student.id
+  );
+
+  if (record) {
+    viewReceipt(record, payment);
+  }
+}}
 
     downloadReceipt={
       downloadReceipt
