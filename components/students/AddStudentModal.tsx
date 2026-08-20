@@ -10,7 +10,12 @@ import {
   X,
 } from "lucide-react";
 
-import type { PaymentMethod } from "@/types/students";
+type PaymentMethod =
+  | "mpesa"
+  | "cash"
+  | "bank"
+  | "card"
+  | "other";
 
 interface AddStudentModalProps {
   show: boolean;
