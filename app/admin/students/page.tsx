@@ -1055,50 +1055,94 @@ export default function AdminStudentsPage() {
 
       {/* STUDENT DETAILS */}
 
-      {selectedStudent && (
-        <StudentDetails
-          selectedStudent={
-            selectedStudent
-          }
-          onClose={() =>
-            setSelectedStudent(
-              null
-            )
-          }
-          onWhatsApp={
-            openWhatsApp
-          }
-          onCall={
-            callStudent
-          }
-          onEmail={
-            emailStudent
-          }
-          onReceivePayment={() =>
-            openPaymentModal(
-              selectedStudent
-            )
-          }
-          viewReceipt={
-            viewReceipt
-          }
-          downloadReceipt={
-            downloadReceipt
-          }
-          emailReceipt={
-            emailReceipt
-          }
-          formatCurrency={
-            formatCurrency
-          }
-          formatDate={
-            formatDate
-          }
-          getBalance={
-            getBalance
-          }
-        />
-      )}
+     {selectedStudent && (
+  <StudentDetails
+    selectedStudent={
+      selectedStudent
+    }
+
+    onClose={() =>
+      setSelectedStudent(
+        null
+      )
+    }
+
+    onWhatsApp={(student) => {
+      const record = students.find(
+        (item) =>
+          item.student.id === student.student.id
+      );
+
+      if (record) {
+        openWhatsApp({
+          student: record.student,
+          enrollment: record.enrollment,
+          payments: record.payments,
+        });
+      }
+    }}
+
+    onCall={(student) => {
+      const record = students.find(
+        (item) =>
+          item.student.id === student.student.id
+      );
+
+      if (record) {
+        callStudent({
+          student: record.student,
+          enrollment: record.enrollment,
+          payments: record.payments,
+        });
+      }
+    }}
+
+    onEmail={(student) => {
+      const record = students.find(
+        (item) =>
+          item.student.id === student.student.id
+      );
+
+      if (record) {
+        emailStudent({
+          student: record.student,
+          enrollment: record.enrollment,
+          payments: record.payments,
+        });
+      }
+    }}
+
+    onReceivePayment={() =>
+      openPaymentModal(
+        selectedStudent
+      )
+    }
+
+    viewReceipt={
+      viewReceipt
+    }
+
+    downloadReceipt={
+      downloadReceipt
+    }
+
+    emailReceipt={
+      emailReceipt
+    }
+
+    formatCurrency={
+      formatCurrency
+    }
+
+    formatDate={
+      formatDate
+    }
+
+    getBalance={
+      getBalance
+    }
+  />
+)}
 
       {/* ADD STUDENT */}
 
