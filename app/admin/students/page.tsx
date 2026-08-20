@@ -1125,10 +1125,22 @@ export default function AdminStudentsPage() {
   );
 
   if (record) {
-    viewReceipt(record, payment);
+    viewReceipt(record, {
+      id: payment.id,
+      student_id: record.student.id,
+      enrollment_id:
+        record.enrollment?.id ?? "",
+      payment_schedule_id: null,
+      amount: Number(payment.amount || 0),
+      payment_date: payment.payment_date,
+      payment_method:
+        payment.payment_method as PaymentMethod,
+      reference: payment.reference ?? null,
+      notes: null,
+      created_at: payment.payment_date,
+    });
   }
 }}
-
     downloadReceipt={
       downloadReceipt
     }
