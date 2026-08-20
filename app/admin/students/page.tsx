@@ -574,6 +574,9 @@ export default function StudentsPage() {
       {/* HEADER */}
 
       <StudentsHeader
+  studentCount={students.length}
+  searchTerm={search}
+  setSearchTerm={setSearch}
   onAddStudent={() =>
     setShowAddStudent(true)
   }
