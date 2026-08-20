@@ -2470,37 +2470,33 @@ export default function AdminBookingsPage() {
 
               {/* CLOSE */}
 
-              <button
-                type="button"
-                onClick={() =>
-                  setSelectedBooking(
-                    null
-                  )
-                }
-                className="mt-2 w-full rounded-xl px-4 py-3 text-[9px] font-bold text-gray-500 transition hover:bg-gray-100"
-              >
-                Close
-              </button>
+           <button
+  type="button"
+  onClick={() => setSelectedBooking(null)}
+  className="mt-2 w-full rounded-xl px-4 py-3 text-[9px] font-bold text-gray-500 transition hover:bg-gray-100"
+>
+  Close
+</button>
 
-                         {/* BOOKING ID */}
+{/* BOOKING ID */}
 
-              <div className="mt-6 border-t border-[var(--st-border)] pt-4">
+<div className="mt-6 border-t border-[var(--st-border)] pt-4">
 
-                <p className="m-0 text-[9px] text-[var(--st-gray)]">
-                  Booking ID
-                </p>
+  <p className="m-0 text-[9px] text-[var(--st-gray)]">
+    Booking ID
+  </p>
 
-                <p className="mt-1 mb-0 break-all font-mono text-[8px] text-[var(--st-gray)]">
-                  {selectedBooking.booking.id}
-                </p>
+  <p className="mt-1 mb-0 break-all font-mono text-[8px] text-[var(--st-gray)]">
+    {selectedBooking.booking.id}
+  </p>
 
-              </div>
+</div>
 
-            </div>
-          </div>
-        </div>
-      )}
+</div>
+</div>
+</div>
+)}
 
-    </main>
-  );
+</main>
+);
 }
