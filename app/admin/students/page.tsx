@@ -140,6 +140,15 @@ function formatDate(
   }).format(date);
 }
 
+function getTodayKey() {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: NAIROBI_TIME_ZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+}
+
 function getTotalPaid(
   payments: Payment[]
 ) {
