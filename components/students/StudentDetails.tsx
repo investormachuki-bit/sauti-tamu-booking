@@ -2,6 +2,7 @@
 
 import {
   CalendarDays,
+  CheckCircle2,
   Clock3,
   Download,
   Eye,
@@ -9,6 +10,7 @@ import {
   MessageCircle,
   Phone,
   Wallet,
+  X,
 } from "lucide-react";
 
 type PaymentMethod =
@@ -18,431 +20,559 @@ type PaymentMethod =
   | "card"
   | "other";
 
-type Payment = {
+interface Payment {
   id: string;
   amount: number | string;
   payment_date: string;
   payment_method: PaymentMethod | string;
   reference?: string | null;
-};
+}
 
-type Student = {
-  student: {
-    id: string;
-    full_name: string;
-    whatsapp?: string | null;
-    email?: string | null;
-    notes?: string | null;
-  };
+interface Student {
+  id: string;
+  full_name: string;
+  whatsapp?: string | null;
+  email?: string | null;
+  notes?: string | null;
+}
 
-  enrollment?: {
-    id?: string;
-    instrument?: string | null;
-    programme_name?: string | null;
-    start_date?: string | null;
-    end_date?: string | null;
-    total_fee?: number | string | null;
-  } | null;
+interface Enrollment {
+  id: string;
+  instrument?: string | null;
+  programme_name?: string | null;
+  start_date?: string | null;
+  end_date?: string | null;
+  total_fee?: number | string | null;
+  status?: string | null;
+}
 
+export interface SelectedStudent {
+  student: Student;
+  enrollment: Enrollment | null;
   payments: Payment[];
-};
+}
 
 interface StudentDetailsProps {
-  selectedStudent: Student;
+  selectedStudent: SelectedStudent;
 
-  formatCurrency: (amount: number) => string;
-  formatDate: (date: string | null | undefined) => string;
+  onClose: () => void;
 
-  getBalance: (
-    enrollment: NonNullable<Student["enrollment"]>,
-    payments: Payment[],
-  ) => number;
+  onWhatsApp: (student: SelectedStudent) => void;
+  onCall: (student: SelectedStudent) => void;
+  onEmail: (student: SelectedStudent) => void;
 
-  instrumentName: (instrument: string | null | undefined) => string;
+  onReceivePayment: () => void;
 
   viewReceipt: (
-    student: Student,
-    payment: Payment,
+    student: SelectedStudent,
+    payment: Payment
   ) => void;
 
   downloadReceipt: (
-    student: Student,
-    payment: Payment,
+    student: SelectedStudent,
+    payment: Payment
   ) => void;
 
   emailReceipt: (
-    student: Student,
-    payment: Payment,
+    student: SelectedStudent,
+    payment: Payment
   ) => void;
 
-  openWhatsApp: (student: Student) => void;
-  callStudent: (student: Student) => void;
-  emailStudent: (student: Student) => void;
+  formatCurrency: (amount: number) => string;
+  formatDate: (date: string) => string;
 
-  setShowPaymentForm: (show: boolean) => void;
+  getBalance: (
+    enrollment: Enrollment,
+    payments: Payment[]
+  ) => number;
+}
+
+function instrumentName(
+  instrument?: string | null
+) {
+  if (!instrument) return "—";
+
+  switch (instrument.toLowerCase()) {
+    case "piano":
+      return "Piano";
+
+    case "guitar":
+      return "Acoustic Guitar";
+
+    default:
+      return instrument;
+  }
 }
 
 export default function StudentDetails({
   selectedStudent,
-  formatCurrency,
-  formatDate,
-  getBalance,
-  instrumentName,
+  onClose,
+  onWhatsApp,
+  onCall,
+  onEmail,
+  onReceivePayment,
   viewReceipt,
   downloadReceipt,
   emailReceipt,
-  openWhatsApp,
-  callStudent,
-  emailStudent,
-  setShowPaymentForm,
+  formatCurrency,
+  formatDate,
+  getBalance,
 }: StudentDetailsProps) {
-  const enrollment = selectedStudent.enrollment;
+  const { student, enrollment, payments } =
+    selectedStudent;
 
-  const totalFee = enrollment?.total_fee
-    ? Number(enrollment.total_fee)
-    : 0;
-
-  const totalPaid = selectedStudent.payments.reduce(
+  const totalPaid = payments.reduce(
     (total, payment) =>
       total + Number(payment.amount || 0),
-    0,
+    0
+  );
+
+  const totalFee = Number(
+    enrollment?.total_fee || 0
   );
 
   const balance = enrollment
-    ? getBalance(enrollment, selectedStudent.payments)
-    : 0;
+    ? getBalance(enrollment, payments)
+    : Math.max(totalFee - totalPaid, 0);
 
   return (
-    <div className="space-y-6">
-      {/* =====================================================
-          STUDENT HEADER
-      ===================================================== */}
+    <div className="fixed inset-0 z-[100] flex items-end justify-center bg-black/50 sm:items-center sm:p-5">
+      <div className="flex max-h-[94vh] w-full max-w-[560px] flex-col overflow-hidden rounded-t-3xl bg-white shadow-2xl sm:rounded-3xl">
 
-      <div className="rounded-2xl border border-[var(--st-border)] bg-white p-4">
-        <div className="flex items-start gap-3">
-          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[var(--st-bg-soft)]">
-            <span className="text-[13px] font-bold text-[var(--st-red)]">
-              {selectedStudent.student.full_name
-                .split(" ")
-                .map((name) => name.charAt(0))
-                .slice(0, 2)
-                .join("")
-                .toUpperCase()}
-            </span>
-          </div>
+        {/* HEADER */}
 
-          <div className="min-w-0 flex-1">
-            <h2 className="m-0 truncate text-[16px] font-bold text-[var(--st-charcoal-dark)]">
-              {selectedStudent.student.full_name}
-            </h2>
+        <div className="shrink-0 border-b border-[var(--st-border)] bg-white px-5 py-4">
 
-            <p className="mt-1 mb-0 text-[9px] text-[var(--st-gray)]">
-              {enrollment
-                ? instrumentName(enrollment.instrument)
-                : "No active programme"}
-            </p>
-          </div>
-        </div>
+          <div className="flex items-start justify-between gap-4">
 
-        <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
-          <div className="rounded-xl bg-[var(--st-bg-soft)] p-3">
-            <p className="m-0 text-[8px] font-bold uppercase tracking-[0.08em] text-[var(--st-gray)]">
-              WhatsApp
-            </p>
+            <div className="min-w-0">
 
-            <p className="mt-1 mb-0 truncate text-[10px] font-semibold text-[var(--st-charcoal-dark)]">
-              {selectedStudent.student.whatsapp || "—"}
-            </p>
-          </div>
-
-          <div className="rounded-xl bg-[var(--st-bg-soft)] p-3">
-            <p className="m-0 text-[8px] font-bold uppercase tracking-[0.08em] text-[var(--st-gray)]">
-              Email
-            </p>
-
-            <p className="mt-1 mb-0 truncate text-[10px] font-semibold text-[var(--st-charcoal-dark)]">
-              {selectedStudent.student.email || "—"}
-            </p>
-          </div>
-        </div>
-      </div>
-
-      {/* =====================================================
-          PROGRAMME
-      ===================================================== */}
-
-      <div>
-        <div className="flex items-center justify-between">
-          <p className="m-0 text-[9px] font-bold uppercase tracking-[0.1em] text-[var(--st-gray)]">
-            Programme
-          </p>
-
-          {enrollment && (
-            <span className="rounded-full bg-green-50 px-2 py-1 text-[8px] font-bold uppercase text-green-700">
-              Active
-            </span>
-          )}
-        </div>
-
-        {!enrollment ? (
-          <div className="mt-3 rounded-xl border border-dashed border-[var(--st-border)] p-5 text-center">
-            <CalendarDays
-              size={18}
-              className="mx-auto text-[var(--st-gray)]"
-            />
-
-            <p className="mt-2 mb-0 text-[10px] text-[var(--st-gray)]">
-              No programme information recorded.
-            </p>
-          </div>
-        ) : (
-          <div className="mt-3 rounded-xl border border-[var(--st-border)]">
-            <div className="p-4">
-              <p className="m-0 text-[13px] font-bold text-[var(--st-charcoal-dark)]">
-                {enrollment.programme_name ||
-                  instrumentName(enrollment.instrument)}
+              <p className="st-eyebrow">
+                STUDENT DETAILS
               </p>
 
-              <p className="mt-1 mb-0 text-[9px] text-[var(--st-gray)]">
-                {instrumentName(enrollment.instrument)}
-              </p>
-            </div>
+              <h2 className="mt-1 truncate text-[20px] font-bold text-[var(--st-charcoal-dark)]">
+                {student.full_name}
+              </h2>
 
-            <div className="grid grid-cols-2 divide-x border-t border-[var(--st-border)]">
-              <div className="p-3">
-                <p className="m-0 text-[8px] font-bold uppercase tracking-[0.06em] text-[var(--st-gray)]">
-                  Start date
-                </p>
+              <div className="mt-1 flex flex-wrap items-center gap-2">
 
-                <div className="mt-1 flex items-center gap-1.5">
-                  <CalendarDays
-                    size={12}
-                    className="text-[var(--st-red)]"
-                  />
+                {enrollment?.instrument && (
+                  <span className="text-[9px] text-[var(--st-gray)]">
+                    {instrumentName(
+                      enrollment.instrument
+                    )}
+                  </span>
+                )}
 
-                  <p className="m-0 text-[9px] font-semibold text-[var(--st-charcoal-dark)]">
-                    {formatDate(enrollment.start_date)}
-                  </p>
-                </div>
+                {enrollment?.status && (
+                  <>
+                    <span className="text-[8px] text-[var(--st-gray)]">
+                      ·
+                    </span>
+
+                    <span className="text-[9px] font-semibold capitalize text-[var(--st-gray)]">
+                      {enrollment.status}
+                    </span>
+                  </>
+                )}
+
               </div>
 
-              <div className="p-3">
-                <p className="m-0 text-[8px] font-bold uppercase tracking-[0.06em] text-[var(--st-gray)]">
-                  End date
-                </p>
-
-                <div className="mt-1 flex items-center gap-1.5">
-                  <Clock3
-                    size={12}
-                    className="text-[var(--st-red)]"
-                  />
-
-                  <p className="m-0 text-[9px] font-semibold text-[var(--st-charcoal-dark)]">
-                    {formatDate(enrollment.end_date)}
-                  </p>
-                </div>
-              </div>
             </div>
+
+            <button
+              type="button"
+              onClick={onClose}
+              className="st-icon-button shrink-0"
+              aria-label="Close student details"
+              title="Close"
+            >
+              <X size={17} />
+            </button>
+
           </div>
-        )}
-      </div>
 
-      {/* =====================================================
-          PAYMENT SUMMARY
-      ===================================================== */}
-
-      {enrollment && (
-        <div>
-          <p className="m-0 text-[9px] font-bold uppercase tracking-[0.1em] text-[var(--st-gray)]">
-            Payment summary
-          </p>
-
-          <div className="mt-3 grid grid-cols-3 gap-2">
-            <div className="rounded-xl border border-[var(--st-border)] p-3">
-              <p className="m-0 text-[8px] font-bold uppercase tracking-[0.05em] text-[var(--st-gray)]">
-                Total fee
-              </p>
-
-              <p className="mt-2 text-[12px] font-bold text-[var(--st-charcoal-dark)]">
-                {formatCurrency(totalFee)}
-              </p>
-            </div>
-
-            <div className="rounded-xl border border-[var(--st-border)] p-3">
-              <p className="m-0 text-[8px] font-bold uppercase tracking-[0.05em] text-[var(--st-gray)]">
-                Paid
-              </p>
-
-              <p className="mt-2 text-[12px] font-bold text-green-700">
-                {formatCurrency(totalPaid)}
-              </p>
-            </div>
-
-            <div className="rounded-xl border border-[var(--st-border)] p-3">
-              <p className="m-0 text-[8px] font-bold uppercase tracking-[0.05em] text-[var(--st-gray)]">
-                Balance
-              </p>
-
-              <p className="mt-2 text-[12px] font-bold text-[var(--st-red)]">
-                {formatCurrency(balance)}
-              </p>
-            </div>
-          </div>
         </div>
-      )}
 
-      {/* =====================================================
-          NOTES
-      ===================================================== */}
+        {/* CONTENT */}
 
-      {selectedStudent.student.notes && (
-        <div>
-          <p className="m-0 text-[9px] font-bold uppercase tracking-[0.1em] text-[var(--st-gray)]">
-            Notes
-          </p>
+        <div className="overflow-y-auto p-5">
 
-          <div className="mt-3 rounded-xl bg-[var(--st-bg-soft)] p-3">
-            <p className="m-0 text-[10px] leading-relaxed text-[var(--st-charcoal-dark)]">
-              {selectedStudent.student.notes}
+          {/* CONTACT */}
+
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+
+            <div className="rounded-xl border border-[var(--st-border)] p-3">
+
+              <p className="m-0 text-[8px] font-bold uppercase tracking-[0.08em] text-[var(--st-gray)]">
+                WhatsApp
+              </p>
+
+              <p className="mt-1 truncate text-[10px] font-semibold text-[var(--st-charcoal-dark)]">
+                {student.whatsapp || "Not provided"}
+              </p>
+
+            </div>
+
+            <div className="rounded-xl border border-[var(--st-border)] p-3">
+
+              <p className="m-0 text-[8px] font-bold uppercase tracking-[0.08em] text-[var(--st-gray)]">
+                Email
+              </p>
+
+              <p className="mt-1 truncate text-[10px] font-semibold text-[var(--st-charcoal-dark)]">
+                {student.email || "Not provided"}
+              </p>
+
+            </div>
+
+          </div>
+
+          {/* PROGRAMME */}
+
+          <div className="mt-6">
+
+            <p className="st-eyebrow">
+              PROGRAMME
             </p>
-          </div>
-        </div>
-      )}
 
-      {/* =====================================================
-          PAYMENT HISTORY
-      ===================================================== */}
+            <div className="mt-3 rounded-2xl bg-[var(--st-bg-soft)] p-4">
 
-      <div>
-        <div className="flex items-center justify-between">
-          <p className="m-0 text-[9px] font-bold uppercase tracking-[0.1em] text-[var(--st-gray)]">
-            Payment history
-          </p>
+              <div className="flex items-start justify-between gap-4">
 
-          <span className="text-[9px] text-[var(--st-gray)]">
-            {selectedStudent.payments.length} payments
-          </span>
-        </div>
+                <div>
 
-        {selectedStudent.payments.length === 0 ? (
-          <div className="mt-3 rounded-xl border border-dashed border-[var(--st-border)] p-5 text-center">
-            <Wallet
-              size={18}
-              className="mx-auto text-[var(--st-gray)]"
-            />
-
-            <p className="mt-2 mb-0 text-[10px] text-[var(--st-gray)]">
-              No payments recorded yet.
-            </p>
-          </div>
-        ) : (
-          <div className="mt-3 divide-y divide-[var(--st-border)] rounded-xl border border-[var(--st-border)]">
-            {selectedStudent.payments.map((payment) => (
-              <div
-                key={payment.id}
-                className="flex items-center justify-between gap-3 p-3"
-              >
-                <div className="min-w-0">
-                  <p className="m-0 text-[11px] font-bold text-[var(--st-charcoal-dark)]">
-                    {formatCurrency(Number(payment.amount))}
+                  <p className="m-0 text-[12px] font-bold text-[var(--st-charcoal-dark)]">
+                    {enrollment?.programme_name ||
+                      instrumentName(
+                        enrollment?.instrument
+                      )}
                   </p>
 
                   <p className="mt-1 text-[9px] text-[var(--st-gray)]">
-                    {formatDate(payment.payment_date)} ·{" "}
-                    {payment.payment_method.toUpperCase()}
+                    {instrumentName(
+                      enrollment?.instrument
+                    )}
                   </p>
 
-                  {payment.reference && (
-                    <p className="mt-1 max-w-[170px] truncate text-[8px] text-[var(--st-gray)]">
-                      Ref: {payment.reference}
-                    </p>
-                  )}
                 </div>
 
-                <div className="flex shrink-0 gap-1.5">
-                  <button
-                    type="button"
-                    onClick={() =>
-                      viewReceipt(selectedStudent, payment)
-                    }
-                    className="st-icon-button"
-                    aria-label="View receipt"
-                    title="View receipt"
-                  >
-                    <Eye size={14} />
-                  </button>
+                {enrollment?.status && (
+                  <span className="rounded-full bg-white px-2.5 py-1 text-[8px] font-bold capitalize text-[var(--st-charcoal-dark)]">
+                    {enrollment.status}
+                  </span>
+                )}
 
-                  <button
-                    type="button"
-                    onClick={() =>
-                      downloadReceipt(selectedStudent, payment)
-                    }
-                    className="st-icon-button"
-                    aria-label="Download receipt"
-                    title="Download receipt"
-                  >
-                    <Download size={14} />
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() =>
-                      emailReceipt(selectedStudent, payment)
-                    }
-                    className="st-icon-button"
-                    aria-label="Email receipt"
-                    title="Email receipt"
-                  >
-                    <Mail size={14} />
-                  </button>
-                </div>
               </div>
-            ))}
+
+              <div className="mt-4 grid grid-cols-2 gap-3">
+
+                <div className="flex items-center gap-2">
+
+                  <CalendarDays
+                    size={14}
+                    className="shrink-0 text-[var(--st-red)]"
+                  />
+
+                  <div>
+
+                    <p className="m-0 text-[8px] text-[var(--st-gray)]">
+                      Start date
+                    </p>
+
+                    <p className="mt-0.5 text-[9px] font-bold text-[var(--st-charcoal-dark)]">
+                      {enrollment?.start_date
+                        ? formatDate(
+                            enrollment.start_date
+                          )
+                        : "—"}
+                    </p>
+
+                  </div>
+
+                </div>
+
+                <div className="flex items-center gap-2">
+
+                  <Clock3
+                    size={14}
+                    className="shrink-0 text-[var(--st-red)]"
+                  />
+
+                  <div>
+
+                    <p className="m-0 text-[8px] text-[var(--st-gray)]">
+                      End date
+                    </p>
+
+                    <p className="mt-0.5 text-[9px] font-bold text-[var(--st-charcoal-dark)]">
+                      {enrollment?.end_date
+                        ? formatDate(
+                            enrollment.end_date
+                          )
+                        : "—"}
+                    </p>
+
+                  </div>
+
+                </div>
+
+              </div>
+
+            </div>
+
           </div>
-        )}
-      </div>
 
-      {/* =====================================================
-          ACTIONS
-      ===================================================== */}
+          {/* FINANCIAL SUMMARY */}
 
-      <div className="grid grid-cols-2 gap-2">
-        <button
-          type="button"
-          onClick={() => openWhatsApp(selectedStudent)}
-          className="st-button st-button-secondary w-full"
-        >
-          <MessageCircle size={15} />
-          WhatsApp
-        </button>
+          <div className="mt-6">
 
-        <button
-          type="button"
-          onClick={() => callStudent(selectedStudent)}
-          className="st-button st-button-secondary w-full"
-        >
-          <Phone size={15} />
-          Call
-        </button>
+            <p className="st-eyebrow">
+              FINANCIAL SUMMARY
+            </p>
 
-        <button
-          type="button"
-          onClick={() => emailStudent(selectedStudent)}
-          className="st-button st-button-secondary w-full"
-        >
-          <Mail size={15} />
-          Email
-        </button>
+            <div className="mt-3 grid grid-cols-3 gap-2">
 
-        <button
-          type="button"
-          onClick={() => setShowPaymentForm(true)}
-          disabled={!selectedStudent.enrollment}
-          className="st-button st-button-primary w-full disabled:opacity-40"
-        >
-          <Wallet size={15} />
-          Receive payment
-        </button>
+              <div className="rounded-xl border border-[var(--st-border)] p-3">
+
+                <p className="m-0 text-[8px] font-bold uppercase tracking-[0.05em] text-[var(--st-gray)]">
+                  Total fee
+                </p>
+
+                <p className="mt-2 text-[12px] font-bold text-[var(--st-charcoal-dark)]">
+                  {formatCurrency(totalFee)}
+                </p>
+
+              </div>
+
+              <div className="rounded-xl border border-[var(--st-border)] p-3">
+
+                <p className="m-0 text-[8px] font-bold uppercase tracking-[0.05em] text-[var(--st-gray)]">
+                  Paid
+                </p>
+
+                <p className="mt-2 text-[12px] font-bold text-green-700">
+                  {formatCurrency(totalPaid)}
+                </p>
+
+              </div>
+
+              <div className="rounded-xl border border-[var(--st-border)] p-3">
+
+                <p className="m-0 text-[8px] font-bold uppercase tracking-[0.05em] text-[var(--st-gray)]">
+                  Balance
+                </p>
+
+                <p className="mt-2 text-[12px] font-bold text-[var(--st-red)]">
+                  {formatCurrency(balance)}
+                </p>
+
+              </div>
+
+            </div>
+
+          </div>
+
+          {/* NOTES */}
+
+          {student.notes && (
+            <div className="mt-6">
+
+              <p className="st-eyebrow">
+                NOTES
+              </p>
+
+              <div className="mt-3 rounded-xl border border-[var(--st-border)] bg-[var(--st-bg-soft)] p-3">
+
+                <p className="m-0 text-[10px] leading-relaxed text-[var(--st-charcoal-dark)]">
+                  {student.notes}
+                </p>
+
+              </div>
+
+            </div>
+          )}
+
+          {/* PAYMENT HISTORY */}
+
+          <div className="mt-6">
+
+            <div className="flex items-center justify-between">
+
+              <p className="m-0 text-[9px] font-bold uppercase tracking-[0.1em] text-[var(--st-gray)]">
+                Payment history
+              </p>
+
+              <span className="text-[9px] text-[var(--st-gray)]">
+                {payments.length}{" "}
+                {payments.length === 1
+                  ? "payment"
+                  : "payments"}
+              </span>
+
+            </div>
+
+            {payments.length === 0 ? (
+
+              <div className="mt-3 rounded-xl border border-dashed border-[var(--st-border)] p-5 text-center">
+
+                <Wallet
+                  size={18}
+                  className="mx-auto text-[var(--st-gray)]"
+                />
+
+                <p className="mt-2 mb-0 text-[10px] text-[var(--st-gray)]">
+                  No payments recorded yet.
+                </p>
+
+              </div>
+
+            ) : (
+
+              <div className="mt-3 divide-y divide-[var(--st-border)] rounded-xl border border-[var(--st-border)]">
+
+                {payments.map((payment) => (
+
+                  <div
+                    key={payment.id}
+                    className="flex items-center justify-between gap-3 p-3"
+                  >
+
+                    <div className="min-w-0">
+
+                      <p className="m-0 text-[11px] font-bold text-[var(--st-charcoal-dark)]">
+                        {formatCurrency(
+                          Number(payment.amount)
+                        )}
+                      </p>
+
+                      <p className="mt-1 text-[9px] text-[var(--st-gray)]">
+                        {formatDate(
+                          payment.payment_date
+                        )}{" "}
+                        ·{" "}
+                        {payment.payment_method.toUpperCase()}
+                      </p>
+
+                      {payment.reference && (
+                        <p className="mt-1 max-w-[170px] truncate text-[8px] text-[var(--st-gray)]">
+                          Ref: {payment.reference}
+                        </p>
+                      )}
+
+                    </div>
+
+                    <div className="flex shrink-0 gap-1.5">
+
+                      <button
+                        type="button"
+                        onClick={() =>
+                          viewReceipt(
+                            selectedStudent,
+                            payment
+                          )
+                        }
+                        className="st-icon-button"
+                        aria-label="View receipt"
+                        title="View receipt"
+                      >
+                        <Eye size={14} />
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() =>
+                          downloadReceipt(
+                            selectedStudent,
+                            payment
+                          )
+                        }
+                        className="st-icon-button"
+                        aria-label="Download receipt"
+                        title="Download receipt"
+                      >
+                        <Download size={14} />
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() =>
+                          emailReceipt(
+                            selectedStudent,
+                            payment
+                          )
+                        }
+                        className="st-icon-button"
+                        aria-label="Email receipt"
+                        title="Email receipt"
+                      >
+                        <Mail size={14} />
+                      </button>
+
+                    </div>
+
+                  </div>
+
+                ))}
+
+              </div>
+
+            )}
+
+          </div>
+
+          {/* ACTIONS */}
+
+          <div className="mt-6 grid grid-cols-2 gap-2">
+
+            <button
+              type="button"
+              onClick={() =>
+                onWhatsApp(selectedStudent)
+              }
+              className="st-button st-button-secondary w-full"
+            >
+              <MessageCircle size={15} />
+              WhatsApp
+            </button>
+
+            <button
+              type="button"
+              onClick={() =>
+                onCall(selectedStudent)
+              }
+              className="st-button st-button-secondary w-full"
+            >
+              <Phone size={15} />
+              Call
+            </button>
+
+            <button
+              type="button"
+              onClick={() =>
+                onEmail(selectedStudent)
+              }
+              className="st-button st-button-secondary w-full"
+            >
+              <Mail size={15} />
+              Email
+            </button>
+
+            <button
+              type="button"
+              onClick={onReceivePayment}
+              disabled={!enrollment}
+              className="st-button st-button-primary w-full disabled:opacity-40"
+            >
+              <Wallet size={15} />
+              Receive payment
+            </button>
+
+          </div>
+
+        </div>
+
       </div>
     </div>
   );
