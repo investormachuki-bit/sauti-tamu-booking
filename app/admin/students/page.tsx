@@ -20,7 +20,7 @@ import {
   AlertCircle,
   RefreshCw,
 } from "lucide-react";
-import generatePaymentReceipt from "../../../lib/generatePaymentReceipt";
+import generatePaymentReceipt from "../../../lib/generate-payment-receipt";
 
 type PaymentMethod =
   | "mpesa"
