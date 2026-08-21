@@ -151,7 +151,7 @@ function formatTimeRange(
   startsAt: string,
   endsAt: string
 ) {
-  return `${formatTime(startsAt)} – ${formatTime(endsAt)}`;
+  return `${formatTime(startsAt)} â€“ ${formatTime(endsAt)}`;
 }
 
 function initials(name: string) {
@@ -646,144 +646,6 @@ export default function AdminBookingsPage() {
 
   /*
    * =========================================================
-   * FIND / CREATE STUDENT
-   *
-   * "Booked" means the learner has decided to proceed.
-   *
-   * This function:
-   *
-   * 1. Looks for an existing student by lead_id.
-   * 2. Reuses that student if found.
-   * 3. Synchronizes contact information.
-   * 4. Creates a student if none exists.
-   *
-   * It DOES NOT create enrollment here.
-   * Enrollment remains a separate step in Students.
-   * =========================================================
-   */
-
-    /*
-     * Check existing student by lead.
-     */
-
-    const {
-      data: existingByLead,
-      error: existingLeadError,
-    } = await supabase
-      .from("students")
-      .select(
-        `
-          id,
-          lead_id,
-          full_name,
-          email,
-          whatsapp_number,
-          status
-        `
-      )
-      .eq(
-        "lead_id",
-        lead.id
-      )
-      .maybeSingle();
-
-    if (existingLeadError) {
-      throw existingLeadError;
-    }
-
-    /*
-     * Existing student.
-     */
-
-    if (existingByLead) {
-      const nextStatus =
-        existingByLead.status ===
-        "inactive"
-          ? "active"
-          : existingByLead.status;
-
-      const {
-        data: updatedStudent,
-        error: updateStudentError,
-      } = await supabase
-        .from("students")
-        .update({
-          full_name:
-            lead.full_name,
-          email:
-            lead.email,
-          whatsapp_number:
-            lead.whatsapp_number,
-          status:
-            nextStatus,
-        })
-        .eq(
-          "id",
-          existingByLead.id
-        )
-        .select(
-          `
-            id,
-            lead_id,
-            full_name,
-            email,
-            whatsapp_number,
-            status
-          `
-        )
-        .single();
-
-      if (updateStudentError) {
-        throw updateStudentError;
-      }
-
-      return updatedStudent as Student;
-    }
-
-    /*
-     * Create new student.
-     */
-
-    const {
-      data: newStudent,
-      error: studentError,
-    } = await supabase
-      .from("students")
-      .insert({
-        lead_id:
-          lead.id,
-        full_name:
-          lead.full_name,
-        email:
-          lead.email,
-        whatsapp_number:
-          lead.whatsapp_number,
-        status:
-          "active",
-        notes:
-          `Converted from trial booking ${record.booking.id}.`,
-      })
-      .select(
-        `
-          id,
-          lead_id,
-          full_name,
-          email,
-          whatsapp_number,
-          status
-        `
-      )
-      .single();
-
-    if (studentError) {
-      throw studentError;
-    }
-
-    return newStudent as Student;
-  }
-
-  /*
-   * =========================================================
    * FIND OPEN FOLLOW-UP OF A SPECIFIC TYPE
    *
    * This is deliberately more precise than checking only
@@ -891,7 +753,7 @@ export default function AdminBookingsPage() {
         channel:
           null,
         message_template:
-          `Trial attended — follow up with ${lead.full_name} regarding registration after the ${booking.instrument} trial on ${lessonText}.`,
+          `Trial attended â€” follow up with ${lead.full_name} regarding registration after the ${booking.instrument} trial on ${lessonText}.`,
         sent_at:
           null,
         completed_at:
@@ -952,7 +814,7 @@ export default function AdminBookingsPage() {
         channel:
           null,
         message_template:
-          `Missed trial — contact ${lead.full_name} to reschedule their ${booking.instrument} trial lesson.`,
+          `Missed trial â€” contact ${lead.full_name} to reschedule their ${booking.instrument} trial lesson.`,
         sent_at:
           null,
         completed_at:
@@ -1746,7 +1608,7 @@ export default function AdminBookingsPage() {
                                   {formatDate(
                                     slot.starts_at
                                   )}{" "}
-                                  ·{" "}
+                                  Â·{" "}
                                   {formatTimeRange(
                                     slot.starts_at,
                                     slot.ends_at
@@ -2500,3 +2362,4 @@ export default function AdminBookingsPage() {
 </main>
 );
 }
+
