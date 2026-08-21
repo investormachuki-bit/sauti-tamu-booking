@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useMemo, useState } from "react";
 import {
@@ -20,6 +20,7 @@ import {
   UserX,
 } from "lucide-react";
 
+import AddStudentModal from "../../../components/students/AddStudentModal";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import {
@@ -151,7 +152,7 @@ function formatTimeRange(
   startsAt: string,
   endsAt: string
 ) {
-  return `${formatTime(startsAt)} â€“ ${formatTime(endsAt)}`;
+  return `${formatTime(startsAt)} Ã¢â‚¬â€œ ${formatTime(endsAt)}`;
 }
 
 function initials(name: string) {
@@ -753,7 +754,7 @@ export default function AdminBookingsPage() {
         channel:
           null,
         message_template:
-          `Trial attended â€” follow up with ${lead.full_name} regarding registration after the ${booking.instrument} trial on ${lessonText}.`,
+          `Trial attended Ã¢â‚¬â€ follow up with ${lead.full_name} regarding registration after the ${booking.instrument} trial on ${lessonText}.`,
         sent_at:
           null,
         completed_at:
@@ -814,7 +815,7 @@ export default function AdminBookingsPage() {
         channel:
           null,
         message_template:
-          `Missed trial â€” contact ${lead.full_name} to reschedule their ${booking.instrument} trial lesson.`,
+          `Missed trial Ã¢â‚¬â€ contact ${lead.full_name} to reschedule their ${booking.instrument} trial lesson.`,
         sent_at:
           null,
         completed_at:
@@ -1608,7 +1609,7 @@ export default function AdminBookingsPage() {
                                   {formatDate(
                                     slot.starts_at
                                   )}{" "}
-                                  Â·{" "}
+                                  Ã‚Â·{" "}
                                   {formatTimeRange(
                                     slot.starts_at,
                                     slot.ends_at
@@ -2362,4 +2363,5 @@ export default function AdminBookingsPage() {
 </main>
 );
 }
+
 
