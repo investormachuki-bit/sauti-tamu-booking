@@ -6,8 +6,9 @@ import type {
   Payment,
   PaymentSchedule,
   StudentRecord,
-  PaymentMethod,
 } from "@/components/students/students-types";
+
+const STUDENT_PHOTOS_BUCKET = "student-photos";
 
 /* =====================================================
    LOAD STUDENTS
@@ -20,7 +21,7 @@ export async function loadStudents(): Promise<StudentRecord[]> {
   } = await supabase
     .from("students")
     .select(
-      "id, lead_id, full_name, email, whatsapp_number, status, notes, created_at, updated_at"
+      "id, lead_id, full_name, email, whatsapp_number, photo_url, status, notes, created_at, updated_at"
     )
     .order("created_at", {
       ascending: false,
@@ -122,11 +123,12 @@ export async function loadStudents(): Promise<StudentRecord[]> {
     }
 
     schedules =
-      (scheduleData ?? []) as PaymentSchedule[];
+      (scheduleData ??
+        []) as PaymentSchedule[];
   }
 
   /* ===================================================
-     BUILD LOOKUP MAPS
+     LOOKUP MAPS
   =================================================== */
 
   const enrollmentMap =
@@ -134,10 +136,6 @@ export async function loadStudents(): Promise<StudentRecord[]> {
 
   enrollments.forEach(
     (enrollment) => {
-      /*
-       * The students page currently uses
-       * the most recent enrollment.
-       */
       if (
         !enrollmentMap.has(
           enrollment.student_id
@@ -189,7 +187,7 @@ export async function loadStudents(): Promise<StudentRecord[]> {
   });
 
   /* ===================================================
-     BUILD FINAL STUDENT RECORDS
+     FINAL RECORDS
   =================================================== */
 
   return students.map((student) => {
@@ -218,322 +216,358 @@ export async function loadStudents(): Promise<StudentRecord[]> {
 }
 
 /* =====================================================
-   CREATE STUDENT INPUT
+   UPLOAD STUDENT PHOTO
 ===================================================== */
 
-export type CreateStudentInput = {
-  fullName: string;
-  whatsappNumber: string;
-  email: string;
-  notes: string;
+export async function uploadStudentPhoto(
+  studentId: string,
+  file: File
+): Promise<string> {
+  if (!studentId) {
+    throw new Error(
+      "Student ID is required."
+    );
+  }
 
-  instrument: "piano" | "guitar";
-  programmeName: string;
+  if (!file) {
+    throw new Error(
+      "Please select a photo."
+    );
+  }
 
-  startDate: string;
-  endDate: string;
+  /* ---------------------------------------------------
+     VALIDATE FILE TYPE
+  --------------------------------------------------- */
 
-  totalFee: number;
+  if (!file.type.startsWith("image/")) {
+    throw new Error(
+      "Only image files are allowed."
+    );
+  }
 
-  initialPayment: number;
-  initialPaymentMethod: PaymentMethod;
-  initialPaymentReference: string;
+  /* ---------------------------------------------------
+     VALIDATE FILE SIZE
+     5MB maximum
+  --------------------------------------------------- */
 
-  nextPaymentAmount: number;
-  nextPaymentDueDate: string;
-  nextPaymentFollowUpDate: string;
-  nextPaymentNotes: string;
-};
+  const maxSize =
+    5 * 1024 * 1024;
+
+  if (file.size > maxSize) {
+    throw new Error(
+      "Student photo must be smaller than 5MB."
+    );
+  }
+
+  /* ---------------------------------------------------
+     GET EXISTING PHOTO
+  --------------------------------------------------- */
+
+  const {
+    data: existingStudent,
+    error: existingError,
+  } =
+    await supabase
+      .from("students")
+      .select("photo_url")
+      .eq("id", studentId)
+      .single();
+
+  if (existingError) {
+    throw existingError;
+  }
+
+  const oldPhotoPath =
+    existingStudent?.photo_url ??
+    null;
+
+  /* ---------------------------------------------------
+     CREATE UNIQUE PATH
+  --------------------------------------------------- */
+
+  const extension =
+    file.name
+      .split(".")
+      .pop()
+      ?.toLowerCase() || "jpg";
+
+  const safeExtension =
+    ["jpg", "jpeg", "png", "webp"]
+      .includes(extension)
+      ? extension
+      : "jpg";
+
+  const filePath =
+    `${studentId}/profile-${Date.now()}.${safeExtension}`;
+
+  /* ---------------------------------------------------
+     UPLOAD
+  --------------------------------------------------- */
+
+  const {
+    error: uploadError,
+  } =
+    await supabase.storage
+      .from(
+        STUDENT_PHOTOS_BUCKET
+      )
+      .upload(
+        filePath,
+        file,
+        {
+          cacheControl: "3600",
+          upsert: false,
+          contentType:
+            file.type,
+        }
+      );
+
+  if (uploadError) {
+    throw uploadError;
+  }
+
+  /* ---------------------------------------------------
+     SAVE PATH TO STUDENT
+  --------------------------------------------------- */
+
+  const {
+    error: updateError,
+  } =
+    await supabase
+      .from("students")
+      .update({
+        photo_url: filePath,
+        updated_at:
+          new Date().toISOString(),
+      })
+      .eq("id", studentId);
+
+  if (updateError) {
+    /* -----------------------------------------------
+       CLEAN UP UPLOADED FILE
+    ------------------------------------------------ */
+
+    await supabase.storage
+      .from(
+        STUDENT_PHOTOS_BUCKET
+      )
+      .remove([filePath]);
+
+    throw updateError;
+  }
+
+  /* ---------------------------------------------------
+     DELETE OLD PHOTO
+  --------------------------------------------------- */
+
+  if (
+    oldPhotoPath &&
+    oldPhotoPath !== filePath
+  ) {
+    await supabase.storage
+      .from(
+        STUDENT_PHOTOS_BUCKET
+      )
+      .remove([
+        oldPhotoPath,
+      ]);
+  }
+
+  return filePath;
+}
 
 /* =====================================================
-   CREATE STUDENT
+   GET PRIVATE SIGNED PHOTO URL
 ===================================================== */
 
-export async function createStudent(
-  input: CreateStudentInput
+export async function getStudentPhotoUrl(
+  photoPath: string | null,
+  expiresIn = 3600
+): Promise<string | null> {
+  if (!photoPath) {
+    return null;
+  }
+
+  const {
+    data,
+    error,
+  } =
+    await supabase.storage
+      .from(
+        STUDENT_PHOTOS_BUCKET
+      )
+      .createSignedUrl(
+        photoPath,
+        expiresIn
+      );
+
+  if (error) {
+    console.error(
+      "Student photo URL error:",
+      error
+    );
+
+    return null;
+  }
+
+  return data?.signedUrl ?? null;
+}
+
+/* =====================================================
+   DELETE STUDENT PHOTO
+===================================================== */
+
+export async function deleteStudentPhoto(
+  studentId: string
 ): Promise<void> {
-  /* ===================================================
-     VALIDATION
-  =================================================== */
-
-  if (!input.fullName.trim()) {
+  if (!studentId) {
     throw new Error(
-      "Student name is required."
+      "Student ID is required."
     );
   }
 
-  if (!input.whatsappNumber.trim()) {
-    throw new Error(
-      "WhatsApp number is required."
-    );
-  }
-
-  if (!input.email.trim()) {
-    throw new Error(
-      "Email address is required."
-    );
-  }
-
-  if (!input.startDate) {
-    throw new Error(
-      "Programme start date is required."
-    );
-  }
-
-  if (!input.endDate) {
-    throw new Error(
-      "Programme end date is required."
-    );
-  }
-
-  if (input.totalFee <= 0) {
-    throw new Error(
-      "Programme fee must be greater than zero."
-    );
-  }
-
-  if (input.initialPayment < 0) {
-    throw new Error(
-      "Initial payment cannot be negative."
-    );
-  }
-
-  if (
-    input.initialPayment >
-    input.totalFee
-  ) {
-    throw new Error(
-      "Initial payment cannot be greater than the total programme fee."
-    );
-  }
-
-  const remainingBalance =
-    Math.max(
-      input.totalFee -
-        input.initialPayment,
-      0
-    );
-
-  if (
-    input.nextPaymentAmount < 0
-  ) {
-    throw new Error(
-      "Next payment amount cannot be negative."
-    );
-  }
-
-  if (
-    input.nextPaymentAmount >
-    remainingBalance
-  ) {
-    throw new Error(
-      "Next payment cannot be greater than the remaining balance."
-    );
-  }
-
-  if (
-    remainingBalance > 0 &&
-    input.nextPaymentAmount > 0 &&
-    !input.nextPaymentDueDate
-  ) {
-    throw new Error(
-      "Next payment due date is required."
-    );
-  }
-
-  /* ===================================================
-     1. CREATE STUDENT
-  =================================================== */
+  /* ---------------------------------------------------
+     GET CURRENT PHOTO
+  --------------------------------------------------- */
 
   const {
     data: student,
     error: studentError,
-  } = await supabase
-    .from("students")
-    .insert({
-      lead_id: null,
-
-      full_name:
-        input.fullName.trim(),
-
-      email:
-        input.email.trim(),
-
-      whatsapp_number:
-        input.whatsappNumber.trim(),
-
-      status: "active",
-
-      notes:
-        input.notes.trim() ||
-        null,
-    })
-    .select("id")
-    .single();
+  } =
+    await supabase
+      .from("students")
+      .select("photo_url")
+      .eq("id", studentId)
+      .single();
 
   if (studentError) {
     throw studentError;
   }
 
-  if (!student) {
-    throw new Error(
-      "Student was created but no student ID was returned."
-    );
+  const photoPath =
+    student?.photo_url ?? null;
+
+  if (!photoPath) {
+    return;
   }
 
-  /* ===================================================
-     2. CREATE ENROLLMENT
-  =================================================== */
+  /* ---------------------------------------------------
+     DELETE STORAGE FILE
+  --------------------------------------------------- */
 
   const {
-    data: enrollment,
-    error: enrollmentError,
-  } = await supabase
-    .from("student_enrollments")
-    .insert({
-      student_id:
-        student.id,
+    error: deleteError,
+  } =
+    await supabase.storage
+      .from(
+        STUDENT_PHOTOS_BUCKET
+      )
+      .remove([
+        photoPath,
+      ]);
 
-      instrument:
-        input.instrument,
-
-      programme_name:
-        input.programmeName.trim() ||
-        "3 Month Training Programme",
-
-      start_date:
-        input.startDate,
-
-      end_date:
-        input.endDate,
-
-      total_fee:
-        input.totalFee,
-
-      status: "active",
-
-      notes: null,
-    })
-    .select("id")
-    .single();
-
-  if (enrollmentError) {
-    throw enrollmentError;
+  if (deleteError) {
+    throw deleteError;
   }
 
-  if (!enrollment) {
+  /* ---------------------------------------------------
+     CLEAR DATABASE PATH
+  --------------------------------------------------- */
+
+  const {
+    error: updateError,
+  } =
+    await supabase
+      .from("students")
+      .update({
+        photo_url: null,
+        updated_at:
+          new Date().toISOString(),
+      })
+      .eq("id", studentId);
+
+  if (updateError) {
+    throw updateError;
+  }
+}
+
+/* =====================================================
+   UPDATE STUDENT BASIC INFORMATION
+===================================================== */
+
+export async function updateStudent(
+  studentId: string,
+  values: {
+    full_name: string;
+    email: string;
+    whatsapp_number: string;
+    notes?: string | null;
+    status?: Student["status"];
+  }
+): Promise<Student> {
+  if (!studentId) {
     throw new Error(
-      "Enrollment was created but no enrollment ID was returned."
+      "Student ID is required."
     );
   }
 
-  /* ===================================================
-     3. CREATE INITIAL PAYMENT
-  =================================================== */
-
-  if (
-    input.initialPayment > 0
-  ) {
-    const today =
-      new Date()
-        .toISOString()
-        .slice(0, 10);
-
-    const {
-      error: paymentError,
-    } = await supabase
-      .from("payments")
-      .insert({
-        student_id:
-          student.id,
-
-        enrollment_id:
-          enrollment.id,
-
-        payment_schedule_id:
-          null,
-
-        amount:
-          input.initialPayment,
-
-        payment_date:
-          today,
-
-        payment_method:
-          input.initialPaymentMethod,
-
-        reference:
-          input.initialPaymentReference.trim() ||
-          null,
-
-        notes:
-          "Initial programme payment",
-      });
-
-    if (paymentError) {
-      throw paymentError;
-    }
+  if (!values.full_name.trim()) {
+    throw new Error(
+      "Student name is required."
+    );
   }
 
-  /* ===================================================
-     4. CREATE NEXT PAYMENT SCHEDULE
-  =================================================== */
+  if (!values.whatsapp_number.trim()) {
+    throw new Error(
+      "WhatsApp number is required."
+    );
+  }
 
-  if (
-    remainingBalance > 0 &&
-    input.nextPaymentAmount > 0 &&
-    input.nextPaymentDueDate
-  ) {
-    const nextPaymentAmount =
-      Math.min(
-        input.nextPaymentAmount,
-        remainingBalance
-      );
+  if (!values.email.trim()) {
+    throw new Error(
+      "Email address is required."
+    );
+  }
 
-    const today =
-      new Date()
-        .toISOString()
-        .slice(0, 10);
+  const {
+    data,
+    error,
+  } =
+    await supabase
+      .from("students")
+      .update({
+        full_name:
+          values.full_name.trim(),
 
-    let status:
-      | "scheduled"
-      | "due" =
-      "scheduled";
+        email:
+          values.email.trim(),
 
-    if (
-      input.nextPaymentDueDate <=
-      today
-    ) {
-      status = "due";
-    }
-
-    const {
-      error: scheduleError,
-    } = await supabase
-      .from("payment_schedule")
-      .insert({
-        enrollment_id:
-          enrollment.id,
-
-        amount_due:
-          nextPaymentAmount,
-
-        due_date:
-          input.nextPaymentDueDate,
-
-        follow_up_date:
-          input.nextPaymentFollowUpDate ||
-          null,
-
-        status,
+        whatsapp_number:
+          values.whatsapp_number.trim(),
 
         notes:
-          input.nextPaymentNotes.trim() ||
+          values.notes?.trim() ||
           null,
-      });
 
-    if (scheduleError) {
-      throw scheduleError;
-    }
+        ...(values.status
+          ? {
+              status:
+                values.status,
+            }
+          : {}),
+
+        updated_at:
+          new Date().toISOString(),
+      })
+      .eq("id", studentId)
+      .select(
+        "id, lead_id, full_name, email, whatsapp_number, photo_url, status, notes, created_at, updated_at"
+      )
+      .single();
+
+  if (error) {
+    throw error;
   }
+
+  return data as Student;
 }
