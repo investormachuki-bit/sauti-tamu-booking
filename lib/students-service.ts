@@ -9,6 +9,12 @@ import type {
 } from "@/components/students/students-types";
 
 /* =====================================================
+   CONSTANTS
+===================================================== */
+
+const STUDENT_PHOTO_BUCKET = "student-photos";
+
+/* =====================================================
    LOAD STUDENTS
 ===================================================== */
 
@@ -31,16 +37,89 @@ export async function loadStudents(): Promise<
     throw studentError;
   }
 
-  const students =
-    (studentData ?? []) as Student[];
+  /*
+   * IMPORTANT:
+   *
+   * The database stores photo_path.
+   * Student type also contains photo_url.
+   *
+   * Because the bucket is private, photo_url is not
+   * stored permanently. We generate a temporary
+   * signed URL below.
+   */
+
+  const students: Student[] =
+    await Promise.all(
+      (studentData ?? []).map(
+        async (student) => {
+          let photoUrl: string | null =
+            null;
+
+          if (student.photo_path) {
+            try {
+              const {
+                data: signedUrlData,
+                error: signedUrlError,
+              } = await supabase.storage
+                .from(
+                  STUDENT_PHOTO_BUCKET
+                )
+                .createSignedUrl(
+                  student.photo_path,
+                  3600
+                );
+
+              if (
+                !signedUrlError &&
+                signedUrlData?.signedUrl
+              ) {
+                photoUrl =
+                  signedUrlData.signedUrl;
+              }
+            } catch (error) {
+              console.error(
+                "Student photo URL error:",
+                error
+              );
+            }
+          }
+
+          return {
+            id: student.id,
+            lead_id:
+              student.lead_id,
+            full_name:
+              student.full_name,
+            email:
+              student.email,
+            whatsapp_number:
+              student.whatsapp_number,
+            status:
+              student.status,
+            notes:
+              student.notes,
+            photo_path:
+              student.photo_path ??
+              null,
+            photo_url:
+              photoUrl,
+            created_at:
+              student.created_at,
+            updated_at:
+              student.updated_at,
+          };
+        }
+      )
+    );
 
   if (students.length === 0) {
     return [];
   }
 
-  const studentIds = students.map(
-    (student) => student.id
-  );
+  const studentIds =
+    students.map(
+      (student) => student.id
+    );
 
   /* ===================================================
      ENROLLMENTS
@@ -54,7 +133,10 @@ export async function loadStudents(): Promise<
     .select(
       "id, student_id, instrument, programme_name, start_date, end_date, total_fee, status, notes, created_at, updated_at"
     )
-    .in("student_id", studentIds)
+    .in(
+      "student_id",
+      studentIds
+    )
     .order("created_at", {
       ascending: false,
     });
@@ -64,7 +146,8 @@ export async function loadStudents(): Promise<
   }
 
   const enrollments =
-    (enrollmentData ?? []) as Enrollment[];
+    (enrollmentData ??
+      []) as Enrollment[];
 
   /* ===================================================
      PAYMENTS
@@ -78,7 +161,10 @@ export async function loadStudents(): Promise<
     .select(
       "id, student_id, enrollment_id, payment_schedule_id, amount, payment_date, payment_method, reference, notes, created_at"
     )
-    .in("student_id", studentIds)
+    .in(
+      "student_id",
+      studentIds
+    )
     .order("payment_date", {
       ascending: false,
     });
@@ -96,12 +182,16 @@ export async function loadStudents(): Promise<
 
   const enrollmentIds =
     enrollments.map(
-      (enrollment) => enrollment.id
+      (enrollment) =>
+        enrollment.id
     );
 
-  let schedules: PaymentSchedule[] = [];
+  let schedules: PaymentSchedule[] =
+    [];
 
-  if (enrollmentIds.length > 0) {
+  if (
+    enrollmentIds.length > 0
+  ) {
     const {
       data: scheduleData,
       error: scheduleError,
@@ -128,7 +218,7 @@ export async function loadStudents(): Promise<
   }
 
   /* ===================================================
-     BUILD LOOKUP MAPS
+     BUILD ENROLLMENT MAP
   =================================================== */
 
   const enrollmentMap =
@@ -137,9 +227,9 @@ export async function loadStudents(): Promise<
   enrollments.forEach(
     (enrollment) => {
       /*
-       * Enrollments are ordered newest first,
-       * therefore the first enrollment for each
-       * student is the current/latest enrollment.
+       * Enrollments are ordered newest first.
+       * Therefore the first enrollment found for
+       * each student is the latest enrollment.
        */
       if (
         !enrollmentMap.has(
@@ -154,22 +244,32 @@ export async function loadStudents(): Promise<
     }
   );
 
+  /* ===================================================
+     BUILD PAYMENT MAP
+  =================================================== */
+
   const paymentsMap =
     new Map<string, Payment[]>();
 
-  payments.forEach((payment) => {
-    const current =
-      paymentsMap.get(
-        payment.student_id
-      ) ?? [];
+  payments.forEach(
+    (payment) => {
+      const current =
+        paymentsMap.get(
+          payment.student_id
+        ) ?? [];
 
-    current.push(payment);
+      current.push(payment);
 
-    paymentsMap.set(
-      payment.student_id,
-      current
-    );
-  });
+      paymentsMap.set(
+        payment.student_id,
+        current
+      );
+    }
+  );
+
+  /* ===================================================
+     BUILD SCHEDULE MAP
+  =================================================== */
 
   const schedulesMap =
     new Map<
@@ -177,61 +277,68 @@ export async function loadStudents(): Promise<
       PaymentSchedule[]
     >();
 
-  schedules.forEach((schedule) => {
-    const current =
-      schedulesMap.get(
-        schedule.enrollment_id
-      ) ?? [];
+  schedules.forEach(
+    (schedule) => {
+      const current =
+        schedulesMap.get(
+          schedule.enrollment_id
+        ) ?? [];
 
-    current.push(schedule);
+      current.push(schedule);
 
-    schedulesMap.set(
-      schedule.enrollment_id,
-      current
-    );
-  });
+      schedulesMap.set(
+        schedule.enrollment_id,
+        current
+      );
+    }
+  );
 
   /* ===================================================
-     BUILD FINAL RECORDS
+     BUILD FINAL STUDENT RECORDS
   =================================================== */
 
-  return students.map((student) => {
-    const enrollment =
-      enrollmentMap.get(
-        student.id
-      ) ?? null;
-
-    return {
-      student,
-
-      enrollment,
-
-      payments:
-        paymentsMap.get(
+  return students.map(
+    (student) => {
+      const enrollment =
+        enrollmentMap.get(
           student.id
-        ) ?? [],
+        ) ?? null;
 
-      schedules: enrollment
-        ? schedulesMap.get(
-            enrollment.id
-          ) ?? []
-        : [],
-    };
-  });
+      return {
+        student,
+
+        enrollment,
+
+        payments:
+          paymentsMap.get(
+            student.id
+          ) ?? [],
+
+        schedules: enrollment
+          ? schedulesMap.get(
+              enrollment.id
+            ) ?? []
+          : [],
+      };
+    }
+  );
 }
 
 /* =====================================================
    UPDATE STUDENT
 ===================================================== */
 
-export type UpdateStudentInput = {
-  full_name: string;
-  email: string;
-  whatsapp_number: string;
-  status: Student["status"];
-  notes: string | null;
-  photo_path?: string | null;
-};
+export type UpdateStudentInput =
+  {
+    full_name: string;
+    email: string;
+    whatsapp_number: string;
+    status: Student["status"];
+    notes: string | null;
+    photo_path?:
+      | string
+      | null;
+  };
 
 export async function updateStudent(
   studentId: string,
@@ -256,16 +363,21 @@ export async function updateStudent(
         input.status,
 
       notes:
-        input.notes?.trim() || null,
+        input.notes?.trim() ||
+        null,
 
-      ...(input.photo_path !== undefined
+      ...(input.photo_path !==
+      undefined
         ? {
             photo_path:
               input.photo_path,
           }
         : {}),
     })
-    .eq("id", studentId)
+    .eq(
+      "id",
+      studentId
+    )
     .select(
       "id, lead_id, full_name, email, whatsapp_number, status, notes, photo_path, created_at, updated_at"
     )
@@ -275,22 +387,64 @@ export async function updateStudent(
     throw error;
   }
 
-  return data as Student;
+  let photoUrl:
+    | string
+    | null = null;
+
+  if (data.photo_path) {
+    const {
+      data: signedUrlData,
+      error: signedUrlError,
+    } = await supabase.storage
+      .from(
+        STUDENT_PHOTO_BUCKET
+      )
+      .createSignedUrl(
+        data.photo_path,
+        3600
+      );
+
+    if (
+      !signedUrlError &&
+      signedUrlData?.signedUrl
+    ) {
+      photoUrl =
+        signedUrlData.signedUrl;
+    }
+  }
+
+  return {
+    ...data,
+    photo_path:
+      data.photo_path ??
+      null,
+    photo_url:
+      photoUrl,
+  } as Student;
 }
 
 /* =====================================================
    UPDATE ENROLLMENT
 ===================================================== */
 
-export type UpdateEnrollmentInput = {
-  instrument: Enrollment["instrument"];
-  programme_name: string;
-  start_date: string;
-  end_date: string;
-  total_fee: number;
-  status: Enrollment["status"];
-  notes: string | null;
-};
+export type UpdateEnrollmentInput =
+  {
+    instrument:
+      Enrollment["instrument"];
+
+    programme_name: string;
+
+    start_date: string;
+
+    end_date: string;
+
+    total_fee: number;
+
+    status:
+      Enrollment["status"];
+
+    notes: string | null;
+  };
 
 export async function updateEnrollment(
   enrollmentId: string,
@@ -315,15 +469,21 @@ export async function updateEnrollment(
         input.end_date,
 
       total_fee:
-        Number(input.total_fee) || 0,
+        Number(
+          input.total_fee
+        ) || 0,
 
       status:
         input.status,
 
       notes:
-        input.notes?.trim() || null,
+        input.notes?.trim() ||
+        null,
     })
-    .eq("id", enrollmentId)
+    .eq(
+      "id",
+      enrollmentId
+    )
     .select(
       "id, student_id, instrument, programme_name, start_date, end_date, total_fee, status, notes, created_at, updated_at"
     )
@@ -337,32 +497,31 @@ export async function updateEnrollment(
 }
 
 /* =====================================================
-   UPDATE STUDENT + ENROLLMENT
+   UPDATE STUDENT PROFILE
 ===================================================== */
 
-export type UpdateStudentProfileInput = {
-  student: UpdateStudentInput;
+export type UpdateStudentProfileInput =
+  {
+    student:
+      UpdateStudentInput;
 
-  enrollment?: UpdateEnrollmentInput | null;
-};
+    enrollment?:
+      | UpdateEnrollmentInput
+      | null;
+  };
 
 export async function updateStudentProfile(
   studentId: string,
   input: UpdateStudentProfileInput,
-  enrollmentId?: string | null
+  enrollmentId?:
+    | string
+    | null
 ): Promise<void> {
-  /*
-   * Update the student first.
-   */
   await updateStudent(
     studentId,
     input.student
   );
 
-  /*
-   * If the student has an enrollment and
-   * enrollment data was supplied, update it too.
-   */
   if (
     enrollmentId &&
     input.enrollment
@@ -378,9 +537,6 @@ export async function updateStudentProfile(
    UPLOAD STUDENT PHOTO
 ===================================================== */
 
-const STUDENT_PHOTO_BUCKET =
-  "student-photos";
-
 export async function uploadStudentPhoto(
   studentId: string,
   file: File
@@ -391,9 +547,6 @@ export async function uploadStudentPhoto(
     );
   }
 
-  /*
-   * Basic client-side validation.
-   */
   if (
     !file.type.startsWith(
       "image/"
@@ -404,9 +557,6 @@ export async function uploadStudentPhoto(
     );
   }
 
-  /*
-   * Keep student photos reasonably small.
-   */
   const maxSize =
     5 * 1024 * 1024;
 
@@ -423,11 +573,6 @@ export async function uploadStudentPhoto(
       ?.toLowerCase() ||
     "jpg";
 
-  /*
-   * Use a stable folder per student.
-   *
-   * The bucket remains PRIVATE.
-   */
   const filePath =
     `${studentId}/profile-${Date.now()}.${extension}`;
 
@@ -455,13 +600,6 @@ export async function uploadStudentPhoto(
     throw uploadError;
   }
 
-  /*
-   * Store only the storage path in the
-   * students table.
-   *
-   * We deliberately do NOT store a public URL
-   * because the bucket is private.
-   */
   const {
     error: updateError,
   } = await supabase
@@ -476,10 +614,6 @@ export async function uploadStudentPhoto(
     );
 
   if (updateError) {
-    /*
-     * If the database update fails, try to remove
-     * the uploaded file so we don't leave an orphan.
-     */
     await supabase.storage
       .from(
         STUDENT_PHOTO_BUCKET
@@ -500,7 +634,9 @@ export async function uploadStudentPhoto(
 
 export async function deleteStudentPhoto(
   studentId: string,
-  photoPath?: string | null
+  photoPath?:
+    | string
+    | null
 ): Promise<void> {
   if (!photoPath) {
     return;
@@ -542,7 +678,10 @@ export async function deleteStudentPhoto(
 ===================================================== */
 
 export async function getStudentPhotoUrl(
-  photoPath: string | null | undefined,
+  photoPath:
+    | string
+    | null
+    | undefined,
   expiresIn = 3600
 ): Promise<string | null> {
   if (!photoPath) {
@@ -565,6 +704,7 @@ export async function getStudentPhotoUrl(
     throw error;
   }
 
-  return data?.signedUrl ??
-    null;
+  return (
+    data?.signedUrl ?? null
+  );
 }
