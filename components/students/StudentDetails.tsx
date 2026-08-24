@@ -2,9 +2,8 @@
 
 import {
   CalendarDays,
-  CheckCircle2,
-  Clock3,
   Download,
+  Edit3,
   Eye,
   Mail,
   MessageCircle,
@@ -13,30 +12,30 @@ import {
   X,
 } from "lucide-react";
 
-type PaymentMethod =
-  | "mpesa"
-  | "cash"
-  | "bank"
-  | "card"
-  | "other";
+import type {
+  PaymentMethod,
+} from "./students-types";
 
-interface Payment {
+type Payment = {
   id: string;
   amount: number | string;
   payment_date: string;
   payment_method: PaymentMethod | string;
   reference?: string | null;
-}
+};
 
-interface Student {
+type Student = {
   id: string;
   full_name: string;
-  whatsapp?: string | null;
+  whatsapp_number?: string | null;
   email?: string | null;
   notes?: string | null;
-}
+  photo_url?: string | null;
+  photo_path?: string | null;
+  status?: string | null;
+};
 
-interface Enrollment {
+type Enrollment = {
   id: string;
   instrument?: string | null;
   programme_name?: string | null;
@@ -44,7 +43,7 @@ interface Enrollment {
   end_date?: string | null;
   total_fee?: number | string | null;
   status?: string | null;
-}
+};
 
 export interface SelectedStudent {
   student: Student;
@@ -57,9 +56,21 @@ interface StudentDetailsProps {
 
   onClose: () => void;
 
-  onWhatsApp: (student: SelectedStudent) => void;
-  onCall: (student: SelectedStudent) => void;
-  onEmail: (student: SelectedStudent) => void;
+  onEdit?: (
+    student: SelectedStudent
+  ) => void;
+
+  onWhatsApp: (
+    student: SelectedStudent
+  ) => void;
+
+  onCall: (
+    student: SelectedStudent
+  ) => void;
+
+  onEmail: (
+    student: SelectedStudent
+  ) => void;
 
   onReceivePayment: () => void;
 
@@ -78,8 +89,13 @@ interface StudentDetailsProps {
     payment: Payment
   ) => void;
 
-  formatCurrency: (amount: number) => string;
-  formatDate: (date: string) => string;
+  formatCurrency: (
+    amount: number
+  ) => string;
+
+  formatDate: (
+    date: string
+  ) => string;
 
   getBalance: (
     enrollment: Enrollment,
@@ -87,12 +103,18 @@ interface StudentDetailsProps {
   ) => number;
 }
 
+/* =====================================================
+   INSTRUMENT
+===================================================== */
+
 function instrumentName(
   instrument?: string | null
 ) {
   if (!instrument) return "—";
 
-  switch (instrument.toLowerCase()) {
+  switch (
+    instrument.toLowerCase()
+  ) {
     case "piano":
       return "Piano";
 
@@ -104,9 +126,31 @@ function instrumentName(
   }
 }
 
+/* =====================================================
+   STATUS
+===================================================== */
+
+function statusLabel(
+  status?: string | null
+) {
+  if (!status) return "—";
+
+  return status
+    .replace(/_/g, " ")
+    .replace(
+      /\b\w/g,
+      (char) => char.toUpperCase()
+    );
+}
+
+/* =====================================================
+   COMPONENT
+===================================================== */
+
 export default function StudentDetails({
   selectedStudent,
   onClose,
+  onEdit,
   onWhatsApp,
   onCall,
   onEmail,
@@ -118,64 +162,127 @@ export default function StudentDetails({
   formatDate,
   getBalance,
 }: StudentDetailsProps) {
-  const { student, enrollment, payments } =
-    selectedStudent;
+  const {
+    student,
+    enrollment,
+    payments,
+  } = selectedStudent;
 
-  const totalPaid = payments.reduce(
-    (total, payment) =>
-      total + Number(payment.amount || 0),
-    0
-  );
+  /* ===================================================
+     FINANCIALS
+  =================================================== */
 
-  const totalFee = Number(
-    enrollment?.total_fee || 0
-  );
+  const totalPaid =
+    payments.reduce(
+      (total, payment) =>
+        total +
+        Number(
+          payment.amount || 0
+        ),
+      0
+    );
+
+  const totalFee =
+    Number(
+      enrollment?.total_fee || 0
+    );
 
   const balance = enrollment
-    ? getBalance(enrollment, payments)
-    : Math.max(totalFee - totalPaid, 0);
+    ? getBalance(
+        enrollment,
+        payments
+      )
+    : Math.max(
+        totalFee - totalPaid,
+        0
+      );
+
+  /* ===================================================
+     PHOTO
+  =================================================== */
+
+  const photoUrl =
+    student.photo_url || null;
 
   return (
     <div className="fixed inset-0 z-[100] flex items-end justify-center bg-black/50 sm:items-center sm:p-5">
+
       <div className="flex max-h-[94vh] w-full max-w-[560px] flex-col overflow-hidden rounded-t-3xl bg-white shadow-2xl sm:rounded-3xl">
 
-        {/* HEADER */}
+        {/* =================================================
+            HEADER
+        ================================================= */}
 
         <div className="shrink-0 border-b border-[var(--st-border)] bg-white px-5 py-4">
 
           <div className="flex items-start justify-between gap-4">
 
-            <div className="min-w-0">
+            <div className="flex min-w-0 items-center gap-3">
 
-              <p className="st-eyebrow">
-                STUDENT DETAILS
-              </p>
+              {/* PHOTO */}
 
-              <h2 className="mt-1 truncate text-[20px] font-bold text-[var(--st-charcoal-dark)]">
-                {student.full_name}
-              </h2>
+              <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-2xl border border-[var(--st-border)] bg-[var(--st-bg-soft)]">
 
-              <div className="mt-1 flex flex-wrap items-center gap-2">
-
-                {enrollment?.instrument && (
-                  <span className="text-[9px] text-[var(--st-gray)]">
-                    {instrumentName(
-                      enrollment.instrument
-                    )}
-                  </span>
+                {photoUrl ? (
+                  <img
+                    src={photoUrl}
+                    alt={
+                      student.full_name
+                    }
+                    className="h-full w-full object-cover"
+                  />
+                ) : (
+                  <div className="flex h-full w-full items-center justify-center text-[18px] font-bold text-[var(--st-gray)]">
+                    {student.full_name
+                      ?.charAt(0)
+                      .toUpperCase() ||
+                      "S"}
+                  </div>
                 )}
 
-                {enrollment?.status && (
-                  <>
-                    <span className="text-[8px] text-[var(--st-gray)]">
-                      ·
-                    </span>
+              </div>
 
-                    <span className="text-[9px] font-semibold capitalize text-[var(--st-gray)]">
-                      {enrollment.status}
+              {/* NAME */}
+
+              <div className="min-w-0">
+
+                <p className="st-eyebrow">
+                  STUDENT DETAILS
+                </p>
+
+                <h2 className="mt-1 truncate text-[20px] font-bold text-[var(--st-charcoal-dark)]">
+                  {student.full_name}
+                </h2>
+
+                <div className="mt-1 flex flex-wrap items-center gap-2">
+
+                  {enrollment?.instrument && (
+                    <span className="text-[9px] text-[var(--st-gray)]">
+                      {instrumentName(
+                        enrollment.instrument
+                      )}
                     </span>
-                  </>
-                )}
+                  )}
+
+                  {(
+                    enrollment?.status ||
+                    student.status
+                  ) && (
+                    <>
+                      <span className="text-[8px] text-[var(--st-gray)]">
+                        ·
+                      </span>
+
+                      <span className="text-[9px] font-semibold text-[var(--st-gray)]">
+                        {statusLabel(
+                          enrollment?.status ||
+                            student.status
+                        )}
+                      </span>
+                    </>
+                  )}
+
+                </div>
 
               </div>
 
@@ -195,13 +302,36 @@ export default function StudentDetails({
 
         </div>
 
-        {/* CONTENT */}
+        {/* =================================================
+            CONTENT
+        ================================================= */}
 
         <div className="overflow-y-auto p-5">
 
-          {/* CONTACT */}
+          {/* =================================================
+              PROFILE ACTION
+          ================================================= */}
 
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+          {onEdit && (
+            <button
+              type="button"
+              onClick={() =>
+                onEdit(
+                  selectedStudent
+                )
+              }
+              className="st-button st-button-secondary w-full"
+            >
+              <Edit3 size={15} />
+              Edit Student Profile
+            </button>
+          )}
+
+          {/* =================================================
+              CONTACT
+          ================================================= */}
+
+          <div className="mt-5 grid grid-cols-1 gap-2 sm:grid-cols-2">
 
             <div className="rounded-xl border border-[var(--st-border)] p-3">
 
@@ -210,7 +340,8 @@ export default function StudentDetails({
               </p>
 
               <p className="mt-1 truncate text-[10px] font-semibold text-[var(--st-charcoal-dark)]">
-                {student.whatsapp || "Not provided"}
+                {student.whatsapp_number ||
+                  "Not provided"}
               </p>
 
             </div>
@@ -222,14 +353,17 @@ export default function StudentDetails({
               </p>
 
               <p className="mt-1 truncate text-[10px] font-semibold text-[var(--st-charcoal-dark)]">
-                {student.email || "Not provided"}
+                {student.email ||
+                  "Not provided"}
               </p>
 
             </div>
 
           </div>
 
-          {/* PROGRAMME */}
+          {/* =================================================
+              PROGRAMME
+          ================================================= */}
 
           <div className="mt-6">
 
@@ -259,8 +393,10 @@ export default function StudentDetails({
                 </div>
 
                 {enrollment?.status && (
-                  <span className="rounded-full bg-white px-2.5 py-1 text-[8px] font-bold capitalize text-[var(--st-charcoal-dark)]">
-                    {enrollment.status}
+                  <span className="rounded-full bg-white px-2.5 py-1 text-[8px] font-bold text-[var(--st-charcoal-dark)]">
+                    {statusLabel(
+                      enrollment.status
+                    )}
                   </span>
                 )}
 
@@ -295,7 +431,7 @@ export default function StudentDetails({
 
                 <div className="flex items-center gap-2">
 
-                  <Clock3
+                  <CalendarDays
                     size={14}
                     className="shrink-0 text-[var(--st-red)]"
                   />
@@ -324,7 +460,9 @@ export default function StudentDetails({
 
           </div>
 
-          {/* FINANCIAL SUMMARY */}
+          {/* =================================================
+              FINANCIAL SUMMARY
+          ================================================= */}
 
           <div className="mt-6">
 
@@ -341,7 +479,9 @@ export default function StudentDetails({
                 </p>
 
                 <p className="mt-2 text-[12px] font-bold text-[var(--st-charcoal-dark)]">
-                  {formatCurrency(totalFee)}
+                  {formatCurrency(
+                    totalFee
+                  )}
                 </p>
 
               </div>
@@ -353,7 +493,9 @@ export default function StudentDetails({
                 </p>
 
                 <p className="mt-2 text-[12px] font-bold text-green-700">
-                  {formatCurrency(totalPaid)}
+                  {formatCurrency(
+                    totalPaid
+                  )}
                 </p>
 
               </div>
@@ -365,7 +507,9 @@ export default function StudentDetails({
                 </p>
 
                 <p className="mt-2 text-[12px] font-bold text-[var(--st-red)]">
-                  {formatCurrency(balance)}
+                  {formatCurrency(
+                    balance
+                  )}
                 </p>
 
               </div>
@@ -374,7 +518,9 @@ export default function StudentDetails({
 
           </div>
 
-          {/* NOTES */}
+          {/* =================================================
+              NOTES
+          ================================================= */}
 
           {student.notes && (
             <div className="mt-6">
@@ -394,7 +540,9 @@ export default function StudentDetails({
             </div>
           )}
 
-          {/* PAYMENT HISTORY */}
+          {/* =================================================
+              PAYMENT HISTORY
+          ================================================= */}
 
           <div className="mt-6">
 
@@ -432,89 +580,104 @@ export default function StudentDetails({
 
               <div className="mt-3 divide-y divide-[var(--st-border)] rounded-xl border border-[var(--st-border)]">
 
-                {payments.map((payment) => (
+                {payments.map(
+                  (payment) => (
 
-                  <div
-                    key={payment.id}
-                    className="flex items-center justify-between gap-3 p-3"
-                  >
+                    <div
+                      key={
+                        payment.id
+                      }
+                      className="flex items-center justify-between gap-3 p-3"
+                    >
 
-                    <div className="min-w-0">
+                      <div className="min-w-0">
 
-                      <p className="m-0 text-[11px] font-bold text-[var(--st-charcoal-dark)]">
-                        {formatCurrency(
-                          Number(payment.amount)
-                        )}
-                      </p>
-
-                      <p className="mt-1 text-[9px] text-[var(--st-gray)]">
-                        {formatDate(
-                          payment.payment_date
-                        )}{" "}
-                        ·{" "}
-                        {payment.payment_method.toUpperCase()}
-                      </p>
-
-                      {payment.reference && (
-                        <p className="mt-1 max-w-[170px] truncate text-[8px] text-[var(--st-gray)]">
-                          Ref: {payment.reference}
+                        <p className="m-0 text-[11px] font-bold text-[var(--st-charcoal-dark)]">
+                          {formatCurrency(
+                            Number(
+                              payment.amount
+                            )
+                          )}
                         </p>
-                      )}
+
+                        <p className="mt-1 text-[9px] text-[var(--st-gray)]">
+                          {formatDate(
+                            payment.payment_date
+                          )}{" "}
+                          ·{" "}
+                          {payment.payment_method.toUpperCase()}
+                        </p>
+
+                        {payment.reference && (
+                          <p className="mt-1 max-w-[170px] truncate text-[8px] text-[var(--st-gray)]">
+                            Ref:{" "}
+                            {
+                              payment.reference
+                            }
+                          </p>
+                        )}
+
+                      </div>
+
+                      <div className="flex shrink-0 gap-1.5">
+
+                        <button
+                          type="button"
+                          onClick={() =>
+                            viewReceipt(
+                              selectedStudent,
+                              payment
+                            )
+                          }
+                          className="st-icon-button"
+                          aria-label="View receipt"
+                          title="View receipt"
+                        >
+                          <Eye
+                            size={14}
+                          />
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() =>
+                            downloadReceipt(
+                              selectedStudent,
+                              payment
+                            )
+                          }
+                          className="st-icon-button"
+                          aria-label="Download receipt"
+                          title="Download receipt"
+                        >
+                          <Download
+                            size={14}
+                          />
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() =>
+                            emailReceipt(
+                              selectedStudent,
+                              payment
+                            )
+                          }
+                          className="st-icon-button"
+                          aria-label="Email receipt"
+                          title="Email receipt"
+                        >
+                          <Mail
+                            size={14}
+                          />
+                        </button>
+
+                      </div>
 
                     </div>
 
-                    <div className="flex shrink-0 gap-1.5">
-
-                      <button
-                        type="button"
-                        onClick={() =>
-                          viewReceipt(
-                            selectedStudent,
-                            payment
-                          )
-                        }
-                        className="st-icon-button"
-                        aria-label="View receipt"
-                        title="View receipt"
-                      >
-                        <Eye size={14} />
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() =>
-                          downloadReceipt(
-                            selectedStudent,
-                            payment
-                          )
-                        }
-                        className="st-icon-button"
-                        aria-label="Download receipt"
-                        title="Download receipt"
-                      >
-                        <Download size={14} />
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() =>
-                          emailReceipt(
-                            selectedStudent,
-                            payment
-                          )
-                        }
-                        className="st-icon-button"
-                        aria-label="Email receipt"
-                        title="Email receipt"
-                      >
-                        <Mail size={14} />
-                      </button>
-
-                    </div>
-
-                  </div>
-
-                ))}
+                  )
+                )}
 
               </div>
 
@@ -522,25 +685,33 @@ export default function StudentDetails({
 
           </div>
 
-          {/* ACTIONS */}
+          {/* =================================================
+              ACTIONS
+          ================================================= */}
 
           <div className="mt-6 grid grid-cols-2 gap-2">
 
             <button
               type="button"
               onClick={() =>
-                onWhatsApp(selectedStudent)
+                onWhatsApp(
+                  selectedStudent
+                )
               }
               className="st-button st-button-secondary w-full"
             >
-              <MessageCircle size={15} />
+              <MessageCircle
+                size={15}
+              />
               WhatsApp
             </button>
 
             <button
               type="button"
               onClick={() =>
-                onCall(selectedStudent)
+                onCall(
+                  selectedStudent
+                )
               }
               className="st-button st-button-secondary w-full"
             >
@@ -551,7 +722,9 @@ export default function StudentDetails({
             <button
               type="button"
               onClick={() =>
-                onEmail(selectedStudent)
+                onEmail(
+                  selectedStudent
+                )
               }
               className="st-button st-button-secondary w-full"
             >
@@ -561,7 +734,9 @@ export default function StudentDetails({
 
             <button
               type="button"
-              onClick={onReceivePayment}
+              onClick={
+                onReceivePayment
+              }
               disabled={!enrollment}
               className="st-button st-button-primary w-full disabled:opacity-40"
             >
@@ -574,6 +749,7 @@ export default function StudentDetails({
         </div>
 
       </div>
+
     </div>
   );
 }
