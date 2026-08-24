@@ -14,30 +14,40 @@ import StudentList from "../../../components/students/StudentList";
 import StudentDetails from "../../../components/students/StudentDetails";
 import AddStudentModal from "../../../components/students/AddStudentModal";
 import PaymentModal from "../../../components/students/PaymentModal";
+import EditStudentModal from "../../../components/students/EditStudentModal";
 
 import { RefreshCw } from "lucide-react";
 
 import generatePaymentReceipt from "../../../lib/generate-payment-receipt";
-import { loadStudents } from "../../../lib/students-service";
+
+import {
+  loadStudents,
+  updateStudent as updateStudentRecord,
+} from "../../../lib/students-service";
 
 import type {
   PaymentMethod,
   Payment,
   StudentRecord,
   SelectedStudentRecord,
+  Instrument,
+  StudentStatus,
 } from "../../../components/students/students-types";
 
 /* =====================================================
    CONSTANTS
 ===================================================== */
 
-const NAIROBI_TIME_ZONE = "Africa/Nairobi";
+const NAIROBI_TIME_ZONE =
+  "Africa/Nairobi";
 
 /* =====================================================
    FORMATTING HELPERS
 ===================================================== */
 
-function formatCurrency(amount: number) {
+function formatCurrency(
+  amount: number
+) {
   return new Intl.NumberFormat("en-KE", {
     style: "currency",
     currency: "KES",
@@ -48,7 +58,9 @@ function formatCurrency(amount: number) {
 function formatDate(
   value: string | null | undefined
 ) {
-  if (!value) return "—";
+  if (!value) {
+    return "—";
+  }
 
   const date = new Date(
     `${value}T00:00:00+03:00`
@@ -76,11 +88,52 @@ function getTodayKey() {
 }
 
 /* =====================================================
-   INSTRUMENT HELPER
+   DATE HELPERS
+===================================================== */
+
+function addMonthsToDate(
+  value: string,
+  months: number
+) {
+  if (!value) {
+    return "";
+  }
+
+  const date = new Date(
+    `${value}T00:00:00+03:00`
+  );
+
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+
+  date.setMonth(
+    date.getMonth() + months
+  );
+
+  const year =
+    date.getFullYear();
+
+  const month = String(
+    date.getMonth() + 1
+  ).padStart(2, "0");
+
+  const day = String(
+    date.getDate()
+  ).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
+}
+
+/* =====================================================
+   INSTRUMENT
 ===================================================== */
 
 function instrumentName(
-  instrument: string | null | undefined
+  instrument:
+    | string
+    | null
+    | undefined
 ) {
   if (!instrument) {
     return "—";
@@ -101,15 +154,20 @@ function instrumentName(
 }
 
 /* =====================================================
-   BALANCE HELPER
+   BALANCE
 ===================================================== */
 
 function getBalance(
   enrollment: {
-    total_fee?: number | string | null;
+    total_fee?:
+      | number
+      | string
+      | null;
   } | null,
   payments: {
-    amount: number | string;
+    amount:
+      | number
+      | string;
   }[]
 ) {
   if (!enrollment) {
@@ -120,13 +178,16 @@ function getBalance(
     payments.reduce(
       (total, payment) =>
         total +
-        Number(payment.amount || 0),
+        Number(
+          payment.amount || 0
+        ),
       0
     );
 
   return Math.max(
-    Number(enrollment.total_fee || 0) -
-      totalPaid,
+    Number(
+      enrollment.total_fee || 0
+    ) - totalPaid,
     0
   );
 }
@@ -162,17 +223,21 @@ export default function AdminStudentsPage() {
   const [statusFilter, setStatusFilter] =
     useState("all");
 
-  const [instrumentFilter, setInstrumentFilter] =
-    useState("all");
+  const [
+    instrumentFilter,
+    setInstrumentFilter,
+  ] = useState("all");
 
-  const [paymentFilter, setPaymentFilter] =
-    useState("all");
+  const [
+    paymentFilter,
+    setPaymentFilter,
+  ] = useState("all");
 
   const [showFilters, setShowFilters] =
     useState(false);
 
   /* ===================================================
-     ADD STUDENT FORM
+     ADD STUDENT
   =================================================== */
 
   const [showAddStudent, setShowAddStudent] =
@@ -187,8 +252,10 @@ export default function AdminStudentsPage() {
   const [studentName, setStudentName] =
     useState("");
 
-  const [studentWhatsapp, setStudentWhatsapp] =
-    useState("");
+  const [
+    studentWhatsapp,
+    setStudentWhatsapp,
+  ] = useState("");
 
   const [studentEmail, setStudentEmail] =
     useState("");
@@ -196,11 +263,15 @@ export default function AdminStudentsPage() {
   const [studentNotes, setStudentNotes] =
     useState("");
 
-  const [selectedInstrument, setSelectedInstrument] =
-    useState<"piano" | "guitar">("piano");
+  const [
+    selectedInstrument,
+    setSelectedInstrument,
+  ] = useState<Instrument>("piano");
 
   const [programmeName, setProgrammeName] =
-    useState("3 Month Training Programme");
+    useState(
+      "3 Month Training Programme"
+    );
 
   const [startDate, setStartDate] =
     useState(getTodayKey());
@@ -208,8 +279,10 @@ export default function AdminStudentsPage() {
   const [totalFee, setTotalFee] =
     useState("");
 
-  const [initialPayment, setInitialPayment] =
-    useState("");
+  const [
+    initialPayment,
+    setInitialPayment,
+  ] = useState("");
 
   const [
     initialPaymentMethod,
@@ -245,135 +318,243 @@ export default function AdminStudentsPage() {
      STUDENT DETAILS
   =================================================== */
 
-  const [selectedStudent, setSelectedStudent] =
+  const [
+    selectedStudent,
+    setSelectedStudent,
+  ] =
     useState<SelectedStudentRecord | null>(
       null
     );
+
+  /* ===================================================
+     EDIT STUDENT
+  =================================================== */
+
+  const [
+    showEditStudent,
+    setShowEditStudent,
+  ] = useState(false);
+
+  const [
+    savingStudent,
+    setSavingStudent,
+  ] = useState(false);
+
+  const [
+    editStudentError,
+    setEditStudentError,
+  ] = useState<string | null>(null);
+
+  const [
+    editStudentName,
+    setEditStudentName,
+  ] = useState("");
+
+  const [
+    editStudentWhatsapp,
+    setEditStudentWhatsapp,
+  ] = useState("");
+
+  const [
+    editStudentEmail,
+    setEditStudentEmail,
+  ] = useState("");
+
+  const [
+    editStudentStatus,
+    setEditStudentStatus,
+  ] =
+    useState<StudentStatus>("active");
+
+  const [
+    editStudentNotes,
+    setEditStudentNotes,
+  ] = useState("");
+
+  const [
+    editInstrument,
+    setEditInstrument,
+  ] = useState<Instrument>("piano");
+
+  const [
+    editProgrammeName,
+    setEditProgrammeName,
+  ] = useState(
+    "3 Month Training Programme"
+  );
+
+  const [
+    editStartDate,
+    setEditStartDate,
+  ] = useState("");
+
+  const [
+    editEndDate,
+    setEditEndDate,
+  ] = useState("");
+
+  const [
+    editTotalFee,
+    setEditTotalFee,
+  ] = useState("");
+
+  const [
+    editEnrollmentStatus,
+    setEditEnrollmentStatus,
+  ] =
+    useState<StudentStatus>("active");
+
+  const [
+    editPhotoPreview,
+    setEditPhotoPreview,
+  ] = useState<string | null>(null);
+
+  const [
+    editPhotoFile,
+    setEditPhotoFile,
+  ] = useState<File | null>(null);
 
   /* ===================================================
      PAYMENT MODAL
   =================================================== */
 
-  const [showPaymentModal, setShowPaymentModal] =
-    useState(false);
+  const [
+    showPaymentModal,
+    setShowPaymentModal,
+  ] = useState(false);
 
-  const [paymentStudent, setPaymentStudent] =
+  const [
+    paymentStudent,
+    setPaymentStudent,
+  ] =
     useState<SelectedStudentRecord | null>(
       null
     );
 
-  const [paymentAmount, setPaymentAmount] =
-    useState("");
+  const [
+    paymentAmount,
+    setPaymentAmount,
+  ] = useState("");
 
-  const [paymentMethod, setPaymentMethod] =
+  const [
+    paymentMethod,
+    setPaymentMethod,
+  ] =
     useState<PaymentMethod>("mpesa");
 
-  const [paymentReference, setPaymentReference] =
-    useState("");
+  const [
+    paymentReference,
+    setPaymentReference,
+  ] = useState("");
 
-  const [paymentError, setPaymentError] =
-    useState<string | null>(null);
+  const [
+    paymentError,
+    setPaymentError,
+  ] = useState<string | null>(null);
 
-  const [updatingPaymentId, setUpdatingPaymentId] =
-    useState<string | null>(null);
+  const [
+    updatingPaymentId,
+    setUpdatingPaymentId,
+  ] = useState<string | null>(null);
 
   /* ===================================================
      LOAD STUDENTS
   =================================================== */
 
-  const refreshStudents = useCallback(
-    async (silent = false) => {
-      try {
-        if (silent) {
-          setRefreshing(true);
-        } else {
-          setLoading(true);
+  const refreshStudents =
+    useCallback(
+      async (silent = false) => {
+        try {
+          if (silent) {
+            setRefreshing(true);
+          } else {
+            setLoading(true);
+          }
+
+          setError("");
+
+          const records =
+            await loadStudents();
+
+          setStudents(records);
+
+          setSelectedStudent(
+            (current) => {
+              if (!current) {
+                return null;
+              }
+
+              const updated =
+                records.find(
+                  (record) =>
+                    record.student.id ===
+                    current.student.id
+                );
+
+              if (!updated) {
+                return null;
+              }
+
+              return {
+                student:
+                  updated.student,
+
+                enrollment:
+                  updated.enrollment,
+
+                payments:
+                  updated.payments,
+              };
+            }
+          );
+
+          setPaymentStudent(
+            (current) => {
+              if (!current) {
+                return null;
+              }
+
+              const updated =
+                records.find(
+                  (record) =>
+                    record.student.id ===
+                    current.student.id
+                );
+
+              if (!updated) {
+                return null;
+              }
+
+              return {
+                student:
+                  updated.student,
+
+                enrollment:
+                  updated.enrollment,
+
+                payments:
+                  updated.payments,
+              };
+            }
+          );
+        } catch (err) {
+          console.error(
+            "Students load error:",
+            err
+          );
+
+          setError(
+            err instanceof Error
+              ? err.message
+              : "We couldn't load students."
+          );
+        } finally {
+          setLoading(false);
+          setRefreshing(false);
         }
-
-        setError("");
-
-        const records =
-          await loadStudents();
-
-        setStudents(records);
-
-        /*
-         * Keep selected student details synchronized
-         * after a refresh.
-         */
-        setSelectedStudent((current) => {
-          if (!current) {
-            return null;
-          }
-
-          const updated =
-            records.find(
-              (record) =>
-                record.student.id ===
-                current.student.id
-            );
-
-          if (!updated) {
-            return null;
-          }
-
-          return {
-            student:
-              updated.student,
-
-            enrollment:
-              updated.enrollment,
-
-            payments:
-              updated.payments,
-          };
-        });
-
-        setPaymentStudent((current) => {
-          if (!current) {
-            return null;
-          }
-
-          const updated =
-            records.find(
-              (record) =>
-                record.student.id ===
-                current.student.id
-            );
-
-          if (!updated) {
-            return null;
-          }
-
-          return {
-            student:
-              updated.student,
-
-            enrollment:
-              updated.enrollment,
-
-            payments:
-              updated.payments,
-          };
-        });
-      } catch (err) {
-        console.error(
-          "Students load error:",
-          err
-        );
-
-        setError(
-          err instanceof Error
-            ? err.message
-            : "We couldn't load students."
-        );
-      } finally {
-        setLoading(false);
-        setRefreshing(false);
-      }
-    },
-    []
-  );
+      },
+      []
+    );
 
   useEffect(() => {
     refreshStudents();
@@ -406,40 +587,11 @@ export default function AdminStudentsPage() {
       0
     );
 
-  /*
-   * Three-month programme period.
-   *
-   * We calculate the end date from the start date.
-   */
   const endDate = useMemo(() => {
-    if (!startDate) {
-      return "";
-    }
-
-    const date = new Date(
-      `${startDate}T00:00:00+03:00`
+    return addMonthsToDate(
+      startDate,
+      3
     );
-
-    if (Number.isNaN(date.getTime())) {
-      return "";
-    }
-
-    date.setMonth(
-      date.getMonth() + 3
-    );
-
-    const year =
-      date.getFullYear();
-
-    const month = String(
-      date.getMonth() + 1
-    ).padStart(2, "0");
-
-    const day = String(
-      date.getDate()
-    ).padStart(2, "0");
-
-    return `${year}-${month}-${day}`;
   }, [startDate]);
 
   /* ===================================================
@@ -509,8 +661,6 @@ export default function AdminStudentsPage() {
           const enrollment =
             record.enrollment;
 
-          /* SEARCH */
-
           if (query) {
             const searchable = [
               student.full_name,
@@ -533,8 +683,6 @@ export default function AdminStudentsPage() {
             }
           }
 
-          /* STATUS */
-
           if (
             statusFilter !==
             "all"
@@ -552,8 +700,6 @@ export default function AdminStudentsPage() {
               return false;
             }
           }
-
-          /* INSTRUMENT */
 
           if (
             instrumentFilter !==
@@ -573,8 +719,6 @@ export default function AdminStudentsPage() {
             }
           }
 
-          /* PAYMENT */
-
           if (
             paymentFilter !==
             "all"
@@ -586,8 +730,8 @@ export default function AdminStudentsPage() {
               );
 
             const hasPayments =
-              record.payments
-                .length > 0;
+              record.payments.length >
+              0;
 
             if (
               paymentFilter ===
@@ -666,7 +810,7 @@ export default function AdminStudentsPage() {
     );
 
   /* ===================================================
-     OPEN ADD STUDENT
+     ADD STUDENT
   =================================================== */
 
   function openAddStudent() {
@@ -715,17 +859,7 @@ export default function AdminStudentsPage() {
     setAddStudentError("");
   }
 
-  /* ===================================================
-     ADD STUDENT
-  =================================================== */
-
   async function addStudent() {
-    /*
-     * The modal is now fully wired to the page.
-     *
-     * The actual database insertion is intentionally kept
-     * here so we can use the current Supabase schema.
-     */
     try {
       setAddingStudent(true);
       setAddStudentError("");
@@ -754,7 +888,10 @@ export default function AdminStudentsPage() {
         );
       }
 
-      if (!numericTotalFee || numericTotalFee <= 0) {
+      if (
+        !numericTotalFee ||
+        numericTotalFee <= 0
+      ) {
         throw new Error(
           "Please enter a valid total programme fee."
         );
@@ -780,18 +917,10 @@ export default function AdminStudentsPage() {
         );
       }
 
-      /*
-       * Import Supabase dynamically so the page remains
-       * client-side safe.
-       */
       const { supabase } =
         await import(
           "../../../lib/supabase"
         );
-
-      /* -----------------------------------------------
-         STUDENT
-      ------------------------------------------------ */
 
       const {
         data: student,
@@ -816,7 +945,7 @@ export default function AdminStudentsPage() {
             null,
         })
         .select(
-          "id, lead_id, full_name, email, whatsapp_number, status, notes, created_at, updated_at"
+          "id, lead_id, full_name, email, whatsapp_number, status, notes, photo_path, created_at, updated_at"
         )
         .single();
 
@@ -830,15 +959,14 @@ export default function AdminStudentsPage() {
         );
       }
 
-      /* -----------------------------------------------
-         ENROLLMENT
-      ------------------------------------------------ */
-
       const {
         data: enrollment,
-        error: enrollmentError,
+        error:
+          enrollmentError,
       } = await supabase
-        .from("student_enrollments")
+        .from(
+          "student_enrollments"
+        )
         .insert({
           student_id:
             student.id,
@@ -871,14 +999,13 @@ export default function AdminStudentsPage() {
         .single();
 
       if (enrollmentError) {
-        /*
-         * Attempt to remove the student if enrollment
-         * creation failed.
-         */
         await supabase
           .from("students")
           .delete()
-          .eq("id", student.id);
+          .eq(
+            "id",
+            student.id
+          );
 
         throw enrollmentError;
       }
@@ -889,15 +1016,12 @@ export default function AdminStudentsPage() {
         );
       }
 
-      /* -----------------------------------------------
-         INITIAL PAYMENT
-      ------------------------------------------------ */
-
       if (
         numericInitialPayment > 0
       ) {
         const {
-          error: paymentError,
+          error:
+            paymentError,
         } = await supabase
           .from("payments")
           .insert({
@@ -932,20 +1056,20 @@ export default function AdminStudentsPage() {
         }
       }
 
-      /* -----------------------------------------------
-         NEXT PAYMENT SCHEDULE
-      ------------------------------------------------ */
-
       if (
         remainingAfterInitial >
-        0 &&
-        numericNextPayment > 0 &&
+          0 &&
+        numericNextPayment >
+          0 &&
         nextPaymentDueDate
       ) {
         const {
-          error: scheduleError,
+          error:
+            scheduleError,
         } = await supabase
-          .from("payment_schedule")
+          .from(
+            "payment_schedule"
+          )
           .insert({
             enrollment_id:
               enrollment.id,
@@ -973,16 +1097,6 @@ export default function AdminStudentsPage() {
         }
       }
 
-      /*
-       * Refresh the page data.
-       */
-      await refreshStudents(true);
-
-      setShowAddStudent(false);
-
-      /*
-       * Select the newly created student.
-       */
       const refreshed =
         await loadStudents();
 
@@ -1008,9 +1122,8 @@ export default function AdminStudentsPage() {
         });
       }
 
-      /*
-       * Reset form.
-       */
+      setShowAddStudent(false);
+
       setStudentName("");
       setStudentWhatsapp("");
       setStudentEmail("");
@@ -1030,9 +1143,11 @@ export default function AdminStudentsPage() {
 
       setTotalFee("");
       setInitialPayment("");
+
       setInitialPaymentMethod(
         "mpesa"
       );
+
       setInitialPaymentReference("");
 
       setNextPaymentAmount("");
@@ -1056,6 +1171,241 @@ export default function AdminStudentsPage() {
   }
 
   /* ===================================================
+     EDIT STUDENT
+  =================================================== */
+
+  function openEditStudent(
+    record: SelectedStudentRecord
+  ) {
+    setEditStudentError(null);
+
+    setEditStudentName(
+      record.student.full_name
+    );
+
+    setEditStudentWhatsapp(
+      record.student.whatsapp_number
+    );
+
+    setEditStudentEmail(
+      record.student.email
+    );
+
+    setEditStudentStatus(
+      record.student.status
+    );
+
+    setEditStudentNotes(
+      record.student.notes ?? ""
+    );
+
+    setEditInstrument(
+      record.enrollment
+        ?.instrument ?? "piano"
+    );
+
+    setEditProgrammeName(
+      record.enrollment
+        ?.programme_name ??
+        "3 Month Training Programme"
+    );
+
+    setEditStartDate(
+      record.enrollment
+        ?.start_date ??
+        getTodayKey()
+    );
+
+    setEditEndDate(
+      record.enrollment
+        ?.end_date ??
+        addMonthsToDate(
+          record.enrollment
+            ?.start_date ??
+            getTodayKey(),
+          3
+        )
+    );
+
+    setEditTotalFee(
+      record.enrollment
+        ? String(
+            record.enrollment
+              .total_fee ?? ""
+          )
+        : ""
+    );
+
+    setEditEnrollmentStatus(
+      record.enrollment
+        ?.status ??
+        record.student.status
+    );
+
+    setEditPhotoFile(null);
+
+    setEditPhotoPreview(
+      record.student.photo_url ??
+        null
+    );
+
+    setShowEditStudent(true);
+  }
+
+  function closeEditStudent() {
+    if (savingStudent) {
+      return;
+    }
+
+    setShowEditStudent(false);
+    setEditStudentError(null);
+    setEditPhotoFile(null);
+    setEditPhotoPreview(null);
+  }
+
+  async function saveEditedStudent() {
+    if (!selectedStudent) {
+      return;
+    }
+
+    try {
+      setSavingStudent(true);
+      setEditStudentError(null);
+
+      const numericFee =
+        Number(
+          editTotalFee
+        );
+
+      if (
+        !Number.isFinite(
+          numericFee
+        ) ||
+        numericFee < 0
+      ) {
+        throw new Error(
+          "Please enter a valid programme fee."
+        );
+      }
+
+      if (
+        editStartDate &&
+        editEndDate &&
+        editEndDate <
+          editStartDate
+      ) {
+        throw new Error(
+          "The programme end date cannot be before the start date."
+        );
+      }
+
+      await updateStudentRecord({
+        studentId:
+          selectedStudent.student.id,
+
+        fullName:
+          editStudentName,
+
+        whatsappNumber:
+          editStudentWhatsapp,
+
+        email:
+          editStudentEmail,
+
+        status:
+          editStudentStatus,
+
+        notes:
+          editStudentNotes,
+
+        instrument:
+          editInstrument,
+
+        programmeName:
+          editProgrammeName,
+
+        startDate:
+          editStartDate,
+
+        endDate:
+          editEndDate,
+
+        totalFee:
+          numericFee,
+
+        enrollmentStatus:
+          editEnrollmentStatus,
+
+        photoFile:
+          editPhotoFile,
+      });
+
+      /*
+       * Reload everything so the newly generated
+       * private signed photo URL is available.
+       */
+      const refreshed =
+        await loadStudents();
+
+      setStudents(refreshed);
+
+      const updatedRecord =
+        refreshed.find(
+          (record) =>
+            record.student.id ===
+            selectedStudent.student.id
+        );
+
+      if (updatedRecord) {
+        const updatedSelected = {
+          student:
+            updatedRecord.student,
+
+          enrollment:
+            updatedRecord.enrollment,
+
+          payments:
+            updatedRecord.payments,
+        };
+
+        setSelectedStudent(
+          updatedSelected
+        );
+
+        setPaymentStudent(
+          (current) => {
+            if (
+              current?.student.id !==
+              updatedRecord.student.id
+            ) {
+              return current;
+            }
+
+            return updatedSelected;
+          }
+        );
+      }
+
+      setShowEditStudent(false);
+      setEditPhotoFile(null);
+      setEditPhotoPreview(null);
+    } catch (err) {
+      console.error(
+        "Update student error:",
+        err
+      );
+
+      setEditStudentError(
+        err instanceof Error
+          ? err.message
+          : "We couldn't update the student."
+      );
+    } finally {
+      setSavingStudent(false);
+    }
+  }
+
+  /* ===================================================
      COMMUNICATION
   =================================================== */
 
@@ -1063,9 +1413,12 @@ export default function AdminStudentsPage() {
     record: SelectedStudentRecord
   ) {
     const phone =
-      record.student.whatsapp_number;
+      record.student
+        .whatsapp_number;
 
-    if (!phone) return;
+    if (!phone) {
+      return;
+    }
 
     const cleaned =
       phone.replace(
@@ -1131,17 +1484,13 @@ export default function AdminStudentsPage() {
     setPaymentReference("");
     setPaymentError(null);
 
-    setShowPaymentModal(
-      true
-    );
+    setShowPaymentModal(true);
   }
 
-  /* ===================================================
-     RECORD PAYMENT
-  =================================================== */
-
   async function recordPayment() {
-    if (!paymentStudent?.enrollment) {
+    if (
+      !paymentStudent?.enrollment
+    ) {
       return;
     }
 
@@ -1152,7 +1501,9 @@ export default function AdminStudentsPage() {
       );
 
       const amount =
-        Number(paymentAmount) || 0;
+        Number(
+          paymentAmount
+        ) || 0;
 
       if (amount <= 0) {
         throw new Error(
@@ -1178,15 +1529,18 @@ export default function AdminStudentsPage() {
         );
 
       const {
-        error: paymentError,
+        error:
+          paymentError,
       } = await supabase
         .from("payments")
         .insert({
           student_id:
-            paymentStudent.student.id,
+            paymentStudent
+              .student.id,
 
           enrollment_id:
-            paymentStudent.enrollment.id,
+            paymentStudent
+              .enrollment.id,
 
           payment_schedule_id:
             null,
@@ -1239,7 +1593,7 @@ export default function AdminStudentsPage() {
   }
 
   /* ===================================================
-     RECEIPT HELPERS
+     RECEIPTS
   =================================================== */
 
   function createReceiptNumber(
@@ -1279,7 +1633,8 @@ export default function AdminStudentsPage() {
     const paymentIndex =
       payments.findIndex(
         (item) =>
-          item.id === payment.id
+          item.id ===
+          payment.id
       );
 
     const paymentsBefore =
@@ -1401,10 +1756,6 @@ export default function AdminStudentsPage() {
     };
   }
 
-  /* ===================================================
-     RECEIPTS
-  =================================================== */
-
   async function viewReceipt(
     record: SelectedStudentRecord,
     payment: Payment
@@ -1508,7 +1859,7 @@ export default function AdminStudentsPage() {
   }
 
   /* ===================================================
-     PAGE
+     RENDER
   =================================================== */
 
   return (
@@ -1665,11 +2016,6 @@ export default function AdminStudentsPage() {
               formatDate
             }
 
-            /*
-             * IMPORTANT:
-             * This accepts string | null | undefined
-             * because StudentList expects that signature.
-             */
             instrumentName={
               instrumentName
             }
@@ -1741,7 +2087,9 @@ export default function AdminStudentsPage() {
         )}
       </div>
 
-      {/* STUDENT DETAILS */}
+      {/* =================================================
+          STUDENT DETAILS
+      ================================================= */}
 
       {selectedStudent && (
         <StudentDetails
@@ -1834,26 +2182,35 @@ export default function AdminStudentsPage() {
               record,
               {
                 id: payment.id,
+
                 student_id:
                   record.student.id,
+
                 enrollment_id:
                   record.enrollment
                     ?.id ?? "",
+
                 payment_schedule_id:
                   null,
+
                 amount:
                   Number(
                     payment.amount ||
                       0
                   ),
+
                 payment_date:
                   payment.payment_date,
+
                 payment_method:
                   payment.payment_method as PaymentMethod,
+
                 reference:
                   payment.reference ??
                   null,
+
                 notes: null,
+
                 created_at:
                   payment.payment_date,
               }
@@ -1877,26 +2234,35 @@ export default function AdminStudentsPage() {
               record,
               {
                 id: payment.id,
+
                 student_id:
                   record.student.id,
+
                 enrollment_id:
                   record.enrollment
                     ?.id ?? "",
+
                 payment_schedule_id:
                   null,
+
                 amount:
                   Number(
                     payment.amount ||
                       0
                   ),
+
                 payment_date:
                   payment.payment_date,
+
                 payment_method:
                   payment.payment_method as PaymentMethod,
+
                 reference:
                   payment.reference ??
                   null,
+
                 notes: null,
+
                 created_at:
                   payment.payment_date,
               }
@@ -1920,26 +2286,35 @@ export default function AdminStudentsPage() {
               record,
               {
                 id: payment.id,
+
                 student_id:
                   record.student.id,
+
                 enrollment_id:
                   record.enrollment
                     ?.id ?? "",
+
                 payment_schedule_id:
                   null,
+
                 amount:
                   Number(
                     payment.amount ||
                       0
                   ),
+
                 payment_date:
                   payment.payment_date,
+
                 payment_method:
                   payment.payment_method as PaymentMethod,
+
                 reference:
                   payment.reference ??
                   null,
+
                 notes: null,
+
                 created_at:
                   payment.payment_date,
               }
@@ -1960,9 +2335,9 @@ export default function AdminStudentsPage() {
         />
       )}
 
-      {/* =====================================================
+      {/* =================================================
           ADD STUDENT MODAL
-      ===================================================== */}
+      ================================================= */}
 
       <AddStudentModal
         show={
@@ -2138,9 +2513,177 @@ export default function AdminStudentsPage() {
         }
       />
 
-      {/* =====================================================
+      {/* =================================================
+          EDIT STUDENT MODAL
+      ================================================= */}
+
+      {showEditStudent &&
+        selectedStudent && (
+          <EditStudentModal
+            selectedStudent={
+              selectedStudent
+            }
+
+            show={
+              showEditStudent
+            }
+
+            saving={
+              savingStudent
+            }
+
+            error={
+              editStudentError
+            }
+
+            studentName={
+              editStudentName
+            }
+
+            studentWhatsapp={
+              editStudentWhatsapp
+            }
+
+            studentEmail={
+              editStudentEmail
+            }
+
+            studentStatus={
+              editStudentStatus
+            }
+
+            studentNotes={
+              editStudentNotes
+            }
+
+            instrument={
+              editInstrument
+            }
+
+            programmeName={
+              editProgrammeName
+            }
+
+            startDate={
+              editStartDate
+            }
+
+            endDate={
+              editEndDate
+            }
+
+            totalFee={
+              editTotalFee
+            }
+
+            enrollmentStatus={
+              editEnrollmentStatus
+            }
+
+            photoPreview={
+              editPhotoPreview
+            }
+
+            photoFile={
+              editPhotoFile
+            }
+
+            setStudentName={
+              setEditStudentName
+            }
+
+            setStudentWhatsapp={
+              setEditStudentWhatsapp
+            }
+
+            setStudentEmail={
+              setEditStudentEmail
+            }
+
+            setStudentStatus={
+              setEditStudentStatus
+            }
+
+            setStudentNotes={
+              setEditStudentNotes
+            }
+
+            setInstrument={
+              setEditInstrument
+            }
+
+            setProgrammeName={
+              setEditProgrammeName
+            }
+
+            setStartDate={
+              (value) => {
+                setEditStartDate(
+                  value
+                );
+
+                /*
+                 * Only automatically calculate
+                 * the end date when the current
+                 * programme follows the standard
+                 * 3-month structure.
+                 */
+                if (
+                  editProgrammeName
+                    .toLowerCase()
+                    .includes("3 month")
+                ) {
+                  setEditEndDate(
+                    addMonthsToDate(
+                      value,
+                      3
+                    )
+                  );
+                }
+              }
+            }
+
+            setEndDate={
+              setEditEndDate
+            }
+
+            setTotalFee={
+              setEditTotalFee
+            }
+
+            setEnrollmentStatus={
+              setEditEnrollmentStatus
+            }
+
+            setPhotoFile={
+              setEditPhotoFile
+            }
+
+            setPhotoPreview={
+              setEditPhotoPreview
+            }
+
+            closeEditStudent={
+              closeEditStudent
+            }
+
+            updateStudent={
+              saveEditedStudent
+            }
+
+            formatCurrency={
+              formatCurrency
+            }
+
+            formatDate={
+              formatDate
+            }
+          />
+        )}
+
+      {/* =================================================
           PAYMENT MODAL
-      ===================================================== */}
+      ================================================= */}
 
       {showPaymentModal &&
         paymentStudent && (
@@ -2220,9 +2763,9 @@ export default function AdminStudentsPage() {
           />
         )}
 
-      {/* =====================================================
+      {/* =================================================
           REFRESH INDICATOR
-      ===================================================== */}
+      ================================================= */}
 
       {refreshing && (
         <div className="pointer-events-none fixed bottom-5 right-5 z-[120]">
