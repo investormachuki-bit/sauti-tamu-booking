@@ -2092,18 +2092,22 @@ export default function AdminStudentsPage() {
       ================================================= */}
 
       {selectedStudent && (
-        <StudentDetails
-          selectedStudent={
-            selectedStudent
-          }
+       <StudentDetails
+  selectedStudent={
+    selectedStudent
+  }
 
-          onClose={() =>
-            setSelectedStudent(
-              null
-            )
-          }
+  onClose={() =>
+    setSelectedStudent(
+      null
+    )
+  }
 
-          onWhatsApp={(
+  onEditStudent={
+    openEditStudent
+  }
+
+  onWhatsApp={(
             student
           ) => {
             const record =
