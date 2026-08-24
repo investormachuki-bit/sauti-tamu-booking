@@ -6,13 +6,19 @@ import type {
   Payment,
   PaymentSchedule,
   StudentRecord,
+  StudentStatus,
+  Instrument,
 } from "@/components/students/students-types";
 
 /* =====================================================
    CONSTANTS
 ===================================================== */
 
-const STUDENT_PHOTO_BUCKET = "student-photos";
+const STUDENT_PHOTO_BUCKET =
+  "student-photos";
+
+const STUDENT_PHOTO_SIGNED_URL_SECONDS =
+  60 * 60;
 
 /* =====================================================
    LOAD STUDENTS
@@ -27,7 +33,18 @@ export async function loadStudents(): Promise<
   } = await supabase
     .from("students")
     .select(
-      "id, lead_id, full_name, email, whatsapp_number, status, notes, photo_path, created_at, updated_at"
+      `
+        id,
+        lead_id,
+        full_name,
+        email,
+        whatsapp_number,
+        status,
+        notes,
+        photo_path,
+        created_at,
+        updated_at
+      `
     )
     .order("created_at", {
       ascending: false,
@@ -37,50 +54,44 @@ export async function loadStudents(): Promise<
     throw studentError;
   }
 
-  /*
-   * IMPORTANT:
-   *
-   * The database stores photo_path.
-   * Student type also contains photo_url.
-   *
-   * Because the bucket is private, photo_url is not
-   * stored permanently. We generate a temporary
-   * signed URL below.
-   */
+  const rawStudents =
+    studentData ?? [];
 
+  if (rawStudents.length === 0) {
+    return [];
+  }
+
+  /*
+   * Generate signed URLs for private
+   * student photos.
+   */
   const students: Student[] =
     await Promise.all(
-      (studentData ?? []).map(
+      rawStudents.map(
         async (student) => {
-          let photoUrl: string | null =
-            null;
+          let photoUrl:
+            | string
+            | null = null;
 
           if (student.photo_path) {
-            try {
-              const {
-                data: signedUrlData,
-                error: signedUrlError,
-              } = await supabase.storage
-                .from(
-                  STUDENT_PHOTO_BUCKET
-                )
-                .createSignedUrl(
-                  student.photo_path,
-                  3600
-                );
-
-              if (
-                !signedUrlError &&
-                signedUrlData?.signedUrl
-              ) {
-                photoUrl =
-                  signedUrlData.signedUrl;
-              }
-            } catch (error) {
-              console.error(
-                "Student photo URL error:",
-                error
+            const {
+              data: signedUrlData,
+              error: signedUrlError,
+            } = await supabase.storage
+              .from(
+                STUDENT_PHOTO_BUCKET
+              )
+              .createSignedUrl(
+                student.photo_path,
+                STUDENT_PHOTO_SIGNED_URL_SECONDS
               );
+
+            if (
+              !signedUrlError &&
+              signedUrlData?.signedUrl
+            ) {
+              photoUrl =
+                signedUrlData.signedUrl;
             }
           }
 
@@ -95,7 +106,7 @@ export async function loadStudents(): Promise<
             whatsapp_number:
               student.whatsapp_number,
             status:
-              student.status,
+              student.status as StudentStatus,
             notes:
               student.notes,
             photo_path:
@@ -112,10 +123,6 @@ export async function loadStudents(): Promise<
       )
     );
 
-  if (students.length === 0) {
-    return [];
-  }
-
   const studentIds =
     students.map(
       (student) => student.id
@@ -131,7 +138,19 @@ export async function loadStudents(): Promise<
   } = await supabase
     .from("student_enrollments")
     .select(
-      "id, student_id, instrument, programme_name, start_date, end_date, total_fee, status, notes, created_at, updated_at"
+      `
+        id,
+        student_id,
+        instrument,
+        programme_name,
+        start_date,
+        end_date,
+        total_fee,
+        status,
+        notes,
+        created_at,
+        updated_at
+      `
     )
     .in(
       "student_id",
@@ -159,7 +178,18 @@ export async function loadStudents(): Promise<
   } = await supabase
     .from("payments")
     .select(
-      "id, student_id, enrollment_id, payment_schedule_id, amount, payment_date, payment_method, reference, notes, created_at"
+      `
+        id,
+        student_id,
+        enrollment_id,
+        payment_schedule_id,
+        amount,
+        payment_date,
+        payment_method,
+        reference,
+        notes,
+        created_at
+      `
     )
     .in(
       "student_id",
@@ -174,7 +204,8 @@ export async function loadStudents(): Promise<
   }
 
   const payments =
-    (paymentData ?? []) as Payment[];
+    (paymentData ??
+      []) as Payment[];
 
   /* ===================================================
      PAYMENT SCHEDULES
@@ -198,7 +229,15 @@ export async function loadStudents(): Promise<
     } = await supabase
       .from("payment_schedule")
       .select(
-        "id, enrollment_id, amount_due, due_date, follow_up_date, status, notes"
+        `
+          id,
+          enrollment_id,
+          amount_due,
+          due_date,
+          follow_up_date,
+          status,
+          notes
+        `
       )
       .in(
         "enrollment_id",
@@ -218,18 +257,21 @@ export async function loadStudents(): Promise<
   }
 
   /* ===================================================
-     BUILD ENROLLMENT MAP
+     BUILD LOOKUP MAPS
   =================================================== */
 
   const enrollmentMap =
-    new Map<string, Enrollment>();
+    new Map<
+      string,
+      Enrollment
+    >();
 
   enrollments.forEach(
     (enrollment) => {
       /*
-       * Enrollments are ordered newest first.
-       * Therefore the first enrollment found for
-       * each student is the latest enrollment.
+       * Because enrollments are ordered
+       * newest first, the first enrollment
+       * is the current/latest enrollment.
        */
       if (
         !enrollmentMap.has(
@@ -244,12 +286,11 @@ export async function loadStudents(): Promise<
     }
   );
 
-  /* ===================================================
-     BUILD PAYMENT MAP
-  =================================================== */
-
   const paymentsMap =
-    new Map<string, Payment[]>();
+    new Map<
+      string,
+      Payment[]
+    >();
 
   payments.forEach(
     (payment) => {
@@ -266,10 +307,6 @@ export async function loadStudents(): Promise<
       );
     }
   );
-
-  /* ===================================================
-     BUILD SCHEDULE MAP
-  =================================================== */
 
   const schedulesMap =
     new Map<
@@ -314,223 +351,15 @@ export async function loadStudents(): Promise<
             student.id
           ) ?? [],
 
-        schedules: enrollment
-          ? schedulesMap.get(
-              enrollment.id
-            ) ?? []
-          : [],
+        schedules:
+          enrollment
+            ? schedulesMap.get(
+                enrollment.id
+              ) ?? []
+            : [],
       };
     }
   );
-}
-
-/* =====================================================
-   UPDATE STUDENT
-===================================================== */
-
-export type UpdateStudentInput =
-  {
-    full_name: string;
-    email: string;
-    whatsapp_number: string;
-    status: Student["status"];
-    notes: string | null;
-    photo_path?:
-      | string
-      | null;
-  };
-
-export async function updateStudent(
-  studentId: string,
-  input: UpdateStudentInput
-): Promise<Student> {
-  const {
-    data,
-    error,
-  } = await supabase
-    .from("students")
-    .update({
-      full_name:
-        input.full_name.trim(),
-
-      email:
-        input.email.trim(),
-
-      whatsapp_number:
-        input.whatsapp_number.trim(),
-
-      status:
-        input.status,
-
-      notes:
-        input.notes?.trim() ||
-        null,
-
-      ...(input.photo_path !==
-      undefined
-        ? {
-            photo_path:
-              input.photo_path,
-          }
-        : {}),
-    })
-    .eq(
-      "id",
-      studentId
-    )
-    .select(
-      "id, lead_id, full_name, email, whatsapp_number, status, notes, photo_path, created_at, updated_at"
-    )
-    .single();
-
-  if (error) {
-    throw error;
-  }
-
-  let photoUrl:
-    | string
-    | null = null;
-
-  if (data.photo_path) {
-    const {
-      data: signedUrlData,
-      error: signedUrlError,
-    } = await supabase.storage
-      .from(
-        STUDENT_PHOTO_BUCKET
-      )
-      .createSignedUrl(
-        data.photo_path,
-        3600
-      );
-
-    if (
-      !signedUrlError &&
-      signedUrlData?.signedUrl
-    ) {
-      photoUrl =
-        signedUrlData.signedUrl;
-    }
-  }
-
-  return {
-    ...data,
-    photo_path:
-      data.photo_path ??
-      null,
-    photo_url:
-      photoUrl,
-  } as Student;
-}
-
-/* =====================================================
-   UPDATE ENROLLMENT
-===================================================== */
-
-export type UpdateEnrollmentInput =
-  {
-    instrument:
-      Enrollment["instrument"];
-
-    programme_name: string;
-
-    start_date: string;
-
-    end_date: string;
-
-    total_fee: number;
-
-    status:
-      Enrollment["status"];
-
-    notes: string | null;
-  };
-
-export async function updateEnrollment(
-  enrollmentId: string,
-  input: UpdateEnrollmentInput
-): Promise<Enrollment> {
-  const {
-    data,
-    error,
-  } = await supabase
-    .from("student_enrollments")
-    .update({
-      instrument:
-        input.instrument,
-
-      programme_name:
-        input.programme_name.trim(),
-
-      start_date:
-        input.start_date,
-
-      end_date:
-        input.end_date,
-
-      total_fee:
-        Number(
-          input.total_fee
-        ) || 0,
-
-      status:
-        input.status,
-
-      notes:
-        input.notes?.trim() ||
-        null,
-    })
-    .eq(
-      "id",
-      enrollmentId
-    )
-    .select(
-      "id, student_id, instrument, programme_name, start_date, end_date, total_fee, status, notes, created_at, updated_at"
-    )
-    .single();
-
-  if (error) {
-    throw error;
-  }
-
-  return data as Enrollment;
-}
-
-/* =====================================================
-   UPDATE STUDENT PROFILE
-===================================================== */
-
-export type UpdateStudentProfileInput =
-  {
-    student:
-      UpdateStudentInput;
-
-    enrollment?:
-      | UpdateEnrollmentInput
-      | null;
-  };
-
-export async function updateStudentProfile(
-  studentId: string,
-  input: UpdateStudentProfileInput,
-  enrollmentId?:
-    | string
-    | null
-): Promise<void> {
-  await updateStudent(
-    studentId,
-    input.student
-  );
-
-  if (
-    enrollmentId &&
-    input.enrollment
-  ) {
-    await updateEnrollment(
-      enrollmentId,
-      input.enrollment
-    );
-  }
 }
 
 /* =====================================================
@@ -541,6 +370,12 @@ export async function uploadStudentPhoto(
   studentId: string,
   file: File
 ): Promise<string> {
+  if (!studentId) {
+    throw new Error(
+      "Student ID is required."
+    );
+  }
+
   if (!file) {
     throw new Error(
       "Please select a photo."
@@ -553,16 +388,16 @@ export async function uploadStudentPhoto(
     )
   ) {
     throw new Error(
-      "Please select a valid image file."
+      "Only image files are allowed."
     );
   }
 
-  const maxSize =
-    5 * 1024 * 1024;
-
-  if (file.size > maxSize) {
+  if (
+    file.size >
+    5 * 1024 * 1024
+  ) {
     throw new Error(
-      "Student photo must be 5MB or smaller."
+      "Student photo must be smaller than 5MB."
     );
   }
 
@@ -574,10 +409,10 @@ export async function uploadStudentPhoto(
     "jpg";
 
   const filePath =
-    `${studentId}/profile-${Date.now()}.${extension}`;
+    `${studentId}/${crypto.randomUUID()}.${extension}`;
 
   const {
-    error: uploadError,
+    error,
   } = await supabase.storage
     .from(
       STUDENT_PHOTO_BUCKET
@@ -588,41 +423,14 @@ export async function uploadStudentPhoto(
       {
         cacheControl:
           "3600",
-
         upsert: false,
-
         contentType:
           file.type,
       }
     );
 
-  if (uploadError) {
-    throw uploadError;
-  }
-
-  const {
-    error: updateError,
-  } = await supabase
-    .from("students")
-    .update({
-      photo_path:
-        filePath,
-    })
-    .eq(
-      "id",
-      studentId
-    );
-
-  if (updateError) {
-    await supabase.storage
-      .from(
-        STUDENT_PHOTO_BUCKET
-      )
-      .remove([
-        filePath,
-      ]);
-
-    throw updateError;
+  if (error) {
+    throw error;
   }
 
   return filePath;
@@ -633,17 +441,14 @@ export async function uploadStudentPhoto(
 ===================================================== */
 
 export async function deleteStudentPhoto(
-  studentId: string,
-  photoPath?:
-    | string
-    | null
+  photoPath: string | null
 ): Promise<void> {
   if (!photoPath) {
     return;
   }
 
   const {
-    error: storageError,
+    error,
   } = await supabase.storage
     .from(
       STUDENT_PHOTO_BUCKET
@@ -652,37 +457,17 @@ export async function deleteStudentPhoto(
       photoPath,
     ]);
 
-  if (storageError) {
-    throw storageError;
-  }
-
-  const {
-    error: updateError,
-  } = await supabase
-    .from("students")
-    .update({
-      photo_path: null,
-    })
-    .eq(
-      "id",
-      studentId
-    );
-
-  if (updateError) {
-    throw updateError;
+  if (error) {
+    throw error;
   }
 }
 
 /* =====================================================
-   GET PRIVATE STUDENT PHOTO URL
+   GET SIGNED STUDENT PHOTO URL
 ===================================================== */
 
 export async function getStudentPhotoUrl(
-  photoPath:
-    | string
-    | null
-    | undefined,
-  expiresIn = 3600
+  photoPath: string | null
 ): Promise<string | null> {
   if (!photoPath) {
     return null;
@@ -697,14 +482,385 @@ export async function getStudentPhotoUrl(
     )
     .createSignedUrl(
       photoPath,
-      expiresIn
+      STUDENT_PHOTO_SIGNED_URL_SECONDS
     );
 
   if (error) {
     throw error;
   }
 
-  return (
-    data?.signedUrl ?? null
-  );
+  return data?.signedUrl ??
+    null;
+}
+
+/* =====================================================
+   UPDATE STUDENT
+===================================================== */
+
+export interface UpdateStudentInput {
+  studentId: string;
+
+  fullName: string;
+  whatsappNumber: string;
+  email: string;
+  status: StudentStatus;
+  notes: string | null;
+
+  instrument: Instrument;
+  programmeName: string;
+  startDate: string;
+  endDate: string;
+  totalFee: number;
+  enrollmentStatus: StudentStatus;
+
+  photoFile?: File | null;
+}
+
+export async function updateStudent(
+  input: UpdateStudentInput
+): Promise<void> {
+  const {
+    studentId,
+
+    fullName,
+    whatsappNumber,
+    email,
+    status,
+    notes,
+
+    instrument,
+    programmeName,
+    startDate,
+    endDate,
+    totalFee,
+    enrollmentStatus,
+
+    photoFile,
+  } = input;
+
+  if (!studentId) {
+    throw new Error(
+      "Student ID is required."
+    );
+  }
+
+  if (!fullName.trim()) {
+    throw new Error(
+      "Student name is required."
+    );
+  }
+
+  if (!whatsappNumber.trim()) {
+    throw new Error(
+      "WhatsApp number is required."
+    );
+  }
+
+  if (!programmeName.trim()) {
+    throw new Error(
+      "Programme name is required."
+    );
+  }
+
+  if (!startDate) {
+    throw new Error(
+      "Start date is required."
+    );
+  }
+
+  if (!endDate) {
+    throw new Error(
+      "End date is required."
+    );
+  }
+
+  if (
+    Number.isNaN(
+      Number(totalFee)
+    ) ||
+    Number(totalFee) < 0
+  ) {
+    throw new Error(
+      "Please enter a valid programme fee."
+    );
+  }
+
+  /*
+   * First retrieve the current photo path
+   * and current enrollment.
+   */
+  const {
+    data: currentStudent,
+    error:
+      currentStudentError,
+  } = await supabase
+    .from("students")
+    .select(
+      "id, photo_path"
+    )
+    .eq(
+      "id",
+      studentId
+    )
+    .single();
+
+  if (currentStudentError) {
+    throw currentStudentError;
+  }
+
+  const {
+    data: currentEnrollment,
+    error:
+      currentEnrollmentError,
+  } = await supabase
+    .from(
+      "student_enrollments"
+    )
+    .select(
+      "id, photo_path"
+    )
+    .eq(
+      "student_id",
+      studentId
+    )
+    .order(
+      "created_at",
+      {
+        ascending: false,
+      }
+    )
+    .limit(1)
+    .maybeSingle();
+
+  /*
+   * Some databases may not have a photo_path
+   * column on enrollment. We don't actually
+   * need it, so don't fail the entire edit
+   * because of that lookup.
+   */
+  if (
+    currentEnrollmentError &&
+    currentEnrollmentError.code !==
+      "PGRST116"
+  ) {
+    /*
+     * Ignore enrollment lookup errors here.
+     * The actual enrollment update below will
+     * provide the authoritative error.
+     */
+  }
+
+  let newPhotoPath:
+    | string
+    | null = null;
+
+  let uploadedNewPhoto =
+    false;
+
+  /* ===================================================
+     PHOTO
+  =================================================== */
+
+  if (photoFile) {
+    newPhotoPath =
+      await uploadStudentPhoto(
+        studentId,
+        photoFile
+      );
+
+    uploadedNewPhoto = true;
+  }
+
+  /* ===================================================
+     UPDATE STUDENT
+  =================================================== */
+
+  const studentUpdate: Record<
+    string,
+    unknown
+  > = {
+    full_name:
+      fullName.trim(),
+
+    whatsapp_number:
+      whatsappNumber.trim(),
+
+    email:
+      email.trim(),
+
+    status,
+
+    notes:
+      notes?.trim() ||
+      null,
+  };
+
+  if (uploadedNewPhoto) {
+    studentUpdate.photo_path =
+      newPhotoPath;
+  }
+
+  const {
+    error: studentUpdateError,
+  } = await supabase
+    .from("students")
+    .update(
+      studentUpdate
+    )
+    .eq(
+      "id",
+      studentId
+    );
+
+  if (studentUpdateError) {
+    /*
+     * If the database update fails after
+     * uploading a new photo, remove the
+     * orphaned photo.
+     */
+    if (newPhotoPath) {
+      await deleteStudentPhoto(
+        newPhotoPath
+      ).catch(() => {});
+    }
+
+    throw studentUpdateError;
+  }
+
+  /* ===================================================
+     UPDATE ENROLLMENT
+  =================================================== */
+
+  const enrollmentId =
+    currentEnrollment?.id;
+
+  if (enrollmentId) {
+    const {
+      error:
+        enrollmentUpdateError,
+    } = await supabase
+      .from(
+        "student_enrollments"
+      )
+      .update({
+        instrument,
+        programme_name:
+          programmeName.trim(),
+        start_date:
+          startDate,
+        end_date:
+          endDate,
+        total_fee:
+          Number(totalFee),
+        status:
+          enrollmentStatus,
+      })
+      .eq(
+        "id",
+        enrollmentId
+      );
+
+    if (
+      enrollmentUpdateError
+    ) {
+      /*
+       * Roll the photo back if the enrollment
+       * update fails.
+       */
+      if (newPhotoPath) {
+        await supabase
+          .from("students")
+          .update({
+            photo_path:
+              currentStudent
+                .photo_path ??
+              null,
+          })
+          .eq(
+            "id",
+            studentId
+          );
+
+        await deleteStudentPhoto(
+          newPhotoPath
+        ).catch(() => {});
+      }
+
+      throw enrollmentUpdateError;
+    }
+  } else {
+    /*
+     * If somehow the student has no enrollment,
+     * create one so the edit remains complete.
+     */
+    const {
+      error:
+        enrollmentInsertError,
+    } = await supabase
+      .from(
+        "student_enrollments"
+      )
+      .insert({
+        student_id:
+          studentId,
+        instrument,
+        programme_name:
+          programmeName.trim(),
+        start_date:
+          startDate,
+        end_date:
+          endDate,
+        total_fee:
+          Number(totalFee),
+        status:
+          enrollmentStatus,
+      });
+
+    if (
+      enrollmentInsertError
+    ) {
+      if (newPhotoPath) {
+        await supabase
+          .from("students")
+          .update({
+            photo_path:
+              currentStudent
+                .photo_path ??
+              null,
+          })
+          .eq(
+            "id",
+            studentId
+          );
+
+        await deleteStudentPhoto(
+          newPhotoPath
+        ).catch(() => {});
+      }
+
+      throw enrollmentInsertError;
+    }
+  }
+
+  /* ===================================================
+     DELETE OLD PHOTO
+  =================================================== */
+
+  if (
+    newPhotoPath &&
+    currentStudent.photo_path &&
+    currentStudent.photo_path !==
+      newPhotoPath
+  ) {
+    await deleteStudentPhoto(
+      currentStudent.photo_path
+    ).catch(
+      (error) => {
+        console.warn(
+          "Could not delete old student photo:",
+          error
+        );
+      }
+    );
+  }
 }
