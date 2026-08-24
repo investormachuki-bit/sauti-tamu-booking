@@ -2,6 +2,8 @@
 
 import {
   CalendarDays,
+  Camera,
+  CheckCircle2,
   Clock3,
   Download,
   Edit3,
@@ -32,7 +34,6 @@ interface Student {
   id: string;
   full_name: string;
   whatsapp?: string | null;
-  whatsapp_number?: string | null;
   email?: string | null;
   notes?: string | null;
   photo_url?: string | null;
@@ -61,7 +62,7 @@ interface StudentDetailsProps {
 
   onClose: () => void;
 
-  onEditStudent?: (
+  onEditStudent: (
     student: SelectedStudent
   ) => void;
 
@@ -128,20 +129,18 @@ function instrumentName(
 }
 
 function getInitials(
-  name: string
+  name?: string | null
 ) {
+  if (!name) return "S";
+
   const parts = name
     .trim()
     .split(/\s+/)
     .filter(Boolean);
 
-  if (parts.length === 0) {
-    return "S";
-  }
-
   if (parts.length === 1) {
     return parts[0]
-      .charAt(0)
+      .slice(0, 2)
       .toUpperCase();
   }
 
@@ -149,20 +148,6 @@ function getInitials(
     parts[0].charAt(0) +
     parts[parts.length - 1].charAt(0)
   ).toUpperCase();
-}
-
-function statusLabel(
-  status?: string | null
-) {
-  if (!status) return "";
-
-  return status
-    .replace(/_/g, " ")
-    .replace(
-      /\b\w/g,
-      (letter) =>
-        letter.toUpperCase()
-    );
 }
 
 export default function StudentDetails({
@@ -186,13 +171,12 @@ export default function StudentDetails({
     payments,
   } = selectedStudent;
 
-  const totalPaid =
-    payments.reduce(
-      (total, payment) =>
-        total +
-        Number(payment.amount || 0),
-      0
-    );
+  const totalPaid = payments.reduce(
+    (total, payment) =>
+      total +
+      Number(payment.amount || 0),
+    0
+  );
 
   const totalFee = Number(
     enrollment?.total_fee || 0
@@ -208,51 +192,64 @@ export default function StudentDetails({
         0
       );
 
-  const whatsappNumber =
-    student.whatsapp_number ??
-    student.whatsapp ??
-    "";
-
-  const photoUrl =
+  const studentPhoto =
     student.photo_url || null;
 
   return (
     <div className="fixed inset-0 z-[100] flex items-end justify-center bg-black/50 sm:items-center sm:p-5">
+
       <div className="flex max-h-[94vh] w-full max-w-[560px] flex-col overflow-hidden rounded-t-3xl bg-white shadow-2xl sm:rounded-3xl">
 
-        {/* =================================================
+        {/* =====================================================
             HEADER
-        ================================================= */}
+        ===================================================== */}
 
         <div className="shrink-0 border-b border-[var(--st-border)] bg-white px-5 py-4">
 
-          <div className="flex items-start justify-between gap-4">
+          <div className="flex items-start justify-between gap-3">
+
+            {/* STUDENT IDENTITY */}
 
             <div className="flex min-w-0 items-center gap-3">
 
               {/* PHOTO */}
 
-              <div className="h-14 w-14 shrink-0 overflow-hidden rounded-2xl border border-[var(--st-border)] bg-[var(--st-bg-soft)]">
+              <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-2xl border border-[var(--st-border)] bg-[var(--st-bg-soft)]">
 
-                {photoUrl ? (
+                {studentPhoto ? (
                   <img
-                    src={photoUrl}
+                    src={studentPhoto}
                     alt={
-                      student.full_name
+                      student.full_name ||
+                      "Student"
                     }
                     className="h-full w-full object-cover"
                   />
                 ) : (
-                  <div className="flex h-full w-full items-center justify-center text-[17px] font-bold text-[var(--st-gray)]">
+                  <div className="flex h-full w-full items-center justify-center text-[18px] font-bold text-[var(--st-gray)]">
                     {getInitials(
                       student.full_name
                     )}
                   </div>
                 )}
 
-              </div>
+                {/* PHOTO EDIT BUTTON */}
 
-              {/* NAME */}
+                <button
+                  type="button"
+                  onClick={() =>
+                    onEditStudent(
+                      selectedStudent
+                    )
+                  }
+                  className="absolute bottom-1 right-1 flex h-7 w-7 items-center justify-center rounded-full border border-white bg-[var(--st-charcoal-dark)] text-white shadow-md"
+                  aria-label="Change student photo"
+                  title="Change photo"
+                >
+                  <Camera size={12} />
+                </button>
+
+              </div>
 
               <div className="min-w-0">
 
@@ -280,10 +277,8 @@ export default function StudentDetails({
                         ·
                       </span>
 
-                      <span className="text-[9px] font-semibold text-[var(--st-gray)]">
-                        {statusLabel(
-                          enrollment.status
-                        )}
+                      <span className="text-[9px] font-semibold capitalize text-[var(--st-gray)]">
+                        {enrollment.status}
                       </span>
                     </>
                   )}
@@ -296,23 +291,27 @@ export default function StudentDetails({
 
             {/* HEADER ACTIONS */}
 
-            <div className="flex shrink-0 items-center gap-1.5">
+            <div className="flex shrink-0 items-center gap-2">
 
-              {onEditStudent && (
-                <button
-                  type="button"
-                  onClick={() =>
-                    onEditStudent(
-                      selectedStudent
-                    )
-                  }
-                  className="st-icon-button"
-                  aria-label="Edit student"
-                  title="Edit student"
-                >
-                  <Edit3 size={16} />
-                </button>
-              )}
+              {/* EDIT */}
+
+              <button
+                type="button"
+                onClick={() =>
+                  onEditStudent(
+                    selectedStudent
+                  )
+                }
+                className="st-button st-button-secondary"
+                title="Edit student"
+              >
+                <Edit3 size={14} />
+                <span className="hidden sm:inline">
+                  Edit
+                </span>
+              </button>
+
+              {/* CLOSE */}
 
               <button
                 type="button"
@@ -330,61 +329,75 @@ export default function StudentDetails({
 
         </div>
 
-        {/* =================================================
+        {/* =====================================================
             CONTENT
-        ================================================= */}
+        ===================================================== */}
 
         <div className="overflow-y-auto p-5">
 
           {/* =================================================
-              PROFILE
+              PROFILE SUMMARY
           ================================================= */}
 
           <div className="rounded-2xl bg-[var(--st-bg-soft)] p-4">
 
             <div className="flex items-center gap-4">
 
-              <div className="h-20 w-20 shrink-0 overflow-hidden rounded-2xl border border-[var(--st-border)] bg-white">
+              <div className="relative h-24 w-24 shrink-0 overflow-hidden rounded-2xl border border-[var(--st-border)] bg-white">
 
-                {photoUrl ? (
+                {studentPhoto ? (
                   <img
-                    src={photoUrl}
+                    src={studentPhoto}
                     alt={
-                      student.full_name
+                      student.full_name ||
+                      "Student"
                     }
                     className="h-full w-full object-cover"
                   />
                 ) : (
-                  <div className="flex h-full w-full items-center justify-center text-2xl font-bold text-[var(--st-gray)]">
+                  <div className="flex h-full w-full items-center justify-center text-[26px] font-bold text-[var(--st-gray)]">
                     {getInitials(
                       student.full_name
                     )}
                   </div>
                 )}
 
+                {/* PHOTO EDIT */}
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    onEditStudent(
+                      selectedStudent
+                    )
+                  }
+                  className="absolute bottom-2 right-2 flex h-8 w-8 items-center justify-center rounded-full bg-[var(--st-charcoal-dark)] text-white shadow-md"
+                  aria-label="Edit student photo"
+                  title="Edit student photo"
+                >
+                  <Camera size={14} />
+                </button>
+
               </div>
 
               <div className="min-w-0">
 
-                <p className="m-0 text-[15px] font-bold text-[var(--st-charcoal-dark)]">
+                <h3 className="truncate text-[16px] font-bold text-[var(--st-charcoal-dark)]">
                   {student.full_name}
+                </h3>
+
+                <p className="mt-1 text-[10px] text-[var(--st-gray)]">
+                  {enrollment?.programme_name ||
+                    instrumentName(
+                      enrollment?.instrument
+                    )}
                 </p>
 
-                {enrollment?.programme_name && (
-                  <p className="mt-1 truncate text-[9px] text-[var(--st-gray)]">
-                    {
-                      enrollment.programme_name
-                    }
-                  </p>
-                )}
-
-                {enrollment?.instrument && (
-                  <p className="mt-1 text-[9px] font-semibold text-[var(--st-gray)]">
-                    {instrumentName(
-                      enrollment.instrument
-                    )}
-                  </p>
-                )}
+                <p className="mt-1 text-[10px] font-medium text-[var(--st-gray)]">
+                  {instrumentName(
+                    enrollment?.instrument
+                  )}
+                </p>
 
               </div>
 
@@ -411,7 +424,7 @@ export default function StudentDetails({
                 </p>
 
                 <p className="mt-1 truncate text-[10px] font-semibold text-[var(--st-charcoal-dark)]">
-                  {whatsappNumber ||
+                  {student.whatsapp ||
                     "Not provided"}
                 </p>
 
@@ -440,9 +453,26 @@ export default function StudentDetails({
 
           <div className="mt-6">
 
-            <p className="st-eyebrow">
-              PROGRAMME
-            </p>
+            <div className="flex items-center justify-between">
+
+              <p className="st-eyebrow">
+                PROGRAMME
+              </p>
+
+              <button
+                type="button"
+                onClick={() =>
+                  onEditStudent(
+                    selectedStudent
+                  )
+                }
+                className="flex items-center gap-1 text-[9px] font-bold text-[var(--st-red)]"
+              >
+                <Edit3 size={12} />
+                Edit
+              </button>
+
+            </div>
 
             <div className="mt-3 rounded-2xl bg-[var(--st-bg-soft)] p-4">
 
@@ -466,10 +496,8 @@ export default function StudentDetails({
                 </div>
 
                 {enrollment?.status && (
-                  <span className="rounded-full bg-white px-2.5 py-1 text-[8px] font-bold text-[var(--st-charcoal-dark)]">
-                    {statusLabel(
-                      enrollment.status
-                    )}
+                  <span className="rounded-full bg-white px-2.5 py-1 text-[8px] font-bold capitalize text-[var(--st-charcoal-dark)]">
+                    {enrollment.status}
                   </span>
                 )}
 
@@ -598,9 +626,26 @@ export default function StudentDetails({
           {student.notes && (
             <div className="mt-6">
 
-              <p className="st-eyebrow">
-                NOTES
-              </p>
+              <div className="flex items-center justify-between">
+
+                <p className="st-eyebrow">
+                  NOTES
+                </p>
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    onEditStudent(
+                      selectedStudent
+                    )
+                  }
+                  className="flex items-center gap-1 text-[9px] font-bold text-[var(--st-red)]"
+                >
+                  <Edit3 size={12} />
+                  Edit
+                </button>
+
+              </div>
 
               <div className="mt-3 rounded-xl border border-[var(--st-border)] bg-[var(--st-bg-soft)] p-3">
 
@@ -704,9 +749,7 @@ export default function StudentDetails({
                           aria-label="View receipt"
                           title="View receipt"
                         >
-                          <Eye
-                            size={14}
-                          />
+                          <Eye size={14} />
                         </button>
 
                         <button
@@ -738,18 +781,18 @@ export default function StudentDetails({
                           aria-label="Email receipt"
                           title="Email receipt"
                         >
-                          <Mail
-                            size={14}
-                          />
+                          <Mail size={14} />
                         </button>
 
                       </div>
 
                     </div>
+
                   )
                 )}
 
               </div>
+
             )}
 
           </div>
@@ -759,21 +802,6 @@ export default function StudentDetails({
           ================================================= */}
 
           <div className="mt-6 grid grid-cols-2 gap-2">
-
-            {onEditStudent && (
-              <button
-                type="button"
-                onClick={() =>
-                  onEditStudent(
-                    selectedStudent
-                  )
-                }
-                className="st-button st-button-secondary w-full"
-              >
-                <Edit3 size={15} />
-                Edit Student
-              </button>
-            )}
 
             <button
               type="button"
@@ -830,8 +858,27 @@ export default function StudentDetails({
 
           </div>
 
+          {/* =================================================
+              EDIT STUDENT CTA
+          ================================================= */}
+
+          <button
+            type="button"
+            onClick={() =>
+              onEditStudent(
+                selectedStudent
+              )
+            }
+            className="st-button st-button-secondary mt-3 w-full"
+          >
+            <Edit3 size={15} />
+            Edit Student Profile
+          </button>
+
         </div>
+
       </div>
+
     </div>
   );
 }
