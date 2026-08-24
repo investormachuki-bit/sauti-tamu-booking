@@ -24,10 +24,15 @@ export async function GET(
     const error =
       url.searchParams.get("error");
 
+    /*
+     * Google returned an OAuth error.
+     * Send the admin back to the admin dashboard
+     * rather than the public root page.
+     */
     if (error) {
       return NextResponse.redirect(
         new URL(
-          `/?gmail=error&reason=${encodeURIComponent(
+          `/admin?gmail=error&reason=${encodeURIComponent(
             error
           )}`,
           request.url
@@ -35,6 +40,10 @@ export async function GET(
       );
     }
 
+    /*
+     * Google must provide both the
+     * authorization code and state.
+     */
     if (!code || !state) {
       return NextResponse.json(
         {
@@ -45,6 +54,9 @@ export async function GET(
       );
     }
 
+    /*
+     * Verify OAuth state.
+     */
     const cookieStore =
       await cookies();
 
@@ -66,10 +78,16 @@ export async function GET(
       );
     }
 
+    /*
+     * OAuth state has now been consumed.
+     */
     cookieStore.delete(
       "gmail_oauth_state"
     );
 
+    /*
+     * Read Google OAuth environment variables.
+     */
     const clientId =
       process.env.GOOGLE_CLIENT_ID;
 
@@ -93,11 +111,11 @@ export async function GET(
      * Exchange authorization code
      * for access + refresh tokens.
      */
-
     const tokenBody =
       new URLSearchParams({
         code,
-        client_id: clientId,
+        client_id:
+          clientId,
         client_secret:
           clientSecret,
         redirect_uri:
@@ -157,7 +175,6 @@ export async function GET(
      * Verify which Gmail account
      * actually authorized the app.
      */
-
     const profileResponse =
       await fetch(
         GMAIL_PROFILE_URL,
@@ -194,18 +211,16 @@ export async function GET(
     }
 
     /*
-     * For this Sauti Tamu system,
-     * only the official account should
-     * be connected.
+     * Only the official Sauti Tamu
+     * Gmail account may be connected.
      */
-
     if (
       email.toLowerCase() !==
       "sautitamupianocenter@gmail.com"
     ) {
       return NextResponse.redirect(
         new URL(
-          `/?gmail=error&reason=${encodeURIComponent(
+          `/admin?gmail=error&reason=${encodeURIComponent(
             "Please connect sautitamupianocenter@gmail.com"
           )}`,
           request.url
@@ -216,7 +231,6 @@ export async function GET(
     /*
      * Save the refresh token.
      */
-
     const { error: dbError } =
       await supabaseServer
         .from("gmail_connections")
@@ -224,11 +238,14 @@ export async function GET(
           {
             email:
               email.toLowerCase(),
+
             refresh_token:
               refreshToken,
+
             scope:
               tokenData.scope ||
               "https://www.googleapis.com/auth/gmail.send",
+
             updated_at:
               new Date().toISOString(),
           },
@@ -250,12 +267,16 @@ export async function GET(
     }
 
     /*
-     * Send the admin back to the app.
+     * Gmail connection succeeded.
+     *
+     * IMPORTANT:
+     * Redirect to /admin instead of / so
+     * the Gmail result is not lost by the
+     * public root-page redirect.
      */
-
     return NextResponse.redirect(
       new URL(
-        `/?gmail=connected&email=${encodeURIComponent(
+        `/admin?gmail=connected&email=${encodeURIComponent(
           email
         )}`,
         request.url
@@ -269,7 +290,7 @@ export async function GET(
 
     return NextResponse.redirect(
       new URL(
-        `/?gmail=error&reason=${encodeURIComponent(
+        `/admin?gmail=error&reason=${encodeURIComponent(
           error instanceof Error
             ? error.message
             : "Unable to connect Gmail."
