@@ -2,6 +2,7 @@
 
 import {
   CalendarDays,
+  Clock3,
   Download,
   Edit3,
   Eye,
@@ -12,30 +13,34 @@ import {
   X,
 } from "lucide-react";
 
-import type {
-  PaymentMethod,
-} from "./students-types";
+type PaymentMethod =
+  | "mpesa"
+  | "cash"
+  | "bank"
+  | "card"
+  | "other";
 
-type Payment = {
+interface Payment {
   id: string;
   amount: number | string;
   payment_date: string;
   payment_method: PaymentMethod | string;
   reference?: string | null;
-};
+}
 
-type Student = {
+interface Student {
   id: string;
   full_name: string;
+  whatsapp?: string | null;
   whatsapp_number?: string | null;
   email?: string | null;
   notes?: string | null;
   photo_url?: string | null;
   photo_path?: string | null;
   status?: string | null;
-};
+}
 
-type Enrollment = {
+interface Enrollment {
   id: string;
   instrument?: string | null;
   programme_name?: string | null;
@@ -43,7 +48,7 @@ type Enrollment = {
   end_date?: string | null;
   total_fee?: number | string | null;
   status?: string | null;
-};
+}
 
 export interface SelectedStudent {
   student: Student;
@@ -56,7 +61,7 @@ interface StudentDetailsProps {
 
   onClose: () => void;
 
-  onEdit?: (
+  onEditStudent?: (
     student: SelectedStudent
   ) => void;
 
@@ -103,10 +108,6 @@ interface StudentDetailsProps {
   ) => number;
 }
 
-/* =====================================================
-   INSTRUMENT
-===================================================== */
-
 function instrumentName(
   instrument?: string | null
 ) {
@@ -126,31 +127,48 @@ function instrumentName(
   }
 }
 
-/* =====================================================
-   STATUS
-===================================================== */
+function getInitials(
+  name: string
+) {
+  const parts = name
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+
+  if (parts.length === 0) {
+    return "S";
+  }
+
+  if (parts.length === 1) {
+    return parts[0]
+      .charAt(0)
+      .toUpperCase();
+  }
+
+  return (
+    parts[0].charAt(0) +
+    parts[parts.length - 1].charAt(0)
+  ).toUpperCase();
+}
 
 function statusLabel(
   status?: string | null
 ) {
-  if (!status) return "—";
+  if (!status) return "";
 
   return status
     .replace(/_/g, " ")
     .replace(
       /\b\w/g,
-      (char) => char.toUpperCase()
+      (letter) =>
+        letter.toUpperCase()
     );
 }
-
-/* =====================================================
-   COMPONENT
-===================================================== */
 
 export default function StudentDetails({
   selectedStudent,
   onClose,
-  onEdit,
+  onEditStudent,
   onWhatsApp,
   onCall,
   onEmail,
@@ -168,24 +186,17 @@ export default function StudentDetails({
     payments,
   } = selectedStudent;
 
-  /* ===================================================
-     FINANCIALS
-  =================================================== */
-
   const totalPaid =
     payments.reduce(
       (total, payment) =>
         total +
-        Number(
-          payment.amount || 0
-        ),
+        Number(payment.amount || 0),
       0
     );
 
-  const totalFee =
-    Number(
-      enrollment?.total_fee || 0
-    );
+  const totalFee = Number(
+    enrollment?.total_fee || 0
+  );
 
   const balance = enrollment
     ? getBalance(
@@ -197,16 +208,16 @@ export default function StudentDetails({
         0
       );
 
-  /* ===================================================
-     PHOTO
-  =================================================== */
+  const whatsappNumber =
+    student.whatsapp_number ??
+    student.whatsapp ??
+    "";
 
   const photoUrl =
     student.photo_url || null;
 
   return (
     <div className="fixed inset-0 z-[100] flex items-end justify-center bg-black/50 sm:items-center sm:p-5">
-
       <div className="flex max-h-[94vh] w-full max-w-[560px] flex-col overflow-hidden rounded-t-3xl bg-white shadow-2xl sm:rounded-3xl">
 
         {/* =================================================
@@ -221,7 +232,7 @@ export default function StudentDetails({
 
               {/* PHOTO */}
 
-              <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-2xl border border-[var(--st-border)] bg-[var(--st-bg-soft)]">
+              <div className="h-14 w-14 shrink-0 overflow-hidden rounded-2xl border border-[var(--st-border)] bg-[var(--st-bg-soft)]">
 
                 {photoUrl ? (
                   <img
@@ -232,11 +243,10 @@ export default function StudentDetails({
                     className="h-full w-full object-cover"
                   />
                 ) : (
-                  <div className="flex h-full w-full items-center justify-center text-[18px] font-bold text-[var(--st-gray)]">
-                    {student.full_name
-                      ?.charAt(0)
-                      .toUpperCase() ||
-                      "S"}
+                  <div className="flex h-full w-full items-center justify-center text-[17px] font-bold text-[var(--st-gray)]">
+                    {getInitials(
+                      student.full_name
+                    )}
                   </div>
                 )}
 
@@ -264,10 +274,7 @@ export default function StudentDetails({
                     </span>
                   )}
 
-                  {(
-                    enrollment?.status ||
-                    student.status
-                  ) && (
+                  {enrollment?.status && (
                     <>
                       <span className="text-[8px] text-[var(--st-gray)]">
                         ·
@@ -275,8 +282,7 @@ export default function StudentDetails({
 
                       <span className="text-[9px] font-semibold text-[var(--st-gray)]">
                         {statusLabel(
-                          enrollment?.status ||
-                            student.status
+                          enrollment.status
                         )}
                       </span>
                     </>
@@ -288,15 +294,37 @@ export default function StudentDetails({
 
             </div>
 
-            <button
-              type="button"
-              onClick={onClose}
-              className="st-icon-button shrink-0"
-              aria-label="Close student details"
-              title="Close"
-            >
-              <X size={17} />
-            </button>
+            {/* HEADER ACTIONS */}
+
+            <div className="flex shrink-0 items-center gap-1.5">
+
+              {onEditStudent && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    onEditStudent(
+                      selectedStudent
+                    )
+                  }
+                  className="st-icon-button"
+                  aria-label="Edit student"
+                  title="Edit student"
+                >
+                  <Edit3 size={16} />
+                </button>
+              )}
+
+              <button
+                type="button"
+                onClick={onClose}
+                className="st-icon-button"
+                aria-label="Close student details"
+                title="Close"
+              >
+                <X size={17} />
+              </button>
+
+            </div>
 
           </div>
 
@@ -309,53 +337,98 @@ export default function StudentDetails({
         <div className="overflow-y-auto p-5">
 
           {/* =================================================
-              PROFILE ACTION
+              PROFILE
           ================================================= */}
 
-          {onEdit && (
-            <button
-              type="button"
-              onClick={() =>
-                onEdit(
-                  selectedStudent
-                )
-              }
-              className="st-button st-button-secondary w-full"
-            >
-              <Edit3 size={15} />
-              Edit Student Profile
-            </button>
-          )}
+          <div className="rounded-2xl bg-[var(--st-bg-soft)] p-4">
+
+            <div className="flex items-center gap-4">
+
+              <div className="h-20 w-20 shrink-0 overflow-hidden rounded-2xl border border-[var(--st-border)] bg-white">
+
+                {photoUrl ? (
+                  <img
+                    src={photoUrl}
+                    alt={
+                      student.full_name
+                    }
+                    className="h-full w-full object-cover"
+                  />
+                ) : (
+                  <div className="flex h-full w-full items-center justify-center text-2xl font-bold text-[var(--st-gray)]">
+                    {getInitials(
+                      student.full_name
+                    )}
+                  </div>
+                )}
+
+              </div>
+
+              <div className="min-w-0">
+
+                <p className="m-0 text-[15px] font-bold text-[var(--st-charcoal-dark)]">
+                  {student.full_name}
+                </p>
+
+                {enrollment?.programme_name && (
+                  <p className="mt-1 truncate text-[9px] text-[var(--st-gray)]">
+                    {
+                      enrollment.programme_name
+                    }
+                  </p>
+                )}
+
+                {enrollment?.instrument && (
+                  <p className="mt-1 text-[9px] font-semibold text-[var(--st-gray)]">
+                    {instrumentName(
+                      enrollment.instrument
+                    )}
+                  </p>
+                )}
+
+              </div>
+
+            </div>
+
+          </div>
 
           {/* =================================================
               CONTACT
           ================================================= */}
 
-          <div className="mt-5 grid grid-cols-1 gap-2 sm:grid-cols-2">
+          <div className="mt-6">
 
-            <div className="rounded-xl border border-[var(--st-border)] p-3">
+            <p className="st-eyebrow">
+              CONTACT
+            </p>
 
-              <p className="m-0 text-[8px] font-bold uppercase tracking-[0.08em] text-[var(--st-gray)]">
-                WhatsApp
-              </p>
+            <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
 
-              <p className="mt-1 truncate text-[10px] font-semibold text-[var(--st-charcoal-dark)]">
-                {student.whatsapp_number ||
-                  "Not provided"}
-              </p>
+              <div className="rounded-xl border border-[var(--st-border)] p-3">
 
-            </div>
+                <p className="m-0 text-[8px] font-bold uppercase tracking-[0.08em] text-[var(--st-gray)]">
+                  WhatsApp
+                </p>
 
-            <div className="rounded-xl border border-[var(--st-border)] p-3">
+                <p className="mt-1 truncate text-[10px] font-semibold text-[var(--st-charcoal-dark)]">
+                  {whatsappNumber ||
+                    "Not provided"}
+                </p>
 
-              <p className="m-0 text-[8px] font-bold uppercase tracking-[0.08em] text-[var(--st-gray)]">
-                Email
-              </p>
+              </div>
 
-              <p className="mt-1 truncate text-[10px] font-semibold text-[var(--st-charcoal-dark)]">
-                {student.email ||
-                  "Not provided"}
-              </p>
+              <div className="rounded-xl border border-[var(--st-border)] p-3">
+
+                <p className="m-0 text-[8px] font-bold uppercase tracking-[0.08em] text-[var(--st-gray)]">
+                  Email
+                </p>
+
+                <p className="mt-1 truncate text-[10px] font-semibold text-[var(--st-charcoal-dark)]">
+                  {student.email ||
+                    "Not provided"}
+                </p>
+
+              </div>
 
             </div>
 
@@ -431,7 +504,7 @@ export default function StudentDetails({
 
                 <div className="flex items-center gap-2">
 
-                  <CalendarDays
+                  <Clock3
                     size={14}
                     className="shrink-0 text-[var(--st-red)]"
                   />
@@ -584,9 +657,7 @@ export default function StudentDetails({
                   (payment) => (
 
                     <div
-                      key={
-                        payment.id
-                      }
+                      key={payment.id}
                       className="flex items-center justify-between gap-3 p-3"
                     >
 
@@ -675,12 +746,10 @@ export default function StudentDetails({
                       </div>
 
                     </div>
-
                   )
                 )}
 
               </div>
-
             )}
 
           </div>
@@ -690,6 +759,21 @@ export default function StudentDetails({
           ================================================= */}
 
           <div className="mt-6 grid grid-cols-2 gap-2">
+
+            {onEditStudent && (
+              <button
+                type="button"
+                onClick={() =>
+                  onEditStudent(
+                    selectedStudent
+                  )
+                }
+                className="st-button st-button-secondary w-full"
+              >
+                <Edit3 size={15} />
+                Edit Student
+              </button>
+            )}
 
             <button
               type="button"
@@ -747,9 +831,7 @@ export default function StudentDetails({
           </div>
 
         </div>
-
       </div>
-
     </div>
   );
 }
