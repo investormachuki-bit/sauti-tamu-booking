@@ -216,10 +216,9 @@ export default function EditStudentModal({
   }
 
   const currentPhoto =
-    photoPreview ||
-    selectedStudent.student
-      .photo_url ||
-    null;
+  photoPreview ||
+  selectedStudent.student.photo_url ||
+  null;
 
   return (
     <div className="fixed inset-0 z-[120] flex items-end justify-center bg-black/50 sm:items-center sm:p-5">
