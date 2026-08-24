@@ -6,7 +6,12 @@ import type {
   Payment,
   PaymentSchedule,
   StudentRecord,
+  PaymentMethod,
 } from "@/components/students/students-types";
+
+/* =====================================================
+   LOAD STUDENTS
+===================================================== */
 
 export async function loadStudents(): Promise<StudentRecord[]> {
   const {
@@ -36,9 +41,9 @@ export async function loadStudents(): Promise<StudentRecord[]> {
     (student) => student.id
   );
 
-  // --------------------------------------------------
-  // ENROLLMENTS
-  // --------------------------------------------------
+  /* ===================================================
+     ENROLLMENTS
+  =================================================== */
 
   const {
     data: enrollmentData,
@@ -60,9 +65,9 @@ export async function loadStudents(): Promise<StudentRecord[]> {
   const enrollments =
     (enrollmentData ?? []) as Enrollment[];
 
-  // --------------------------------------------------
-  // PAYMENTS
-  // --------------------------------------------------
+  /* ===================================================
+     PAYMENTS
+  =================================================== */
 
   const {
     data: paymentData,
@@ -84,9 +89,9 @@ export async function loadStudents(): Promise<StudentRecord[]> {
   const payments =
     (paymentData ?? []) as Payment[];
 
-  // --------------------------------------------------
-  // PAYMENT SCHEDULES
-  // --------------------------------------------------
+  /* ===================================================
+     PAYMENT SCHEDULES
+  =================================================== */
 
   const enrollmentIds =
     enrollments.map(
@@ -117,21 +122,22 @@ export async function loadStudents(): Promise<StudentRecord[]> {
     }
 
     schedules =
-      (scheduleData ??
-        []) as PaymentSchedule[];
+      (scheduleData ?? []) as PaymentSchedule[];
   }
 
-  // --------------------------------------------------
-  // BUILD LOOKUP MAPS
-  // --------------------------------------------------
+  /* ===================================================
+     BUILD LOOKUP MAPS
+  =================================================== */
 
   const enrollmentMap =
     new Map<string, Enrollment>();
 
   enrollments.forEach(
     (enrollment) => {
-      // The students page currently uses
-      // the most recent enrollment.
+      /*
+       * The students page currently uses
+       * the most recent enrollment.
+       */
       if (
         !enrollmentMap.has(
           enrollment.student_id
@@ -182,9 +188,9 @@ export async function loadStudents(): Promise<StudentRecord[]> {
     );
   });
 
-  // --------------------------------------------------
-  // BUILD FINAL STUDENT RECORDS
-  // --------------------------------------------------
+  /* ===================================================
+     BUILD FINAL STUDENT RECORDS
+  =================================================== */
 
   return students.map((student) => {
     const enrollment =
@@ -209,4 +215,325 @@ export async function loadStudents(): Promise<StudentRecord[]> {
         : [],
     };
   });
+}
+
+/* =====================================================
+   CREATE STUDENT INPUT
+===================================================== */
+
+export type CreateStudentInput = {
+  fullName: string;
+  whatsappNumber: string;
+  email: string;
+  notes: string;
+
+  instrument: "piano" | "guitar";
+  programmeName: string;
+
+  startDate: string;
+  endDate: string;
+
+  totalFee: number;
+
+  initialPayment: number;
+  initialPaymentMethod: PaymentMethod;
+  initialPaymentReference: string;
+
+  nextPaymentAmount: number;
+  nextPaymentDueDate: string;
+  nextPaymentFollowUpDate: string;
+  nextPaymentNotes: string;
+};
+
+/* =====================================================
+   CREATE STUDENT
+===================================================== */
+
+export async function createStudent(
+  input: CreateStudentInput
+): Promise<void> {
+  /* ===================================================
+     VALIDATION
+  =================================================== */
+
+  if (!input.fullName.trim()) {
+    throw new Error(
+      "Student name is required."
+    );
+  }
+
+  if (!input.whatsappNumber.trim()) {
+    throw new Error(
+      "WhatsApp number is required."
+    );
+  }
+
+  if (!input.email.trim()) {
+    throw new Error(
+      "Email address is required."
+    );
+  }
+
+  if (!input.startDate) {
+    throw new Error(
+      "Programme start date is required."
+    );
+  }
+
+  if (!input.endDate) {
+    throw new Error(
+      "Programme end date is required."
+    );
+  }
+
+  if (input.totalFee <= 0) {
+    throw new Error(
+      "Programme fee must be greater than zero."
+    );
+  }
+
+  if (input.initialPayment < 0) {
+    throw new Error(
+      "Initial payment cannot be negative."
+    );
+  }
+
+  if (
+    input.initialPayment >
+    input.totalFee
+  ) {
+    throw new Error(
+      "Initial payment cannot be greater than the total programme fee."
+    );
+  }
+
+  const remainingBalance =
+    Math.max(
+      input.totalFee -
+        input.initialPayment,
+      0
+    );
+
+  if (
+    input.nextPaymentAmount < 0
+  ) {
+    throw new Error(
+      "Next payment amount cannot be negative."
+    );
+  }
+
+  if (
+    input.nextPaymentAmount >
+    remainingBalance
+  ) {
+    throw new Error(
+      "Next payment cannot be greater than the remaining balance."
+    );
+  }
+
+  if (
+    remainingBalance > 0 &&
+    input.nextPaymentAmount > 0 &&
+    !input.nextPaymentDueDate
+  ) {
+    throw new Error(
+      "Next payment due date is required."
+    );
+  }
+
+  /* ===================================================
+     1. CREATE STUDENT
+  =================================================== */
+
+  const {
+    data: student,
+    error: studentError,
+  } = await supabase
+    .from("students")
+    .insert({
+      lead_id: null,
+
+      full_name:
+        input.fullName.trim(),
+
+      email:
+        input.email.trim(),
+
+      whatsapp_number:
+        input.whatsappNumber.trim(),
+
+      status: "active",
+
+      notes:
+        input.notes.trim() ||
+        null,
+    })
+    .select("id")
+    .single();
+
+  if (studentError) {
+    throw studentError;
+  }
+
+  if (!student) {
+    throw new Error(
+      "Student was created but no student ID was returned."
+    );
+  }
+
+  /* ===================================================
+     2. CREATE ENROLLMENT
+  =================================================== */
+
+  const {
+    data: enrollment,
+    error: enrollmentError,
+  } = await supabase
+    .from("student_enrollments")
+    .insert({
+      student_id:
+        student.id,
+
+      instrument:
+        input.instrument,
+
+      programme_name:
+        input.programmeName.trim() ||
+        "3 Month Training Programme",
+
+      start_date:
+        input.startDate,
+
+      end_date:
+        input.endDate,
+
+      total_fee:
+        input.totalFee,
+
+      status: "active",
+
+      notes: null,
+    })
+    .select("id")
+    .single();
+
+  if (enrollmentError) {
+    throw enrollmentError;
+  }
+
+  if (!enrollment) {
+    throw new Error(
+      "Enrollment was created but no enrollment ID was returned."
+    );
+  }
+
+  /* ===================================================
+     3. CREATE INITIAL PAYMENT
+  =================================================== */
+
+  if (
+    input.initialPayment > 0
+  ) {
+    const today =
+      new Date()
+        .toISOString()
+        .slice(0, 10);
+
+    const {
+      error: paymentError,
+    } = await supabase
+      .from("payments")
+      .insert({
+        student_id:
+          student.id,
+
+        enrollment_id:
+          enrollment.id,
+
+        payment_schedule_id:
+          null,
+
+        amount:
+          input.initialPayment,
+
+        payment_date:
+          today,
+
+        payment_method:
+          input.initialPaymentMethod,
+
+        reference:
+          input.initialPaymentReference.trim() ||
+          null,
+
+        notes:
+          "Initial programme payment",
+      });
+
+    if (paymentError) {
+      throw paymentError;
+    }
+  }
+
+  /* ===================================================
+     4. CREATE NEXT PAYMENT SCHEDULE
+  =================================================== */
+
+  if (
+    remainingBalance > 0 &&
+    input.nextPaymentAmount > 0 &&
+    input.nextPaymentDueDate
+  ) {
+    const nextPaymentAmount =
+      Math.min(
+        input.nextPaymentAmount,
+        remainingBalance
+      );
+
+    const today =
+      new Date()
+        .toISOString()
+        .slice(0, 10);
+
+    let status:
+      | "scheduled"
+      | "due" =
+      "scheduled";
+
+    if (
+      input.nextPaymentDueDate <=
+      today
+    ) {
+      status = "due";
+    }
+
+    const {
+      error: scheduleError,
+    } = await supabase
+      .from("payment_schedule")
+      .insert({
+        enrollment_id:
+          enrollment.id,
+
+        amount_due:
+          nextPaymentAmount,
+
+        due_date:
+          input.nextPaymentDueDate,
+
+        follow_up_date:
+          input.nextPaymentFollowUpDate ||
+          null,
+
+        status,
+
+        notes:
+          input.nextPaymentNotes.trim() ||
+          null,
+      });
+
+    if (scheduleError) {
+      throw scheduleError;
+    }
+  }
 }
