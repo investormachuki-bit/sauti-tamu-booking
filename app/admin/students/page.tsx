@@ -2103,9 +2103,19 @@ export default function AdminStudentsPage() {
     )
   }
 
-  onEditStudent={
-    openEditStudent
+  onEditStudent={(student) => {
+  const record = findRecord(
+    student.student.id
+  );
+
+  if (record) {
+    openEditStudent({
+      student: record.student,
+      enrollment: record.enrollment,
+      payments: record.payments,
+    });
   }
+}}
 
   onWhatsApp={(
             student
