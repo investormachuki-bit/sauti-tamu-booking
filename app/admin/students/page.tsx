@@ -15,15 +15,10 @@ import StudentDetails from "../../../components/students/StudentDetails";
 import AddStudentModal from "../../../components/students/AddStudentModal";
 import PaymentModal from "../../../components/students/PaymentModal";
 
-import {
-  RefreshCw,
-} from "lucide-react";
+import { RefreshCw } from "lucide-react";
 
 import generatePaymentReceipt from "../../../lib/generate-payment-receipt";
-import {
-  loadStudents,
-  createStudent,
-} from "../../../lib/students-service";
+import { loadStudents } from "../../../lib/students-service";
 
 import type {
   PaymentMethod,
@@ -36,8 +31,7 @@ import type {
    CONSTANTS
 ===================================================== */
 
-const NAIROBI_TIME_ZONE =
-  "Africa/Nairobi";
+const NAIROBI_TIME_ZONE = "Africa/Nairobi";
 
 /* =====================================================
    FORMATTING HELPERS
@@ -80,6 +74,35 @@ function getTodayKey() {
     day: "2-digit",
   }).format(new Date());
 }
+
+/* =====================================================
+   INSTRUMENT HELPER
+===================================================== */
+
+function instrumentName(
+  instrument: string | null | undefined
+) {
+  if (!instrument) {
+    return "—";
+  }
+
+  const normalized =
+    instrument.toLowerCase();
+
+  if (normalized === "guitar") {
+    return "Acoustic Guitar";
+  }
+
+  if (normalized === "piano") {
+    return "Piano";
+  }
+
+  return instrument;
+}
+
+/* =====================================================
+   BALANCE HELPER
+===================================================== */
 
 function getBalance(
   enrollment: {
@@ -149,16 +172,7 @@ export default function AdminStudentsPage() {
     useState(false);
 
   /* ===================================================
-     STUDENT DETAILS
-  =================================================== */
-
-  const [selectedStudent, setSelectedStudent] =
-    useState<SelectedStudentRecord | null>(
-      null
-    );
-
-  /* ===================================================
-     ADD STUDENT MODAL
+     ADD STUDENT FORM
   =================================================== */
 
   const [showAddStudent, setShowAddStudent] =
@@ -182,15 +196,11 @@ export default function AdminStudentsPage() {
   const [studentNotes, setStudentNotes] =
     useState("");
 
-  const [instrument, setInstrument] =
-    useState<"piano" | "guitar">(
-      "piano"
-    );
+  const [selectedInstrument, setSelectedInstrument] =
+    useState<"piano" | "guitar">("piano");
 
   const [programmeName, setProgrammeName] =
-    useState(
-      "3 Month Training Programme"
-    );
+    useState("3 Month Training Programme");
 
   const [startDate, setStartDate] =
     useState(getTodayKey());
@@ -204,9 +214,7 @@ export default function AdminStudentsPage() {
   const [
     initialPaymentMethod,
     setInitialPaymentMethod,
-  ] = useState<PaymentMethod>(
-    "mpesa"
-  );
+  ] = useState<PaymentMethod>("mpesa");
 
   const [
     initialPaymentReference,
@@ -234,6 +242,15 @@ export default function AdminStudentsPage() {
   ] = useState("");
 
   /* ===================================================
+     STUDENT DETAILS
+  =================================================== */
+
+  const [selectedStudent, setSelectedStudent] =
+    useState<SelectedStudentRecord | null>(
+      null
+    );
+
+  /* ===================================================
      PAYMENT MODAL
   =================================================== */
 
@@ -244,6 +261,21 @@ export default function AdminStudentsPage() {
     useState<SelectedStudentRecord | null>(
       null
     );
+
+  const [paymentAmount, setPaymentAmount] =
+    useState("");
+
+  const [paymentMethod, setPaymentMethod] =
+    useState<PaymentMethod>("mpesa");
+
+  const [paymentReference, setPaymentReference] =
+    useState("");
+
+  const [paymentError, setPaymentError] =
+    useState<string | null>(null);
+
+  const [updatingPaymentId, setUpdatingPaymentId] =
+    useState<string | null>(null);
 
   /* ===================================================
      LOAD STUDENTS
@@ -264,6 +296,66 @@ export default function AdminStudentsPage() {
           await loadStudents();
 
         setStudents(records);
+
+        /*
+         * Keep selected student details synchronized
+         * after a refresh.
+         */
+        setSelectedStudent((current) => {
+          if (!current) {
+            return null;
+          }
+
+          const updated =
+            records.find(
+              (record) =>
+                record.student.id ===
+                current.student.id
+            );
+
+          if (!updated) {
+            return null;
+          }
+
+          return {
+            student:
+              updated.student,
+
+            enrollment:
+              updated.enrollment,
+
+            payments:
+              updated.payments,
+          };
+        });
+
+        setPaymentStudent((current) => {
+          if (!current) {
+            return null;
+          }
+
+          const updated =
+            records.find(
+              (record) =>
+                record.student.id ===
+                current.student.id
+            );
+
+          if (!updated) {
+            return null;
+          }
+
+          return {
+            student:
+              updated.student,
+
+            enrollment:
+              updated.enrollment,
+
+            payments:
+              updated.payments,
+          };
+        });
       } catch (err) {
         console.error(
           "Students load error:",
@@ -297,7 +389,7 @@ export default function AdminStudentsPage() {
   const numericInitialPayment =
     Number(initialPayment) || 0;
 
-  const numericNextPaymentAmount =
+  const numericNextPayment =
     Number(nextPaymentAmount) || 0;
 
   const remainingAfterInitial =
@@ -310,17 +402,22 @@ export default function AdminStudentsPage() {
   const remainingAfterNextPayment =
     Math.max(
       remainingAfterInitial -
-        numericNextPaymentAmount,
+        numericNextPayment,
       0
     );
 
+  /*
+   * Three-month programme period.
+   *
+   * We calculate the end date from the start date.
+   */
   const endDate = useMemo(() => {
     if (!startDate) {
       return "";
     }
 
     const date = new Date(
-      `${startDate}T00:00:00`
+      `${startDate}T00:00:00+03:00`
     );
 
     if (Number.isNaN(date.getTime())) {
@@ -331,308 +428,19 @@ export default function AdminStudentsPage() {
       date.getMonth() + 3
     );
 
-    return date
-      .toISOString()
-      .slice(0, 10);
+    const year =
+      date.getFullYear();
+
+    const month = String(
+      date.getMonth() + 1
+    ).padStart(2, "0");
+
+    const day = String(
+      date.getDate()
+    ).padStart(2, "0");
+
+    return `${year}-${month}-${day}`;
   }, [startDate]);
-
-  /* ===================================================
-     RESET ADD STUDENT FORM
-  =================================================== */
-
-  const resetAddStudentForm =
-    useCallback(() => {
-      setStudentName("");
-      setStudentWhatsapp("");
-      setStudentEmail("");
-      setStudentNotes("");
-
-      setInstrument("piano");
-
-      setProgrammeName(
-        "3 Month Training Programme"
-      );
-
-      setStartDate(
-        getTodayKey()
-      );
-
-      setTotalFee("");
-      setInitialPayment("");
-
-      setInitialPaymentMethod(
-        "mpesa"
-      );
-
-      setInitialPaymentReference("");
-
-      setNextPaymentAmount("");
-      setNextPaymentDueDate("");
-      setNextPaymentFollowUpDate("");
-      setNextPaymentNotes("");
-
-      setAddStudentError("");
-    }, []);
-
-  /* ===================================================
-     OPEN ADD STUDENT
-  =================================================== */
-
-  const openAddStudent =
-    useCallback(() => {
-      setAddStudentError("");
-      setShowAddStudent(true);
-    }, []);
-
-  /* ===================================================
-     CLOSE ADD STUDENT
-  =================================================== */
-
-  const closeAddStudent =
-    useCallback(() => {
-      if (addingStudent) {
-        return;
-      }
-
-      setShowAddStudent(false);
-
-      resetAddStudentForm();
-    }, [
-      addingStudent,
-      resetAddStudentForm,
-    ]);
-
-  /* ===================================================
-     CREATE STUDENT
-  =================================================== */
-
-  const handleAddStudent =
-    useCallback(async () => {
-      setAddStudentError("");
-
-      const name =
-        studentName.trim();
-
-      const whatsapp =
-        studentWhatsapp.trim();
-
-      const email =
-        studentEmail.trim();
-
-      const cleanProgrammeName =
-        programmeName.trim() ||
-        "3 Month Training Programme";
-
-      /* ---------------------------------------------
-         VALIDATION
-      --------------------------------------------- */
-
-      if (!name) {
-        setAddStudentError(
-          "Please enter the student's full name."
-        );
-        return;
-      }
-
-      if (!whatsapp) {
-        setAddStudentError(
-          "Please enter the student's WhatsApp number."
-        );
-        return;
-      }
-
-      if (!email) {
-        setAddStudentError(
-          "Please enter the student's email address."
-        );
-        return;
-      }
-
-      if (!startDate) {
-        setAddStudentError(
-          "Please select the programme start date."
-        );
-        return;
-      }
-
-      if (!endDate) {
-        setAddStudentError(
-          "The programme end date could not be calculated."
-        );
-        return;
-      }
-
-      if (numericTotalFee <= 0) {
-        setAddStudentError(
-          "Please enter a valid programme fee."
-        );
-        return;
-      }
-
-      if (numericInitialPayment < 0) {
-        setAddStudentError(
-          "Initial payment cannot be negative."
-        );
-        return;
-      }
-
-      if (
-        numericInitialPayment >
-        numericTotalFee
-      ) {
-        setAddStudentError(
-          "Initial payment cannot be greater than the total programme fee."
-        );
-        return;
-      }
-
-      if (
-        numericNextPaymentAmount < 0
-      ) {
-        setAddStudentError(
-          "Next payment cannot be negative."
-        );
-        return;
-      }
-
-      if (
-        numericNextPaymentAmount >
-        remainingAfterInitial
-      ) {
-        setAddStudentError(
-          "Next payment cannot be greater than the remaining balance."
-        );
-        return;
-      }
-
-      if (
-        remainingAfterInitial > 0 &&
-        numericNextPaymentAmount > 0 &&
-        !nextPaymentDueDate
-      ) {
-        setAddStudentError(
-          "Please select the next payment due date."
-        );
-        return;
-      }
-
-      if (
-        nextPaymentDueDate &&
-        nextPaymentDueDate <
-          startDate
-      ) {
-        setAddStudentError(
-          "Next payment due date cannot be before the programme start date."
-        );
-        return;
-      }
-
-      if (
-        nextPaymentFollowUpDate &&
-        nextPaymentDueDate &&
-        nextPaymentFollowUpDate >
-          nextPaymentDueDate
-      ) {
-        setAddStudentError(
-          "Follow-up date should be on or before the payment due date."
-        );
-        return;
-      }
-
-      /* ---------------------------------------------
-         SAVE
-      --------------------------------------------- */
-
-      try {
-        setAddingStudent(true);
-
-        await createStudent({
-          fullName: name,
-
-          whatsappNumber:
-            whatsapp,
-
-          email,
-
-          notes:
-            studentNotes.trim(),
-
-          instrument,
-
-          programmeName:
-            cleanProgrammeName,
-
-          startDate,
-
-          endDate,
-
-          totalFee:
-            numericTotalFee,
-
-          initialPayment:
-            numericInitialPayment,
-
-          initialPaymentMethod,
-
-          initialPaymentReference:
-            initialPaymentReference.trim(),
-
-          nextPaymentAmount:
-            numericNextPaymentAmount,
-
-          nextPaymentDueDate,
-
-          nextPaymentFollowUpDate,
-
-          nextPaymentNotes:
-            nextPaymentNotes.trim(),
-        });
-
-        /*
-         * Reload the complete student list so the
-         * newly-created student immediately appears
-         * with enrollment, payments and schedules.
-         */
-        await refreshStudents(true);
-
-        setShowAddStudent(false);
-
-        resetAddStudentForm();
-      } catch (err) {
-        console.error(
-          "Add student error:",
-          err
-        );
-
-        setAddStudentError(
-          err instanceof Error
-            ? err.message
-            : "We couldn't add the student. Please try again."
-        );
-      } finally {
-        setAddingStudent(false);
-      }
-    }, [
-      studentName,
-      studentWhatsapp,
-      studentEmail,
-      studentNotes,
-      instrument,
-      programmeName,
-      startDate,
-      endDate,
-      numericTotalFee,
-      numericInitialPayment,
-      initialPaymentMethod,
-      initialPaymentReference,
-      numericNextPaymentAmount,
-      nextPaymentDueDate,
-      nextPaymentFollowUpDate,
-      nextPaymentNotes,
-      remainingAfterInitial,
-      refreshStudents,
-      resetAddStudentForm,
-    ]);
 
   /* ===================================================
      STATS
@@ -858,6 +666,396 @@ export default function AdminStudentsPage() {
     );
 
   /* ===================================================
+     OPEN ADD STUDENT
+  =================================================== */
+
+  function openAddStudent() {
+    setAddStudentError("");
+
+    setStudentName("");
+    setStudentWhatsapp("");
+    setStudentEmail("");
+    setStudentNotes("");
+
+    setSelectedInstrument(
+      "piano"
+    );
+
+    setProgrammeName(
+      "3 Month Training Programme"
+    );
+
+    setStartDate(
+      getTodayKey()
+    );
+
+    setTotalFee("");
+    setInitialPayment("");
+
+    setInitialPaymentMethod(
+      "mpesa"
+    );
+
+    setInitialPaymentReference("");
+
+    setNextPaymentAmount("");
+    setNextPaymentDueDate("");
+    setNextPaymentFollowUpDate("");
+    setNextPaymentNotes("");
+
+    setShowAddStudent(true);
+  }
+
+  function closeAddStudent() {
+    if (addingStudent) {
+      return;
+    }
+
+    setShowAddStudent(false);
+    setAddStudentError("");
+  }
+
+  /* ===================================================
+     ADD STUDENT
+  =================================================== */
+
+  async function addStudent() {
+    /*
+     * The modal is now fully wired to the page.
+     *
+     * The actual database insertion is intentionally kept
+     * here so we can use the current Supabase schema.
+     */
+    try {
+      setAddingStudent(true);
+      setAddStudentError("");
+
+      if (!studentName.trim()) {
+        throw new Error(
+          "Please enter the student's full name."
+        );
+      }
+
+      if (!studentWhatsapp.trim()) {
+        throw new Error(
+          "Please enter the student's WhatsApp number."
+        );
+      }
+
+      if (!studentEmail.trim()) {
+        throw new Error(
+          "Please enter the student's email address."
+        );
+      }
+
+      if (!startDate) {
+        throw new Error(
+          "Please select the programme start date."
+        );
+      }
+
+      if (!numericTotalFee || numericTotalFee <= 0) {
+        throw new Error(
+          "Please enter a valid total programme fee."
+        );
+      }
+
+      if (
+        numericInitialPayment < 0 ||
+        numericInitialPayment >
+          numericTotalFee
+      ) {
+        throw new Error(
+          "Initial payment cannot be greater than the total programme fee."
+        );
+      }
+
+      if (
+        numericNextPayment < 0 ||
+        numericNextPayment >
+          remainingAfterInitial
+      ) {
+        throw new Error(
+          "Next payment cannot be greater than the remaining balance."
+        );
+      }
+
+      /*
+       * Import Supabase dynamically so the page remains
+       * client-side safe.
+       */
+      const { supabase } =
+        await import(
+          "../../../lib/supabase"
+        );
+
+      /* -----------------------------------------------
+         STUDENT
+      ------------------------------------------------ */
+
+      const {
+        data: student,
+        error: studentError,
+      } = await supabase
+        .from("students")
+        .insert({
+          full_name:
+            studentName.trim(),
+
+          email:
+            studentEmail.trim(),
+
+          whatsapp_number:
+            studentWhatsapp.trim(),
+
+          status:
+            "active",
+
+          notes:
+            studentNotes.trim() ||
+            null,
+        })
+        .select(
+          "id, lead_id, full_name, email, whatsapp_number, status, notes, created_at, updated_at"
+        )
+        .single();
+
+      if (studentError) {
+        throw studentError;
+      }
+
+      if (!student) {
+        throw new Error(
+          "Student was not created."
+        );
+      }
+
+      /* -----------------------------------------------
+         ENROLLMENT
+      ------------------------------------------------ */
+
+      const {
+        data: enrollment,
+        error: enrollmentError,
+      } = await supabase
+        .from("student_enrollments")
+        .insert({
+          student_id:
+            student.id,
+
+          instrument:
+            selectedInstrument,
+
+          programme_name:
+            programmeName.trim() ||
+            "3 Month Training Programme",
+
+          start_date:
+            startDate,
+
+          end_date:
+            endDate,
+
+          total_fee:
+            numericTotalFee,
+
+          status:
+            "active",
+
+          notes:
+            null,
+        })
+        .select(
+          "id, student_id, instrument, programme_name, start_date, end_date, total_fee, status, notes, created_at, updated_at"
+        )
+        .single();
+
+      if (enrollmentError) {
+        /*
+         * Attempt to remove the student if enrollment
+         * creation failed.
+         */
+        await supabase
+          .from("students")
+          .delete()
+          .eq("id", student.id);
+
+        throw enrollmentError;
+      }
+
+      if (!enrollment) {
+        throw new Error(
+          "Enrollment was not created."
+        );
+      }
+
+      /* -----------------------------------------------
+         INITIAL PAYMENT
+      ------------------------------------------------ */
+
+      if (
+        numericInitialPayment > 0
+      ) {
+        const {
+          error: paymentError,
+        } = await supabase
+          .from("payments")
+          .insert({
+            student_id:
+              student.id,
+
+            enrollment_id:
+              enrollment.id,
+
+            payment_schedule_id:
+              null,
+
+            amount:
+              numericInitialPayment,
+
+            payment_date:
+              getTodayKey(),
+
+            payment_method:
+              initialPaymentMethod,
+
+            reference:
+              initialPaymentReference.trim() ||
+              null,
+
+            notes:
+              "Initial payment at student registration.",
+          });
+
+        if (paymentError) {
+          throw paymentError;
+        }
+      }
+
+      /* -----------------------------------------------
+         NEXT PAYMENT SCHEDULE
+      ------------------------------------------------ */
+
+      if (
+        remainingAfterInitial >
+        0 &&
+        numericNextPayment > 0 &&
+        nextPaymentDueDate
+      ) {
+        const {
+          error: scheduleError,
+        } = await supabase
+          .from("payment_schedule")
+          .insert({
+            enrollment_id:
+              enrollment.id,
+
+            amount_due:
+              numericNextPayment,
+
+            due_date:
+              nextPaymentDueDate,
+
+            follow_up_date:
+              nextPaymentFollowUpDate ||
+              null,
+
+            status:
+              "scheduled",
+
+            notes:
+              nextPaymentNotes.trim() ||
+              null,
+          });
+
+        if (scheduleError) {
+          throw scheduleError;
+        }
+      }
+
+      /*
+       * Refresh the page data.
+       */
+      await refreshStudents(true);
+
+      setShowAddStudent(false);
+
+      /*
+       * Select the newly created student.
+       */
+      const refreshed =
+        await loadStudents();
+
+      setStudents(refreshed);
+
+      const createdRecord =
+        refreshed.find(
+          (record) =>
+            record.student.id ===
+            student.id
+        );
+
+      if (createdRecord) {
+        setSelectedStudent({
+          student:
+            createdRecord.student,
+
+          enrollment:
+            createdRecord.enrollment,
+
+          payments:
+            createdRecord.payments,
+        });
+      }
+
+      /*
+       * Reset form.
+       */
+      setStudentName("");
+      setStudentWhatsapp("");
+      setStudentEmail("");
+      setStudentNotes("");
+
+      setSelectedInstrument(
+        "piano"
+      );
+
+      setProgrammeName(
+        "3 Month Training Programme"
+      );
+
+      setStartDate(
+        getTodayKey()
+      );
+
+      setTotalFee("");
+      setInitialPayment("");
+      setInitialPaymentMethod(
+        "mpesa"
+      );
+      setInitialPaymentReference("");
+
+      setNextPaymentAmount("");
+      setNextPaymentDueDate("");
+      setNextPaymentFollowUpDate("");
+      setNextPaymentNotes("");
+    } catch (err) {
+      console.error(
+        "Add student error:",
+        err
+      );
+
+      setAddStudentError(
+        err instanceof Error
+          ? err.message
+          : "We couldn't add the student."
+      );
+    } finally {
+      setAddingStudent(false);
+    }
+  }
+
+  /* ===================================================
      COMMUNICATION
   =================================================== */
 
@@ -928,9 +1126,116 @@ export default function AdminStudentsPage() {
       record
     );
 
+    setPaymentAmount("");
+    setPaymentMethod("mpesa");
+    setPaymentReference("");
+    setPaymentError(null);
+
     setShowPaymentModal(
       true
     );
+  }
+
+  /* ===================================================
+     RECORD PAYMENT
+  =================================================== */
+
+  async function recordPayment() {
+    if (!paymentStudent?.enrollment) {
+      return;
+    }
+
+    try {
+      setPaymentError(null);
+      setUpdatingPaymentId(
+        "new"
+      );
+
+      const amount =
+        Number(paymentAmount) || 0;
+
+      if (amount <= 0) {
+        throw new Error(
+          "Please enter a valid payment amount."
+        );
+      }
+
+      const balance =
+        getBalance(
+          paymentStudent.enrollment,
+          paymentStudent.payments
+        );
+
+      if (amount > balance) {
+        throw new Error(
+          "Payment cannot be greater than the outstanding balance."
+        );
+      }
+
+      const { supabase } =
+        await import(
+          "../../../lib/supabase"
+        );
+
+      const {
+        error: paymentError,
+      } = await supabase
+        .from("payments")
+        .insert({
+          student_id:
+            paymentStudent.student.id,
+
+          enrollment_id:
+            paymentStudent.enrollment.id,
+
+          payment_schedule_id:
+            null,
+
+          amount,
+
+          payment_date:
+            getTodayKey(),
+
+          payment_method:
+            paymentMethod,
+
+          reference:
+            paymentReference.trim() ||
+            null,
+
+          notes:
+            null,
+        });
+
+      if (paymentError) {
+        throw paymentError;
+      }
+
+      setShowPaymentModal(false);
+
+      setPaymentAmount("");
+      setPaymentReference("");
+      setPaymentMethod("mpesa");
+
+      await refreshStudents(
+        true
+      );
+    } catch (err) {
+      console.error(
+        "Record payment error:",
+        err
+      );
+
+      setPaymentError(
+        err instanceof Error
+          ? err.message
+          : "We couldn't record the payment."
+      );
+    } finally {
+      setUpdatingPaymentId(
+        null
+      );
+    }
   }
 
   /* ===================================================
@@ -1203,27 +1508,13 @@ export default function AdminStudentsPage() {
   }
 
   /* ===================================================
-     INSTRUMENT NAME
-  =================================================== */
-
-  function instrumentName(
-    value: "piano" | "guitar"
-  ) {
-    return value === "guitar"
-      ? "Acoustic Guitar"
-      : "Piano";
-  }
-
-  /* ===================================================
      PAGE
   =================================================== */
 
   return (
     <main className="st-content">
 
-      {/* =================================================
-          HEADER
-      ================================================= */}
+      {/* HEADER */}
 
       <StudentsHeader
         studentCount={
@@ -1240,9 +1531,7 @@ export default function AdminStudentsPage() {
         }
       />
 
-      {/* =================================================
-          STATS
-      ================================================= */}
+      {/* STATS */}
 
       <div className="mt-5">
         <StudentStats
@@ -1264,9 +1553,7 @@ export default function AdminStudentsPage() {
         />
       </div>
 
-      {/* =================================================
-          ERROR
-      ================================================= */}
+      {/* ERROR */}
 
       {error && (
         <div className="mt-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3">
@@ -1276,16 +1563,13 @@ export default function AdminStudentsPage() {
         </div>
       )}
 
-      {/* =================================================
-          TOOLBAR
-      ================================================= */}
+      {/* TOOLBAR */}
 
       <div className="mt-5">
         <StudentsToolbar
           searchTerm={
             searchTerm
           }
-
           setSearchTerm={
             setSearchTerm
           }
@@ -1293,7 +1577,6 @@ export default function AdminStudentsPage() {
           instrumentFilter={
             instrumentFilter
           }
-
           setInstrumentFilter={
             setInstrumentFilter
           }
@@ -1301,7 +1584,6 @@ export default function AdminStudentsPage() {
           statusFilter={
             statusFilter
           }
-
           setStatusFilter={
             setStatusFilter
           }
@@ -1309,7 +1591,6 @@ export default function AdminStudentsPage() {
           paymentFilter={
             paymentFilter
           }
-
           setPaymentFilter={
             setPaymentFilter
           }
@@ -1317,7 +1598,6 @@ export default function AdminStudentsPage() {
           showFilters={
             showFilters
           }
-
           setShowFilters={
             setShowFilters
           }
@@ -1336,9 +1616,7 @@ export default function AdminStudentsPage() {
         />
       </div>
 
-      {/* =================================================
-          LIST
-      ================================================= */}
+      {/* LIST */}
 
       <div className="mt-5">
         {loading ? (
@@ -1387,6 +1665,11 @@ export default function AdminStudentsPage() {
               formatDate
             }
 
+            /*
+             * IMPORTANT:
+             * This accepts string | null | undefined
+             * because StudentList expects that signature.
+             */
             instrumentName={
               instrumentName
             }
@@ -1407,10 +1690,8 @@ export default function AdminStudentsPage() {
                 openWhatsApp({
                   student:
                     record.student,
-
                   enrollment:
                     record.enrollment,
-
                   payments:
                     record.payments,
                 });
@@ -1429,10 +1710,8 @@ export default function AdminStudentsPage() {
                 callStudent({
                   student:
                     record.student,
-
                   enrollment:
                     record.enrollment,
-
                   payments:
                     record.payments,
                 });
@@ -1451,10 +1730,8 @@ export default function AdminStudentsPage() {
                 emailStudent({
                   student:
                     record.student,
-
                   enrollment:
                     record.enrollment,
-
                   payments:
                     record.payments,
                 });
@@ -1464,9 +1741,7 @@ export default function AdminStudentsPage() {
         )}
       </div>
 
-      {/* =================================================
-          STUDENT DETAILS
-      ================================================= */}
+      {/* STUDENT DETAILS */}
 
       {selectedStudent && (
         <StudentDetails
@@ -1492,10 +1767,8 @@ export default function AdminStudentsPage() {
               openWhatsApp({
                 student:
                   record.student,
-
                 enrollment:
                   record.enrollment,
-
                 payments:
                   record.payments,
               });
@@ -1512,10 +1785,8 @@ export default function AdminStudentsPage() {
               callStudent({
                 student:
                   record.student,
-
                 enrollment:
                   record.enrollment,
-
                 payments:
                   record.payments,
               });
@@ -1532,10 +1803,8 @@ export default function AdminStudentsPage() {
               emailStudent({
                 student:
                   record.student,
-
                 enrollment:
                   record.enrollment,
-
                 payments:
                   record.payments,
               });
@@ -1565,35 +1834,26 @@ export default function AdminStudentsPage() {
               record,
               {
                 id: payment.id,
-
                 student_id:
                   record.student.id,
-
                 enrollment_id:
                   record.enrollment
                     ?.id ?? "",
-
                 payment_schedule_id:
                   null,
-
                 amount:
                   Number(
                     payment.amount ||
                       0
                   ),
-
                 payment_date:
                   payment.payment_date,
-
                 payment_method:
                   payment.payment_method as PaymentMethod,
-
                 reference:
                   payment.reference ??
                   null,
-
                 notes: null,
-
                 created_at:
                   payment.payment_date,
               }
@@ -1617,35 +1877,26 @@ export default function AdminStudentsPage() {
               record,
               {
                 id: payment.id,
-
                 student_id:
                   record.student.id,
-
                 enrollment_id:
                   record.enrollment
                     ?.id ?? "",
-
                 payment_schedule_id:
                   null,
-
                 amount:
                   Number(
                     payment.amount ||
                       0
                   ),
-
                 payment_date:
                   payment.payment_date,
-
                 payment_method:
                   payment.payment_method as PaymentMethod,
-
                 reference:
                   payment.reference ??
                   null,
-
                 notes: null,
-
                 created_at:
                   payment.payment_date,
               }
@@ -1669,35 +1920,26 @@ export default function AdminStudentsPage() {
               record,
               {
                 id: payment.id,
-
                 student_id:
                   record.student.id,
-
                 enrollment_id:
                   record.enrollment
                     ?.id ?? "",
-
                 payment_schedule_id:
                   null,
-
                 amount:
                   Number(
                     payment.amount ||
                       0
                   ),
-
                 payment_date:
                   payment.payment_date,
-
                 payment_method:
                   payment.payment_method as PaymentMethod,
-
                 reference:
                   payment.reference ??
                   null,
-
                 notes: null,
-
                 created_at:
                   payment.payment_date,
               }
@@ -1718,189 +1960,187 @@ export default function AdminStudentsPage() {
         />
       )}
 
-      {/* =================================================
+      {/* =====================================================
           ADD STUDENT MODAL
-      ================================================= */}
+      ===================================================== */}
 
-      {showAddStudent && (
-        <AddStudentModal
-          show={
-            showAddStudent
-          }
+      <AddStudentModal
+        show={
+          showAddStudent
+        }
 
-          addingStudent={
-            addingStudent
-          }
+        addingStudent={
+          addingStudent
+        }
 
-          error={
-            addStudentError
-          }
+        error={
+          addStudentError
+        }
 
-          studentName={
-            studentName
-          }
+        studentName={
+          studentName
+        }
 
-          studentWhatsapp={
-            studentWhatsapp
-          }
+        studentWhatsapp={
+          studentWhatsapp
+        }
 
-          studentEmail={
-            studentEmail
-          }
+        studentEmail={
+          studentEmail
+        }
 
-          studentNotes={
-            studentNotes
-          }
+        studentNotes={
+          studentNotes
+        }
 
-          instrument={
-            instrument
-          }
+        instrument={
+          selectedInstrument
+        }
 
-          programmeName={
-            programmeName
-          }
+        programmeName={
+          programmeName
+        }
 
-          startDate={
-            startDate
-          }
+        startDate={
+          startDate
+        }
 
-          endDate={
-            endDate
-          }
+        endDate={
+          endDate
+        }
 
-          totalFee={
-            totalFee
-          }
+        totalFee={
+          totalFee
+        }
 
-          initialPayment={
-            initialPayment
-          }
+        initialPayment={
+          initialPayment
+        }
 
-          initialPaymentMethod={
-            initialPaymentMethod
-          }
+        initialPaymentMethod={
+          initialPaymentMethod
+        }
 
-          initialPaymentReference={
-            initialPaymentReference
-          }
+        initialPaymentReference={
+          initialPaymentReference
+        }
 
-          nextPaymentAmount={
-            nextPaymentAmount
-          }
+        nextPaymentAmount={
+          nextPaymentAmount
+        }
 
-          nextPaymentDueDate={
-            nextPaymentDueDate
-          }
+        nextPaymentDueDate={
+          nextPaymentDueDate
+        }
 
-          nextPaymentFollowUpDate={
-            nextPaymentFollowUpDate
-          }
+        nextPaymentFollowUpDate={
+          nextPaymentFollowUpDate
+        }
 
-          nextPaymentNotes={
-            nextPaymentNotes
-          }
+        nextPaymentNotes={
+          nextPaymentNotes
+        }
 
-          numericTotalFee={
-            numericTotalFee
-          }
+        numericTotalFee={
+          numericTotalFee
+        }
 
-          numericInitialPayment={
-            numericInitialPayment
-          }
+        numericInitialPayment={
+          numericInitialPayment
+        }
 
-          remainingAfterInitial={
-            remainingAfterInitial
-          }
+        remainingAfterInitial={
+          remainingAfterInitial
+        }
 
-          remainingAfterNextPayment={
-            remainingAfterNextPayment
-          }
+        remainingAfterNextPayment={
+          remainingAfterNextPayment
+        }
 
-          setStudentName={
-            setStudentName
-          }
+        setStudentName={
+          setStudentName
+        }
 
-          setStudentWhatsapp={
-            setStudentWhatsapp
-          }
+        setStudentWhatsapp={
+          setStudentWhatsapp
+        }
 
-          setStudentEmail={
-            setStudentEmail
-          }
+        setStudentEmail={
+          setStudentEmail
+        }
 
-          setStudentNotes={
-            setStudentNotes
-          }
+        setStudentNotes={
+          setStudentNotes
+        }
 
-          setInstrument={
-            setInstrument
-          }
+        setInstrument={
+          setSelectedInstrument
+        }
 
-          setProgrammeName={
-            setProgrammeName
-          }
+        setProgrammeName={
+          setProgrammeName
+        }
 
-          setStartDate={
-            setStartDate
-          }
+        setStartDate={
+          setStartDate
+        }
 
-          setTotalFee={
-            setTotalFee
-          }
+        setTotalFee={
+          setTotalFee
+        }
 
-          setInitialPayment={
-            setInitialPayment
-          }
+        setInitialPayment={
+          setInitialPayment
+        }
 
-          setInitialPaymentMethod={
-            setInitialPaymentMethod
-          }
+        setInitialPaymentMethod={
+          setInitialPaymentMethod
+        }
 
-          setInitialPaymentReference={
-            setInitialPaymentReference
-          }
+        setInitialPaymentReference={
+          setInitialPaymentReference
+        }
 
-          setNextPaymentAmount={
-            setNextPaymentAmount
-          }
+        setNextPaymentAmount={
+          setNextPaymentAmount
+        }
 
-          setNextPaymentDueDate={
-            setNextPaymentDueDate
-          }
+        setNextPaymentDueDate={
+          setNextPaymentDueDate
+        }
 
-          setNextPaymentFollowUpDate={
-            setNextPaymentFollowUpDate
-          }
+        setNextPaymentFollowUpDate={
+          setNextPaymentFollowUpDate
+        }
 
-          setNextPaymentNotes={
-            setNextPaymentNotes
-          }
+        setNextPaymentNotes={
+          setNextPaymentNotes
+        }
 
-          closeAddStudent={
-            closeAddStudent
-          }
+        closeAddStudent={
+          closeAddStudent
+        }
 
-          addStudent={
-            handleAddStudent
-          }
+        addStudent={
+          addStudent
+        }
 
-          formatCurrency={
-            formatCurrency
-          }
+        formatCurrency={
+          formatCurrency
+        }
 
-          formatDate={
-            formatDate
-          }
+        formatDate={
+          formatDate
+        }
 
-          instrumentName={
-            instrumentName
-          }
-        />
-      )}
+        instrumentName={
+          instrumentName
+        }
+      />
 
-      {/* =================================================
+      {/* =====================================================
           PAYMENT MODAL
-      ================================================= */}
+      ===================================================== */}
 
       {showPaymentModal &&
         paymentStudent && (
@@ -1926,14 +2166,29 @@ export default function AdminStudentsPage() {
                   .payments,
             }}
 
-            paymentAmount=""
-            setPaymentAmount={() => {}}
+            paymentAmount={
+              paymentAmount
+            }
 
-            paymentMethod="mpesa"
-            setPaymentMethod={() => {}}
+            setPaymentAmount={
+              setPaymentAmount
+            }
 
-            paymentReference=""
-            setPaymentReference={() => {}}
+            paymentMethod={
+              paymentMethod
+            }
+
+            setPaymentMethod={
+              setPaymentMethod
+            }
+
+            paymentReference={
+              paymentReference
+            }
+
+            setPaymentReference={
+              setPaymentReference
+            }
 
             showPaymentForm={
               showPaymentModal
@@ -1944,12 +2199,16 @@ export default function AdminStudentsPage() {
             }
 
             updatingId={
-              null
+              updatingPaymentId
             }
 
-            recordPayment={() => {}}
+            recordPayment={
+              recordPayment
+            }
 
-            error={null}
+            error={
+              paymentError
+            }
 
             formatCurrency={
               formatCurrency
@@ -1960,6 +2219,24 @@ export default function AdminStudentsPage() {
             }
           />
         )}
+
+      {/* =====================================================
+          REFRESH INDICATOR
+      ===================================================== */}
+
+      {refreshing && (
+        <div className="pointer-events-none fixed bottom-5 right-5 z-[120]">
+          <div className="flex items-center gap-2 rounded-full border border-[var(--st-border)] bg-white px-4 py-2 text-[9px] font-semibold text-[var(--st-gray)] shadow-lg">
+            <RefreshCw
+              size={13}
+              className="animate-spin"
+            />
+
+            Updating students...
+          </div>
+        </div>
+      )}
+
     </main>
   );
 }
