@@ -17,40 +17,44 @@ export async function GET() {
       process.env.GOOGLE_REDIRECT_URI;
 
     /*
-     * Check required OAuth configuration.
+     * Diagnostic checks
      */
+
     if (!clientId) {
-      return NextResponse.json(
+      return new NextResponse(
+        "Gmail OAuth route is working, but GOOGLE_CLIENT_ID is missing.",
         {
-          error:
-            "Missing GOOGLE_CLIENT_ID environment variable.",
-        },
-        { status: 500 }
+          status: 500,
+          headers: {
+            "Content-Type": "text/plain",
+          },
+        }
       );
     }
 
     if (!redirectUri) {
-      return NextResponse.json(
+      return new NextResponse(
+        "Gmail OAuth route is working, but GOOGLE_REDIRECT_URI is missing.",
         {
-          error:
-            "Missing GOOGLE_REDIRECT_URI environment variable.",
-        },
-        { status: 500 }
+          status: 500,
+          headers: {
+            "Content-Type": "text/plain",
+          },
+        }
       );
     }
 
     /*
-     * Generate a secure OAuth state value.
+     * Generate secure OAuth state.
      */
+
     const state =
-      crypto.randomBytes(32).toString(
-        "hex"
-      );
+      crypto.randomBytes(32).toString("hex");
 
     /*
-     * Store OAuth state in a secure,
-     * short-lived cookie.
+     * Store state in secure cookie.
      */
+
     const cookieStore =
       await cookies();
 
@@ -59,41 +63,31 @@ export async function GET() {
       state,
       {
         httpOnly: true,
-
-        secure:
-          process.env.NODE_ENV ===
-          "production",
-
+        secure: true,
         sameSite: "lax",
-
         maxAge: 10 * 60,
-
         path: "/",
       }
     );
 
     /*
-     * Build Google's OAuth authorization URL.
+     * Build Google OAuth URL.
      */
+
     const params =
       new URLSearchParams({
-        client_id:
-          clientId,
+        client_id: clientId,
 
         redirect_uri:
           redirectUri,
 
-        response_type:
-          "code",
+        response_type: "code",
 
-        scope:
-          GMAIL_SCOPE,
+        scope: GMAIL_SCOPE,
 
-        access_type:
-          "offline",
+        access_type: "offline",
 
-        prompt:
-          "consent",
+        prompt: "consent",
 
         include_granted_scopes:
           "true",
@@ -104,30 +98,35 @@ export async function GET() {
           "sautitamupianocenter@gmail.com",
       });
 
-    const authorizationUrl =
+    const googleUrl =
       `${GOOGLE_AUTH_URL}?${params.toString()}`;
 
     /*
-     * Redirect the browser directly
-     * to Google's OAuth consent screen.
+     * Redirect to Google.
      */
+
     return NextResponse.redirect(
-      authorizationUrl
+      googleUrl
     );
+
   } catch (error) {
+
     console.error(
-      "Gmail OAuth initiation error:",
+      "Gmail OAuth start error:",
       error
     );
 
-    return NextResponse.json(
+    return new NextResponse(
+      error instanceof Error
+        ? error.message
+        : "Unable to start Gmail OAuth.",
       {
-        error:
-          error instanceof Error
-            ? error.message
-            : "Unable to start Gmail OAuth.",
-      },
-      { status: 500 }
+        status: 500,
+        headers: {
+          "Content-Type":
+            "text/plain",
+        },
+      }
     );
   }
 }
