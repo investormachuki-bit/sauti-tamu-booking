@@ -7,8 +7,6 @@ import {
   useState,
 } from "react";
 
-import { supabase } from "../../../lib/supabase";
-
 import StudentsHeader from "../../../components/students/StudentsHeader";
 import StudentStats from "../../../components/students/StudentStats";
 import StudentsToolbar from "../../../components/students/StudentsToolbar";
@@ -16,101 +14,31 @@ import StudentList from "../../../components/students/StudentList";
 import StudentDetails from "../../../components/students/StudentDetails";
 import AddStudentModal from "../../../components/students/AddStudentModal";
 import PaymentModal from "../../../components/students/PaymentModal";
+
 import {
-  AlertCircle,
   RefreshCw,
 } from "lucide-react";
+
 import generatePaymentReceipt from "../../../lib/generate-payment-receipt";
+import { loadStudents } from "../../../lib/students-service";
 
-type PaymentMethod =
-  | "mpesa"
-  | "cash"
-  | "bank"
-  | "card"
-  | "other";
+import type {
+  PaymentMethod,
+  Payment,
+  StudentRecord,
+  SelectedStudentRecord,
+} from "../../../components/students/students-types";
 
-type Instrument =
-  | "piano"
-  | "guitar";
+/* =====================================================
+   CONSTANTS
+===================================================== */
 
-type StudentStatus =
-  | "active"
-  | "completed"
-  | "paused"
-  | "cancelled"
-  | "inactive";
+const NAIROBI_TIME_ZONE =
+  "Africa/Nairobi";
 
-type PaymentScheduleStatus =
-  | "scheduled"
-  | "due"
-  | "overdue"
-  | "partially_paid"
-  | "paid"
-  | "cancelled";
-
-type Student = {
-  id: string;
-  lead_id: string | null;
-  full_name: string;
-  email: string;
-  whatsapp_number: string;
-  status: StudentStatus;
-  notes: string | null;
-  created_at: string;
-  updated_at: string;
-};
-
-type Enrollment = {
-  id: string;
-  student_id: string;
-  instrument: Instrument;
-  programme_name: string;
-  start_date: string;
-  end_date: string;
-  total_fee: number;
-  status: StudentStatus;
-  notes: string | null;
-  created_at: string;
-  updated_at: string;
-};
-
-type PaymentSchedule = {
-  id: string;
-  enrollment_id: string;
-  amount_due: number;
-  due_date: string;
-  follow_up_date: string | null;
-  status: PaymentScheduleStatus;
-  notes: string | null;
-};
-
-type Payment = {
-  id: string;
-  student_id: string;
-  enrollment_id: string;
-  payment_schedule_id: string | null;
-  amount: number;
-  payment_date: string;
-  payment_method: PaymentMethod;
-  reference: string | null;
-  notes: string | null;
-  created_at: string;
-};
-
-type StudentRecord = {
-  student: Student;
-  enrollment: Enrollment | null;
-  schedules: PaymentSchedule[];
-  payments: Payment[];
-};
-
-type SelectedStudentRecord = {
-  student: Student;
-  enrollment: Enrollment | null;
-  payments: Payment[];
-};
-
-const NAIROBI_TIME_ZONE = "Africa/Nairobi";
+/* =====================================================
+   FORMATTING HELPERS
+===================================================== */
 
 function formatCurrency(amount: number) {
   return new Intl.NumberFormat("en-KE", {
@@ -150,40 +78,25 @@ function getTodayKey() {
   }).format(new Date());
 }
 
-function getTotalPaid(
-  payments: Payment[]
-) {
-  return payments.reduce(
-    (total, payment) =>
-      total + Number(payment.amount || 0),
-    0
-  );
-}
-
 function getBalance(
   enrollment: {
-    instrument?: string | null;
-    programme_name?: string | null;
-    start_date?: string | null;
-    end_date?: string | null;
     total_fee?: number | string | null;
-    status?: string | null;
   } | null,
   payments: {
-    id: string;
     amount: number | string;
-    payment_date: string;
-    payment_method: string;
-    reference?: string | null;
   }[]
 ) {
-  if (!enrollment) return 0;
+  if (!enrollment) {
+    return 0;
+  }
 
-  const totalPaid = payments.reduce(
-    (total, payment) =>
-      total + Number(payment.amount || 0),
-    0
-  );
+  const totalPaid =
+    payments.reduce(
+      (total, payment) =>
+        total +
+        Number(payment.amount || 0),
+      0
+    );
 
   return Math.max(
     Number(enrollment.total_fee || 0) -
@@ -192,10 +105,14 @@ function getBalance(
   );
 }
 
+/* =====================================================
+   PAGE
+===================================================== */
+
 export default function AdminStudentsPage() {
-  /* =====================================================
+  /* ===================================================
      DATA
-  ===================================================== */
+  =================================================== */
 
   const [students, setStudents] =
     useState<StudentRecord[]>([]);
@@ -209,9 +126,9 @@ export default function AdminStudentsPage() {
   const [error, setError] =
     useState("");
 
-  /* =====================================================
+  /* ===================================================
      SEARCH + FILTERS
-  ===================================================== */
+  =================================================== */
 
   const [searchTerm, setSearchTerm] =
     useState("");
@@ -228,9 +145,9 @@ export default function AdminStudentsPage() {
   const [showFilters, setShowFilters] =
     useState(false);
 
-  /* =====================================================
+  /* ===================================================
      MODALS
-  ===================================================== */
+  =================================================== */
 
   const [selectedStudent, setSelectedStudent] =
     useState<SelectedStudentRecord | null>(
@@ -248,11 +165,11 @@ export default function AdminStudentsPage() {
       null
     );
 
-  /* =====================================================
+  /* ===================================================
      LOAD STUDENTS
-  ===================================================== */
+  =================================================== */
 
-  const loadStudents = useCallback(
+  const refreshStudents = useCallback(
     async (silent = false) => {
       try {
         if (silent) {
@@ -263,220 +180,8 @@ export default function AdminStudentsPage() {
 
         setError("");
 
-        const {
-          data: studentData,
-          error: studentError,
-        } = await supabase
-          .from("students")
-          .select(
-            "id, lead_id, full_name, email, whatsapp_number, status, notes, created_at, updated_at"
-          )
-          .order("created_at", {
-            ascending: false,
-          });
-
-        if (studentError) {
-          throw studentError;
-        }
-
-        const loadedStudents =
-          (studentData ?? []) as Student[];
-
-        if (
-          loadedStudents.length ===
-          0
-        ) {
-          setStudents([]);
-          return;
-        }
-
-        const studentIds =
-          loadedStudents.map(
-            (student) =>
-              student.id
-          );
-
-        const {
-          data: enrollmentData,
-          error: enrollmentError,
-        } =
-          await supabase
-            .from(
-              "student_enrollments"
-            )
-            .select(
-              "id, student_id, instrument, programme_name, start_date, end_date, total_fee, status, notes, created_at, updated_at"
-            )
-            .in(
-              "student_id",
-              studentIds
-            )
-            .order("created_at", {
-              ascending: false,
-            });
-
-        if (enrollmentError) {
-          throw enrollmentError;
-        }
-
-        const enrollments =
-          (enrollmentData ??
-            []) as Enrollment[];
-
-        const {
-          data: paymentData,
-          error: paymentError,
-        } =
-          await supabase
-            .from("payments")
-            .select(
-              "id, student_id, enrollment_id, payment_schedule_id, amount, payment_date, payment_method, reference, notes, created_at"
-            )
-            .in(
-              "student_id",
-              studentIds
-            )
-            .order("payment_date", {
-              ascending: false,
-            });
-
-        if (paymentError) {
-          throw paymentError;
-        }
-
-        const payments =
-          (paymentData ??
-            []) as Payment[];
-
-        const enrollmentIds =
-          enrollments.map(
-            (enrollment) =>
-              enrollment.id
-          );
-
-        let schedules:
-          PaymentSchedule[] = [];
-
-        if (
-          enrollmentIds.length >
-          0
-        ) {
-          const {
-            data: scheduleData,
-          } =
-            await supabase
-              .from(
-                "payment_schedule"
-              )
-              .select(
-                "id, enrollment_id, amount_due, due_date, follow_up_date, status, notes"
-              )
-              .in(
-                "enrollment_id",
-                enrollmentIds
-              )
-              .order("due_date", {
-                ascending: true,
-              });
-
-          schedules =
-            (scheduleData ??
-              []) as PaymentSchedule[];
-        }
-
-        const enrollmentMap =
-          new Map<
-            string,
-            Enrollment
-          >();
-
-        enrollments.forEach(
-          (enrollment) => {
-            if (
-              !enrollmentMap.has(
-                enrollment.student_id
-              )
-            ) {
-              enrollmentMap.set(
-                enrollment.student_id,
-                enrollment
-              );
-            }
-          }
-        );
-
-        const paymentsMap =
-          new Map<
-            string,
-            Payment[]
-          >();
-
-        payments.forEach(
-          (payment) => {
-            const current =
-              paymentsMap.get(
-                payment.student_id
-              ) ?? [];
-
-            current.push(
-              payment
-            );
-
-            paymentsMap.set(
-              payment.student_id,
-              current
-            );
-          }
-        );
-
-        const schedulesMap =
-          new Map<
-            string,
-            PaymentSchedule[]
-          >();
-
-        schedules.forEach(
-          (schedule) => {
-            const current =
-              schedulesMap.get(
-                schedule.enrollment_id
-              ) ?? [];
-
-            current.push(
-              schedule
-            );
-
-            schedulesMap.set(
-              schedule.enrollment_id,
-              current
-            );
-          }
-        );
-
         const records =
-          loadedStudents.map(
-            (student) => {
-              const enrollment =
-                enrollmentMap.get(
-                  student.id
-                ) ?? null;
-
-              return {
-                student,
-                enrollment,
-                payments:
-                  paymentsMap.get(
-                    student.id
-                  ) ?? [],
-                schedules:
-                  enrollment
-                    ? schedulesMap.get(
-                        enrollment.id
-                      ) ?? []
-                    : [],
-              };
-            }
-          );
+          await loadStudents();
 
         setStudents(records);
       } catch (err) {
@@ -499,12 +204,12 @@ export default function AdminStudentsPage() {
   );
 
   useEffect(() => {
-    loadStudents();
-  }, [loadStudents]);
+    refreshStudents();
+  }, [refreshStudents]);
 
-  /* =====================================================
+  /* ===================================================
      STATS
-  ===================================================== */
+  =================================================== */
 
   const stats = useMemo(() => {
     const activeStudents =
@@ -550,9 +255,9 @@ export default function AdminStudentsPage() {
     };
   }, [students]);
 
-  /* =====================================================
+  /* ===================================================
      FILTERING
-  ===================================================== */
+  =================================================== */
 
   const filteredStudents =
     useMemo(() => {
@@ -568,6 +273,8 @@ export default function AdminStudentsPage() {
 
           const enrollment =
             record.enrollment;
+
+          /* SEARCH */
 
           if (query) {
             const searchable = [
@@ -591,6 +298,8 @@ export default function AdminStudentsPage() {
             }
           }
 
+          /* STATUS */
+
           if (
             statusFilter !==
             "all"
@@ -609,6 +318,8 @@ export default function AdminStudentsPage() {
             }
           }
 
+          /* INSTRUMENT */
+
           if (
             instrumentFilter !==
             "all"
@@ -626,6 +337,8 @@ export default function AdminStudentsPage() {
               return false;
             }
           }
+
+          /* PAYMENT */
 
           if (
             paymentFilter !==
@@ -680,9 +393,25 @@ export default function AdminStudentsPage() {
       paymentFilter,
     ]);
 
-  /* =====================================================
-     SELECTION
-  ===================================================== */
+  /* ===================================================
+     STUDENT LOOKUP
+  =================================================== */
+
+  const findRecord =
+    useCallback(
+      (studentId: string) => {
+        return students.find(
+          (record) =>
+            record.student.id ===
+            studentId
+        );
+      },
+      [students]
+    );
+
+  /* ===================================================
+     STUDENT SELECTION
+  =================================================== */
 
   const handleSelectStudent =
     useCallback(
@@ -701,9 +430,9 @@ export default function AdminStudentsPage() {
       []
     );
 
-  /* =====================================================
+  /* ===================================================
      COMMUNICATION
-  ===================================================== */
+  =================================================== */
 
   function openWhatsApp(
     record: SelectedStudentRecord
@@ -757,9 +486,9 @@ export default function AdminStudentsPage() {
       `mailto:${record.student.email}`;
   }
 
-  /* =====================================================
+  /* ===================================================
      PAYMENT
-  ===================================================== */
+  =================================================== */
 
   function openPaymentModal(
     record: SelectedStudentRecord
@@ -777,266 +506,278 @@ export default function AdminStudentsPage() {
     );
   }
 
- /* =====================================================
-   RECEIPTS
-===================================================== */
+  /* ===================================================
+     RECEIPT HELPERS
+  =================================================== */
 
-function createReceiptNumber(
-  payment: Payment
-) {
-  const date = new Date(
-    payment.payment_date
-  );
-
-  const year =
-    date.getFullYear();
-
-  const shortId =
-    payment.id
-      .replace(/-/g, "")
-      .slice(0, 8)
-      .toUpperCase();
-
-  return `ST-${year}-${shortId}`;
-}
-
-function buildReceiptData(
-  record: SelectedStudentRecord,
-  payment: Payment
-) {
-  const payments =
-    [...record.payments].sort(
-      (a, b) =>
-        new Date(
-          a.payment_date
-        ).getTime() -
-        new Date(
-          b.payment_date
-        ).getTime()
-    );
-
-  const paymentIndex =
-    payments.findIndex(
-      (item) =>
-        item.id === payment.id
-    );
-
-  const paymentsBefore =
-    paymentIndex >= 0
-      ? payments.slice(
-          0,
-          paymentIndex
-        )
-      : [];
-
-  const previousPaid =
-    paymentsBefore.reduce(
-      (total, item) =>
-        total +
-        Number(
-          item.amount || 0
-        ),
-      0
-    );
-
-  const programmeAmount =
-    Number(
-      record.enrollment
-        ?.total_fee || 0
-    );
-
-  const currentAmount =
-    Number(
-      payment.amount || 0
-    );
-
-  const previousBalance =
-    Math.max(
-      programmeAmount -
-        previousPaid,
-      0
-    );
-
-  const totalPaidAfter =
-    previousPaid +
-    currentAmount;
-
-  const balanceAfterPayment =
-    Math.max(
-      programmeAmount -
-        totalPaidAfter,
-      0
-    );
-
-  return {
-    receiptNumber:
-      createReceiptNumber(
-        payment
-      ),
-
-    studentName:
-      record.student.full_name,
-
-    studentEmail:
-      record.student.email ||
-      "",
-
-    studentPhone:
-      record.student.whatsapp_number ||
-      "",
-
-    programmeName:
-      record.enrollment
-        ?.programme_name ||
-      "Music Training",
-
-    instrument:
-      record.enrollment
-        ?.instrument ||
-      "",
-
-    programmeAmount,
-
-    paymentHistory:
-      record.payments.map(
-        (item) => ({
-          label:
-            `Payment ${formatDate(
-              item.payment_date
-            )}`,
-
-          amount:
-            Number(
-              item.amount || 0
-            ),
-
-          date:
-            item.payment_date,
-
-          method:
-            item.payment_method,
-
-          reference:
-            item.reference,
-        })
-      ),
-
-    previousBalance,
-
-    amountPaid:
-      currentAmount,
-
-    balanceAfterPayment,
-
-    paymentMethod:
-      payment.payment_method,
-
-    paymentDate:
-      payment.payment_date,
-
-    reference:
-      payment.reference,
-  };
-}
-
-async function viewReceipt(
-  record: SelectedStudentRecord,
-  payment: Payment
-) {
-  try {
-    await generatePaymentReceipt(
-      buildReceiptData(record, payment),
-      "view"
-    );
-  } catch (error) {
-    console.error(
-      "View receipt error:",
-      error
-    );
-  }
-}
-async function downloadReceipt(
-  record: SelectedStudentRecord,
-  payment: Payment
-) {
-  try {
-    await generatePaymentReceipt(
-      buildReceiptData(record, payment),
-      "download"
-    );
-  } catch (error) {
-    console.error(
-      "Download receipt error:",
-      error
-    );
-  }
-}
-
-function emailReceipt(
-  record: SelectedStudentRecord,
-  payment: Payment
-) {
-  if (
-    !record.student.email
+  function createReceiptNumber(
+    payment: Payment
   ) {
-    alert(
-      "This student does not have an email address."
+    const date = new Date(
+      payment.payment_date
     );
 
-    return;
+    const year =
+      date.getFullYear();
+
+    const shortId =
+      payment.id
+        .replace(/-/g, "")
+        .slice(0, 8)
+        .toUpperCase();
+
+    return `ST-${year}-${shortId}`;
   }
 
-  const receiptData =
-    buildReceiptData(
-      record,
-      payment
-    );
+  function buildReceiptData(
+    record: SelectedStudentRecord,
+    payment: Payment
+  ) {
+    const payments =
+      [...record.payments].sort(
+        (a, b) =>
+          new Date(
+            a.payment_date
+          ).getTime() -
+          new Date(
+            b.payment_date
+          ).getTime()
+      );
 
-  const subject =
-    encodeURIComponent(
-      `Sauti Tamu Payment Receipt ${receiptData.receiptNumber}`
-    );
+    const paymentIndex =
+      payments.findIndex(
+        (item) =>
+          item.id === payment.id
+      );
 
-  const body =
-    encodeURIComponent(
-      [
-        `Dear ${record.student.full_name},`,
-        "",
-        "Thank you for your payment to Sauti Tamu Music School.",
-        "",
-        `Receipt No: ${receiptData.receiptNumber}`,
-        `Amount received: ${formatCurrency(
-          receiptData.amountPaid
-        )}`,
-        `Payment date: ${formatDate(
-          receiptData.paymentDate
-        )}`,
-        `Payment method: ${receiptData.paymentMethod}`,
-        `Reference: ${
-          receiptData.reference ||
-          "—"
-        }`,
-        "",
-        `Programme: ${receiptData.programmeName}`,
-        `Programme fee: ${formatCurrency(
-          receiptData.programmeAmount
-        )}`,
-        `Balance after payment: ${formatCurrency(
-          receiptData.balanceAfterPayment
-        )}`,
-        "",
-        "Sauti Tamu Music School",
-      ].join("\n")
-    );
+    const paymentsBefore =
+      paymentIndex >= 0
+        ? payments.slice(
+            0,
+            paymentIndex
+          )
+        : [];
 
-  window.location.href =
-    `mailto:${record.student.email}` +
-    `?subject=${subject}&body=${body}`;
-}
-         
-  /* =====================================================
+    const previousPaid =
+      paymentsBefore.reduce(
+        (total, item) =>
+          total +
+          Number(
+            item.amount || 0
+          ),
+        0
+      );
+
+    const programmeAmount =
+      Number(
+        record.enrollment
+          ?.total_fee || 0
+      );
+
+    const currentAmount =
+      Number(
+        payment.amount || 0
+      );
+
+    const previousBalance =
+      Math.max(
+        programmeAmount -
+          previousPaid,
+        0
+      );
+
+    const totalPaidAfter =
+      previousPaid +
+      currentAmount;
+
+    const balanceAfterPayment =
+      Math.max(
+        programmeAmount -
+          totalPaidAfter,
+        0
+      );
+
+    return {
+      receiptNumber:
+        createReceiptNumber(
+          payment
+        ),
+
+      studentName:
+        record.student.full_name,
+
+      studentEmail:
+        record.student.email ||
+        "",
+
+      studentPhone:
+        record.student
+          .whatsapp_number ||
+        "",
+
+      programmeName:
+        record.enrollment
+          ?.programme_name ||
+        "Music Training",
+
+      instrument:
+        record.enrollment
+          ?.instrument ||
+        "",
+
+      programmeAmount,
+
+      paymentHistory:
+        record.payments.map(
+          (item) => ({
+            label:
+              `Payment ${formatDate(
+                item.payment_date
+              )}`,
+
+            amount:
+              Number(
+                item.amount || 0
+              ),
+
+            date:
+              item.payment_date,
+
+            method:
+              item.payment_method,
+
+            reference:
+              item.reference,
+          })
+        ),
+
+      previousBalance,
+
+      amountPaid:
+        currentAmount,
+
+      balanceAfterPayment,
+
+      paymentMethod:
+        payment.payment_method,
+
+      paymentDate:
+        payment.payment_date,
+
+      reference:
+        payment.reference,
+    };
+  }
+
+  /* ===================================================
+     RECEIPTS
+  =================================================== */
+
+  async function viewReceipt(
+    record: SelectedStudentRecord,
+    payment: Payment
+  ) {
+    try {
+      await generatePaymentReceipt(
+        buildReceiptData(
+          record,
+          payment
+        ),
+        "view"
+      );
+    } catch (error) {
+      console.error(
+        "View receipt error:",
+        error
+      );
+    }
+  }
+
+  async function downloadReceipt(
+    record: SelectedStudentRecord,
+    payment: Payment
+  ) {
+    try {
+      await generatePaymentReceipt(
+        buildReceiptData(
+          record,
+          payment
+        ),
+        "download"
+      );
+    } catch (error) {
+      console.error(
+        "Download receipt error:",
+        error
+      );
+    }
+  }
+
+  function emailReceipt(
+    record: SelectedStudentRecord,
+    payment: Payment
+  ) {
+    if (
+      !record.student.email
+    ) {
+      alert(
+        "This student does not have an email address."
+      );
+
+      return;
+    }
+
+    const receiptData =
+      buildReceiptData(
+        record,
+        payment
+      );
+
+    const subject =
+      encodeURIComponent(
+        `Sauti Tamu Payment Receipt ${receiptData.receiptNumber}`
+      );
+
+    const body =
+      encodeURIComponent(
+        [
+          `Dear ${record.student.full_name},`,
+          "",
+          "Thank you for your payment to Sauti Tamu Music School.",
+          "",
+          `Receipt No: ${receiptData.receiptNumber}`,
+          `Amount received: ${formatCurrency(
+            receiptData.amountPaid
+          )}`,
+          `Payment date: ${formatDate(
+            receiptData.paymentDate
+          )}`,
+          `Payment method: ${receiptData.paymentMethod}`,
+          `Reference: ${
+            receiptData.reference ||
+            "—"
+          }`,
+          "",
+          `Programme: ${receiptData.programmeName}`,
+          `Programme fee: ${formatCurrency(
+            receiptData.programmeAmount
+          )}`,
+          `Balance after payment: ${formatCurrency(
+            receiptData.balanceAfterPayment
+          )}`,
+          "",
+          "Sauti Tamu Music School",
+        ].join("\n")
+      );
+
+    window.location.href =
+      `mailto:${record.student.email}` +
+      `?subject=${subject}&body=${body}`;
+  }
+
+  /* ===================================================
      PAGE
-  ===================================================== */
+  =================================================== */
 
   return (
     <main className="st-content">
@@ -1063,7 +804,6 @@ function emailReceipt(
       {/* STATS */}
 
       <div className="mt-5">
-
         <StudentStats
           totalStudents={
             stats.totalStudents
@@ -1081,25 +821,21 @@ function emailReceipt(
             formatCurrency
           }
         />
-
       </div>
 
       {/* ERROR */}
 
       {error && (
-        <div className="mt-5 flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3">
-
+        <div className="mt-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3">
           <p className="m-0 text-[10px] text-red-700">
             {error}
           </p>
-
         </div>
       )}
 
       {/* TOOLBAR */}
 
       <div className="mt-5">
-
         <StudentsToolbar
           searchTerm={
             searchTerm
@@ -1150,260 +886,358 @@ function emailReceipt(
             filteredStudents.length
           }
         />
-
       </div>
 
       {/* LIST */}
 
       <div className="mt-5">
-
         {loading ? (
           <div className="st-card flex min-h-[260px] items-center justify-center">
-
             <div className="flex items-center gap-2 text-[10px] text-[var(--st-gray)]">
-
               <RefreshCw
                 size={15}
                 className="animate-spin"
               />
 
               Loading students...
-
             </div>
-
           </div>
         ) : (
           <StudentList
-  students={filteredStudents}
-  selectedStudentId={
-    selectedStudent?.student.id ?? null
-  }
-  onSelectStudent={(student) => {
-    const record = students.find(
-      (item) =>
-        item.student.id === student.student.id
-    );
+            students={
+              filteredStudents
+            }
 
-    if (record) {
-      handleSelectStudent(record);
-    }
-  }}
-  formatCurrency={formatCurrency}
-  formatDate={formatDate}
-  instrumentName={(instrument) => {
-    if (!instrument) {
-      return "—";
-    }
+            selectedStudentId={
+              selectedStudent
+                ?.student.id ??
+              null
+            }
 
-    return instrument === "guitar"
-      ? "Acoustic Guitar"
-      : instrument.charAt(0).toUpperCase() +
-        instrument.slice(1);
-  }}
-  getBalance={getBalance}
+            onSelectStudent={(
+              student
+            ) => {
+              const record =
+                findRecord(
+                  student.student.id
+                );
 
-  openWhatsApp={(student) => {
-    const record = students.find(
-      (item) =>
-        item.student.id === student.student.id
-    );
+              if (record) {
+                handleSelectStudent(
+                  record
+                );
+              }
+            }}
 
-    if (record) {
-      openWhatsApp({
-        student: record.student,
-        enrollment: record.enrollment,
-        payments: record.payments,
-      });
-    }
-  }}
+            formatCurrency={
+              formatCurrency
+            }
 
-  callStudent={(student) => {
-    const record = students.find(
-      (item) =>
-        item.student.id === student.student.id
-    );
+            formatDate={
+              formatDate
+            }
 
-    if (record) {
-      callStudent({
-        student: record.student,
-        enrollment: record.enrollment,
-        payments: record.payments,
-      });
-    }
-  }}
+            instrumentName={(
+              instrument
+            ) => {
+              if (!instrument) {
+                return "—";
+              }
 
-  emailStudent={(student) => {
-    const record = students.find(
-      (item) =>
-        item.student.id === student.student.id
-    );
+              return instrument ===
+                "guitar"
+                ? "Acoustic Guitar"
+                : instrument
+                    .charAt(0)
+                    .toUpperCase() +
+                  instrument.slice(1);
+            }}
 
-    if (record) {
-      emailStudent({
-        student: record.student,
-        enrollment: record.enrollment,
-        payments: record.payments,
-      });
-    }
-  }}
-/>
+            getBalance={
+              getBalance
+            }
+
+            openWhatsApp={(
+              student
+            ) => {
+              const record =
+                findRecord(
+                  student.student.id
+                );
+
+              if (record) {
+                openWhatsApp({
+                  student:
+                    record.student,
+                  enrollment:
+                    record.enrollment,
+                  payments:
+                    record.payments,
+                });
+              }
+            }}
+
+            callStudent={(
+              student
+            ) => {
+              const record =
+                findRecord(
+                  student.student.id
+                );
+
+              if (record) {
+                callStudent({
+                  student:
+                    record.student,
+                  enrollment:
+                    record.enrollment,
+                  payments:
+                    record.payments,
+                });
+              }
+            }}
+
+            emailStudent={(
+              student
+            ) => {
+              const record =
+                findRecord(
+                  student.student.id
+                );
+
+              if (record) {
+                emailStudent({
+                  student:
+                    record.student,
+                  enrollment:
+                    record.enrollment,
+                  payments:
+                    record.payments,
+                });
+              }
+            }}
+          />
         )}
-
       </div>
 
       {/* STUDENT DETAILS */}
 
-     {selectedStudent && (
-  <StudentDetails
-    selectedStudent={
-      selectedStudent
-    }
+      {selectedStudent && (
+        <StudentDetails
+          selectedStudent={
+            selectedStudent
+          }
 
-    onClose={() =>
-      setSelectedStudent(
-        null
-      )
-    }
+          onClose={() =>
+            setSelectedStudent(
+              null
+            )
+          }
 
-    onWhatsApp={(student) => {
-      const record = students.find(
-        (item) =>
-          item.student.id === student.student.id
-      );
+          onWhatsApp={(
+            student
+          ) => {
+            const record =
+              findRecord(
+                student.student.id
+              );
 
-      if (record) {
-        openWhatsApp({
-          student: record.student,
-          enrollment: record.enrollment,
-          payments: record.payments,
-        });
-      }
-    }}
+            if (record) {
+              openWhatsApp({
+                student:
+                  record.student,
+                enrollment:
+                  record.enrollment,
+                payments:
+                  record.payments,
+              });
+            }
+          }}
 
-    onCall={(student) => {
-      const record = students.find(
-        (item) =>
-          item.student.id === student.student.id
-      );
+          onCall={(student) => {
+            const record =
+              findRecord(
+                student.student.id
+              );
 
-      if (record) {
-        callStudent({
-          student: record.student,
-          enrollment: record.enrollment,
-          payments: record.payments,
-        });
-      }
-    }}
+            if (record) {
+              callStudent({
+                student:
+                  record.student,
+                enrollment:
+                  record.enrollment,
+                payments:
+                  record.payments,
+              });
+            }
+          }}
 
-    onEmail={(student) => {
-      const record = students.find(
-        (item) =>
-          item.student.id === student.student.id
-      );
+          onEmail={(student) => {
+            const record =
+              findRecord(
+                student.student.id
+              );
 
-      if (record) {
-        emailStudent({
-          student: record.student,
-          enrollment: record.enrollment,
-          payments: record.payments,
-        });
-      }
-    }}
+            if (record) {
+              emailStudent({
+                student:
+                  record.student,
+                enrollment:
+                  record.enrollment,
+                payments:
+                  record.payments,
+              });
+            }
+          }}
 
-    onReceivePayment={() =>
-      openPaymentModal(
-        selectedStudent
-      )
-    }
+          onReceivePayment={() =>
+            openPaymentModal(
+              selectedStudent
+            )
+          }
 
-    viewReceipt={(student, payment) => {
-  const record = students.find(
-    (item) =>
-      item.student.id === student.student.id
-  );
+          viewReceipt={(
+            student,
+            payment
+          ) => {
+            const record =
+              findRecord(
+                student.student.id
+              );
 
-  if (record) {
-    viewReceipt(record, {
-      id: payment.id,
-      student_id: record.student.id,
-      enrollment_id:
-        record.enrollment?.id ?? "",
-      payment_schedule_id: null,
-      amount: Number(payment.amount || 0),
-      payment_date: payment.payment_date,
-      payment_method:
-        payment.payment_method as PaymentMethod,
-      reference: payment.reference ?? null,
-      notes: null,
-      created_at: payment.payment_date,
-    });
-  }
-}}
-   downloadReceipt={(student, payment) => {
-  const record = students.find(
-    (item) =>
-      item.student.id === student.student.id
-  );
+            if (!record) {
+              return;
+            }
 
-  if (record) {
-    downloadReceipt(
-      record,
-      {
-        id: payment.id,
-        student_id: record.student.id,
-        enrollment_id:
-          record.enrollment?.id ?? "",
-        payment_schedule_id: null,
-        amount: Number(payment.amount || 0),
-        payment_date: payment.payment_date,
-        payment_method:
-          payment.payment_method as PaymentMethod,
-        reference: payment.reference ?? null,
-        notes: null,
-        created_at: payment.payment_date,
-      }
-    );
-  }
-}}
-   emailReceipt={(student, payment) => {
-  const record = students.find(
-    (item) =>
-      item.student.id === student.student.id
-  );
+            viewReceipt(
+              record,
+              {
+                id: payment.id,
+                student_id:
+                  record.student.id,
+                enrollment_id:
+                  record.enrollment
+                    ?.id ?? "",
+                payment_schedule_id:
+                  null,
+                amount:
+                  Number(
+                    payment.amount ||
+                      0
+                  ),
+                payment_date:
+                  payment.payment_date,
+                payment_method:
+                  payment.payment_method as PaymentMethod,
+                reference:
+                  payment.reference ??
+                  null,
+                notes: null,
+                created_at:
+                  payment.payment_date,
+              }
+            );
+          }}
 
-  if (record) {
-    emailReceipt(
-      record,
-      {
-        id: payment.id,
-        student_id: record.student.id,
-        enrollment_id:
-          record.enrollment?.id ?? "",
-        payment_schedule_id: null,
-        amount: Number(payment.amount || 0),
-        payment_date: payment.payment_date,
-        payment_method:
-          payment.payment_method as PaymentMethod,
-        reference: payment.reference ?? null,
-        notes: null,
-        created_at: payment.payment_date,
-      }
-    );
-  }
-}}
-    formatCurrency={
-      formatCurrency
-    }
+          downloadReceipt={(
+            student,
+            payment
+          ) => {
+            const record =
+              findRecord(
+                student.student.id
+              );
 
-    formatDate={
-      formatDate
-    }
+            if (!record) {
+              return;
+            }
 
-    getBalance={
-      getBalance
-    }
-  />
-)}
+            downloadReceipt(
+              record,
+              {
+                id: payment.id,
+                student_id:
+                  record.student.id,
+                enrollment_id:
+                  record.enrollment
+                    ?.id ?? "",
+                payment_schedule_id:
+                  null,
+                amount:
+                  Number(
+                    payment.amount ||
+                      0
+                  ),
+                payment_date:
+                  payment.payment_date,
+                payment_method:
+                  payment.payment_method as PaymentMethod,
+                reference:
+                  payment.reference ??
+                  null,
+                notes: null,
+                created_at:
+                  payment.payment_date,
+              }
+            );
+          }}
+
+          emailReceipt={(
+            student,
+            payment
+          ) => {
+            const record =
+              findRecord(
+                student.student.id
+              );
+
+            if (!record) {
+              return;
+            }
+
+            emailReceipt(
+              record,
+              {
+                id: payment.id,
+                student_id:
+                  record.student.id,
+                enrollment_id:
+                  record.enrollment
+                    ?.id ?? "",
+                payment_schedule_id:
+                  null,
+                amount:
+                  Number(
+                    payment.amount ||
+                      0
+                  ),
+                payment_date:
+                  payment.payment_date,
+                payment_method:
+                  payment.payment_method as PaymentMethod,
+                reference:
+                  payment.reference ??
+                  null,
+                notes: null,
+                created_at:
+                  payment.payment_date,
+              }
+            );
+          }}
+
+          formatCurrency={
+            formatCurrency
+          }
+
+          formatDate={
+            formatDate
+          }
+
+          getBalance={
+            getBalance
+          }
+        />
+      )}
 
       {/* ADD STUDENT */}
 
@@ -1412,59 +1246,82 @@ function emailReceipt(
           show={
             showAddStudent
           }
+
           addingStudent={
             false
           }
+
           error=""
+
           studentName=""
           studentWhatsapp=""
           studentEmail=""
           studentNotes=""
+
           instrument="piano"
+
           programmeName="3 Month Training Programme"
+
           startDate={
             getTodayKey()
           }
+
           endDate=""
+
           totalFee=""
           initialPayment=""
+
           initialPaymentMethod="mpesa"
+
           initialPaymentReference=""
+
           nextPaymentAmount=""
           nextPaymentDueDate=""
           nextPaymentFollowUpDate=""
           nextPaymentNotes=""
+
           numericTotalFee={0}
           numericInitialPayment={0}
           remainingAfterInitial={0}
           remainingAfterNextPayment={0}
+
           setStudentName={() => {}}
           setStudentWhatsapp={() => {}}
           setStudentEmail={() => {}}
           setStudentNotes={() => {}}
+
           setInstrument={() => {}}
           setProgrammeName={() => {}}
           setStartDate={() => {}}
+
           setTotalFee={() => {}}
           setInitialPayment={() => {}}
+
           setInitialPaymentMethod={() => {}}
+
           setInitialPaymentReference={() => {}}
+
           setNextPaymentAmount={() => {}}
           setNextPaymentDueDate={() => {}}
           setNextPaymentFollowUpDate={() => {}}
           setNextPaymentNotes={() => {}}
+
           closeAddStudent={() =>
             setShowAddStudent(
               false
             )
           }
+
           addStudent={() => {}}
+
           formatCurrency={
             formatCurrency
           }
+
           formatDate={
             formatDate
           }
+
           instrumentName={(
             instrument
           ) =>
@@ -1486,34 +1343,49 @@ function emailReceipt(
                 id:
                   paymentStudent
                     .student.id,
+
                 full_name:
                   paymentStudent
                     .student
                     .full_name,
               },
+
               enrollment:
-                paymentStudent.enrollment,
+                paymentStudent
+                  .enrollment,
+
               payments:
-                paymentStudent.payments,
+                paymentStudent
+                  .payments,
             }}
+
             paymentAmount=""
             setPaymentAmount={() => {}}
+
             paymentMethod="mpesa"
             setPaymentMethod={() => {}}
+
             paymentReference=""
             setPaymentReference={() => {}}
+
             showPaymentForm={
               showPaymentModal
             }
+
             setShowPaymentForm={
               setShowPaymentModal
             }
+
             updatingId={null}
+
             recordPayment={() => {}}
+
             error={null}
+
             formatCurrency={
               formatCurrency
             }
+
             getBalance={
               getBalance
             }
