@@ -1,45 +1,34 @@
 import { NextResponse } from "next/server";
 import crypto from "crypto";
 
-const GOOGLE_AUTH_URL =
-  "https://accounts.google.com/o/oauth2/v2/auth";
-
-const GMAIL_SCOPE =
-  "https://www.googleapis.com/auth/gmail.send";
-
-function createState() {
-  const secret =
-    process.env.GMAIL_OAUTH_STATE_SECRET;
-
-  if (!secret) {
-    throw new Error(
-      "GMAIL_OAUTH_STATE_SECRET is missing"
-    );
-  }
-
-  const timestamp =
-    Date.now().toString();
-
-  const signature = crypto
-    .createHmac("sha256", secret)
-    .update(timestamp)
-    .digest("hex");
-
-  return `${timestamp}.${signature}`;
-}
-
 export async function GET() {
   try {
+    const secret =
+      process.env.GMAIL_OAUTH_STATE_SECRET;
+
     const clientId =
       process.env.GOOGLE_CLIENT_ID;
 
     const redirectUri =
       process.env.GOOGLE_REDIRECT_URI;
 
+    if (!secret) {
+      return NextResponse.json(
+        {
+          success: false,
+          step: "state_secret",
+          error:
+            "GMAIL_OAUTH_STATE_SECRET is missing",
+        },
+        { status: 500 }
+      );
+    }
+
     if (!clientId) {
       return NextResponse.json(
         {
           success: false,
+          step: "client_id",
           error:
             "GOOGLE_CLIENT_ID is missing",
         },
@@ -51,6 +40,7 @@ export async function GET() {
       return NextResponse.json(
         {
           success: false,
+          step: "redirect_uri",
           error:
             "GOOGLE_REDIRECT_URI is missing",
         },
@@ -58,20 +48,28 @@ export async function GET() {
       );
     }
 
-    /*
-     * Generate OAuth state.
-     */
-    const state = createState();
+    const timestamp =
+      Date.now().toString();
 
-    /*
-     * Build Google authorization URL.
-     */
+    const signature =
+      crypto
+        .createHmac(
+          "sha256",
+          secret
+        )
+        .update(timestamp)
+        .digest("hex");
+
+    const state =
+      `${timestamp}.${signature}`;
+
     const params =
       new URLSearchParams({
         client_id: clientId,
         redirect_uri: redirectUri,
         response_type: "code",
-        scope: GMAIL_SCOPE,
+        scope:
+          "https://www.googleapis.com/auth/gmail.send",
         access_type: "offline",
         prompt: "consent",
         include_granted_scopes: "true",
@@ -81,48 +79,32 @@ export async function GET() {
       });
 
     const googleUrl =
-      `${GOOGLE_AUTH_URL}?${params.toString()}`;
+      `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
 
-    /*
-     * Redirect directly to Google.
-     */
-    const response =
-      NextResponse.redirect(googleUrl);
-
-    /*
-     * Store the exact OAuth state
-     * that Google will return to us.
-     *
-     * The callback checks this cookie.
-     */
-    response.cookies.set(
-      "gmail_oauth_state",
-      state,
-      {
-        httpOnly: true,
-        secure:
-          process.env.NODE_ENV ===
-          "production",
-        sameSite: "lax",
-        path: "/",
-        maxAge: 10 * 60,
-      }
-    );
-
-    return response;
+    return NextResponse.json({
+      success: true,
+      step: "oauth_url_created",
+      message:
+        "OAuth route is working.",
+      clientIdExists: true,
+      redirectUri,
+      stateCreated: true,
+      googleUrl,
+    });
   } catch (error) {
     console.error(
-      "Gmail OAuth start error:",
+      "Gmail OAuth diagnostic error:",
       error
     );
 
     return NextResponse.json(
       {
         success: false,
+        step: "unexpected_error",
         error:
           error instanceof Error
             ? error.message
-            : "Unable to start Gmail OAuth.",
+            : "Unknown error",
       },
       { status: 500 }
     );
