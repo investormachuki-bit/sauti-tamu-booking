@@ -283,10 +283,6 @@ export async function POST(
      * --------------------------------------
      * GET AUTHORITATIVE BOOKING DETAILS
      * --------------------------------------
-     *
-     * We use database values rather than
-     * trusting instrument/date/time values
-     * supplied by the browser.
      */
 
     const {
@@ -318,11 +314,6 @@ export async function POST(
         "Booking details error:",
         detailsError
       );
-
-      /*
-       * The booking already exists.
-       * Never pretend that it failed.
-       */
 
       return NextResponse.json(
         {
@@ -369,12 +360,16 @@ export async function POST(
      * --------------------------------------
      * CUSTOMER CONFIRMATION EMAIL
      * --------------------------------------
+     *
+     * IMPORTANT:
+     * The sender now uses the verified
+     * Sauti Tamu domain.
      */
 
     const customerEmailResult =
       await resend.emails.send({
         from:
-          "Sauti Tamu Piano Center <onboarding@resend.dev>",
+          "Sauti Tamu Piano Center <bookings@sautitamupianocenter.co.ke>",
 
         to: [cleanEmail],
 
@@ -385,8 +380,6 @@ export async function POST(
           <div style="margin:0;padding:40px 20px;background:#f5f5f5;font-family:Arial,Helvetica,sans-serif;">
 
             <div style="max-width:620px;margin:0 auto;background:#ffffff;border-radius:18px;overflow:hidden;">
-
-              <!-- HEADER -->
 
               <div style="background:#C62828;color:#ffffff;padding:28px 30px;">
 
@@ -399,8 +392,6 @@ export async function POST(
                 </div>
 
               </div>
-
-              <!-- CONTENT -->
 
               <div style="padding:32px;">
 
@@ -416,8 +407,6 @@ export async function POST(
                   Thank you for booking your free trial lesson with Sauti Tamu Piano Center.
                   We’re looking forward to welcoming you.
                 </p>
-
-                <!-- LESSON CARD -->
 
                 <div style="margin-top:26px;background:#f7f7f7;border-radius:16px;padding:22px;">
 
@@ -443,8 +432,6 @@ export async function POST(
 
                 </div>
 
-                <!-- LOCATION -->
-
                 <div style="margin-top:22px;padding:20px;border:1px solid #eeeeee;border-radius:14px;">
 
                   <div style="font-size:10px;font-weight:700;letter-spacing:1px;color:#C62828;">
@@ -464,8 +451,6 @@ export async function POST(
 
                 </div>
 
-                <!-- REMINDER -->
-
                 <div style="margin-top:22px;background:#fff7f7;border-radius:14px;padding:18px;">
 
                   <div style="font-size:12px;font-weight:700;color:#1F2933;">
@@ -477,8 +462,6 @@ export async function POST(
                   </div>
 
                 </div>
-
-                <!-- FOOTER -->
 
                 <div style="margin-top:30px;padding-top:20px;border-top:1px solid #eeeeee;font-size:11px;line-height:1.6;color:#999999;">
                   Sauti Tamu Piano Center<br/>
@@ -515,7 +498,7 @@ export async function POST(
       adminEmailResult =
         await resend.emails.send({
           from:
-            "Sauti Tamu Booking <onboarding@resend.dev>",
+            "Sauti Tamu Booking <bookings@sautitamupianocenter.co.ke>",
 
           to: [adminEmail],
 
@@ -526,8 +509,6 @@ export async function POST(
             <div style="margin:0;padding:40px 20px;background:#f5f5f5;font-family:Arial,Helvetica,sans-serif;">
 
               <div style="max-width:620px;margin:0 auto;background:#ffffff;border-radius:18px;overflow:hidden;">
-
-                <!-- HEADER -->
 
                 <div style="background:#C62828;color:#ffffff;padding:26px 30px;">
 
@@ -541,8 +522,6 @@ export async function POST(
 
                 </div>
 
-                <!-- CONTENT -->
-
                 <div style="padding:30px;">
 
                   <div style="font-size:10px;font-weight:700;letter-spacing:1.5px;color:#C62828;">
@@ -552,8 +531,6 @@ export async function POST(
                   <h1 style="font-size:28px;color:#1F2933;margin:10px 0 24px;">
                     ${emailName}
                   </h1>
-
-                  <!-- LESSON -->
 
                   <div style="background:#f7f7f7;border-radius:16px;padding:22px;">
 
@@ -580,8 +557,6 @@ export async function POST(
                     </div>
 
                   </div>
-
-                  <!-- CUSTOMER -->
 
                   <div style="margin-top:24px;">
 
@@ -610,8 +585,6 @@ export async function POST(
 
                   </div>
 
-                  <!-- STATUS -->
-
                   <div style="margin-top:22px;padding:16px;border-radius:12px;background:#fff7f7;">
 
                     <div style="font-size:12px;font-weight:700;color:#1F2933;">
@@ -623,8 +596,6 @@ export async function POST(
                     </div>
 
                   </div>
-
-                  <!-- FOOTER -->
 
                   <div style="margin-top:28px;padding-top:18px;border-top:1px solid #eeeeee;font-size:11px;color:#999999;">
                     Sauti Tamu Piano Center — Admin Notification
@@ -701,34 +672,6 @@ export async function POST(
      * ======================================
      * AUTOMATIC FOLLOW-UP TASKS
      * ======================================
-     *
-     * We create:
-     *
-     * 1. 24-hour reminder
-     * 2. 2-hour reminder
-     * 3. Post-trial follow-up
-     *
-     * IMPORTANT:
-     *
-     * A task is created ONLY if its due time
-     * is still in the future.
-     *
-     * Therefore:
-     *
-     * Booking 30 hours before:
-     *   → 24h reminder
-     *   → 2h reminder
-     *   → post-trial
-     *
-     * Booking 10 hours before:
-     *   → 2h reminder
-     *   → post-trial
-     *
-     * Booking 1 hour before:
-     *   → post-trial
-     *
-     * The immediate confirmation email still
-     * goes out regardless of booking timing.
      */
 
     let followUpsCreated = 0;
@@ -742,10 +685,6 @@ export async function POST(
 
       const lessonEnd =
         new Date(endsAt);
-
-      /*
-       * Build the possible follow-up tasks.
-       */
 
       const possibleFollowUps = [
         {
@@ -835,11 +774,6 @@ export async function POST(
         },
       ];
 
-      /*
-       * Only retain tasks whose due time is
-       * still in the future.
-       */
-
       const futureFollowUps =
         possibleFollowUps.filter(
           (task) =>
@@ -848,16 +782,6 @@ export async function POST(
             ).getTime() >
             now.getTime()
         );
-
-      /*
-       * --------------------------------------
-       * CHECK FOR EXISTING TASKS
-       * --------------------------------------
-       *
-       * This protects us if the booking request
-       * is accidentally submitted twice or the
-       * API is retried.
-       */
 
       const {
         data: existingTasks,
@@ -890,10 +814,6 @@ export async function POST(
             )
           );
 
-        /*
-         * Remove anything that already exists.
-         */
-
         const tasksToCreate =
           futureFollowUps.filter(
             (task) =>
@@ -901,12 +821,6 @@ export async function POST(
                 task.task_type
               )
           );
-
-        /*
-         * ------------------------------------
-         * INSERT FOLLOW-UP TASKS
-         * ------------------------------------
-         */
 
         if (
           tasksToCreate.length >
@@ -948,8 +862,6 @@ export async function POST(
       followUpError
     ) {
       /*
-       * VERY IMPORTANT:
-       *
        * Follow-up failure must NEVER turn a
        * successful booking into a failed booking.
        */
