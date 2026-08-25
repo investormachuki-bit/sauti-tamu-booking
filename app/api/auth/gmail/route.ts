@@ -7,6 +7,25 @@ const GOOGLE_AUTH_URL =
 const GMAIL_SCOPE =
   "https://www.googleapis.com/auth/gmail.send";
 
+function createState() {
+  const secret = process.env.GMAIL_OAUTH_STATE_SECRET;
+
+  if (!secret) {
+    throw new Error(
+      "GMAIL_OAUTH_STATE_SECRET is missing"
+    );
+  }
+
+  const timestamp = Date.now().toString();
+
+  const signature = crypto
+    .createHmac("sha256", secret)
+    .update(timestamp)
+    .digest("hex");
+
+  return `${timestamp}.${signature}`;
+}
+
 export async function GET() {
   try {
     const clientId =
@@ -35,36 +54,34 @@ export async function GET() {
       );
     }
 
-    const state =
-      crypto.randomBytes(32).toString("hex");
+    const state = createState();
 
-    const params =
-      new URLSearchParams({
-        client_id: clientId,
-        redirect_uri: redirectUri,
-        response_type: "code",
-        scope: GMAIL_SCOPE,
-        access_type: "offline",
-        prompt: "consent",
-        include_granted_scopes: "true",
-        state,
-        login_hint:
-          "sautitamupianocenter@gmail.com",
-      });
+    const params = new URLSearchParams({
+      client_id: clientId,
+      redirect_uri: redirectUri,
+      response_type: "code",
+      scope: GMAIL_SCOPE,
+      access_type: "offline",
+      prompt: "consent",
+      include_granted_scopes: "true",
+      state,
+      login_hint:
+        "sautitamupianocenter@gmail.com",
+    });
 
     const googleUrl =
       `${GOOGLE_AUTH_URL}?${params.toString()}`;
 
     return NextResponse.json({
       success: true,
-      message: "Gmail OAuth URL generated successfully.",
+      message:
+        "Gmail OAuth URL generated successfully.",
       clientIdExists: true,
       clientIdPreview:
         clientId.substring(0, 20) + "...",
       redirectUri,
       googleUrl,
     });
-
   } catch (error) {
     console.error(
       "Gmail OAuth diagnostic error:",
