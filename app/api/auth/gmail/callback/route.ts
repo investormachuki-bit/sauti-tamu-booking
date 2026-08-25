@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { cookies } from "next/headers";
+import crypto from "crypto";
 import { supabaseServer } from "@/lib/supabase-server";
 
 const GOOGLE_TOKEN_URL =
@@ -7,6 +7,62 @@ const GOOGLE_TOKEN_URL =
 
 const GMAIL_PROFILE_URL =
   "https://gmail.googleapis.com/gmail/v1/users/me/profile";
+
+const ALLOWED_GMAIL =
+  "sautitamupianocenter@gmail.com";
+
+function verifyState(state: string) {
+  const secret =
+    process.env.GMAIL_OAUTH_STATE_SECRET;
+
+  if (!secret) {
+    throw new Error(
+      "GMAIL_OAUTH_STATE_SECRET is missing."
+    );
+  }
+
+  const parts = state.split(".");
+
+  if (parts.length !== 2) {
+    return false;
+  }
+
+  const [timestamp, signature] = parts;
+
+  const timestampNumber =
+    Number(timestamp);
+
+  if (
+    !Number.isFinite(timestampNumber)
+  ) {
+    return false;
+  }
+
+  /*
+   * State expires after 10 minutes.
+   */
+  const age =
+    Date.now() - timestampNumber;
+
+  if (age < 0 || age > 10 * 60 * 1000) {
+    return false;
+  }
+
+  const expectedSignature =
+    crypto
+      .createHmac("sha256", secret)
+      .update(timestamp)
+      .digest("hex");
+
+  try {
+    return crypto.timingSafeEqual(
+      Buffer.from(signature),
+      Buffer.from(expectedSignature)
+    );
+  } catch {
+    return false;
+  }
+}
 
 export async function GET(
   request: NextRequest
@@ -25,10 +81,11 @@ export async function GET(
       url.searchParams.get("error");
 
     /*
-     * Google returned an OAuth error.
-     * Send the admin back to the admin dashboard
-     * rather than the public root page.
+     * =====================================================
+     * GOOGLE OAUTH ERROR
+     * =====================================================
      */
+
     if (error) {
       return NextResponse.redirect(
         new URL(
@@ -41,12 +98,15 @@ export async function GET(
     }
 
     /*
-     * Google must provide both the
-     * authorization code and state.
+     * =====================================================
+     * REQUIRED PARAMETERS
+     * =====================================================
      */
+
     if (!code || !state) {
       return NextResponse.json(
         {
+          success: false,
           error:
             "Missing Google authorization code or state.",
         },
@@ -55,39 +115,28 @@ export async function GET(
     }
 
     /*
-     * Verify OAuth state.
+     * =====================================================
+     * VERIFY OAUTH STATE
+     * =====================================================
      */
-    const cookieStore =
-      await cookies();
 
-    const storedState =
-      cookieStore.get(
-        "gmail_oauth_state"
-      )?.value;
-
-    if (
-      !storedState ||
-      storedState !== state
-    ) {
+    if (!verifyState(state)) {
       return NextResponse.json(
         {
+          success: false,
           error:
-            "Invalid OAuth state.",
+            "Invalid or expired OAuth state.",
         },
         { status: 400 }
       );
     }
 
     /*
-     * OAuth state has now been consumed.
+     * =====================================================
+     * ENVIRONMENT VARIABLES
+     * =====================================================
      */
-    cookieStore.delete(
-      "gmail_oauth_state"
-    );
 
-    /*
-     * Read Google OAuth environment variables.
-     */
     const clientId =
       process.env.GOOGLE_CLIENT_ID;
 
@@ -108,9 +157,11 @@ export async function GET(
     }
 
     /*
-     * Exchange authorization code
-     * for access + refresh tokens.
+     * =====================================================
+     * EXCHANGE CODE FOR TOKENS
+     * =====================================================
      */
+
     const tokenBody =
       new URLSearchParams({
         code,
@@ -129,11 +180,14 @@ export async function GET(
         GOOGLE_TOKEN_URL,
         {
           method: "POST",
+
           headers: {
             "Content-Type":
               "application/x-www-form-urlencoded",
           },
+
           body: tokenBody,
+
           cache: "no-store",
         }
       );
@@ -167,14 +221,16 @@ export async function GET(
 
     if (!refreshToken) {
       throw new Error(
-        "Google did not return a refresh token. Please revoke the existing Sauti Tamu authorization and connect again."
+        "Google did not return a refresh token. Revoke the existing Sauti Tamu authorization and connect again."
       );
     }
 
     /*
-     * Verify which Gmail account
-     * actually authorized the app.
+     * =====================================================
+     * VERIFY GMAIL ACCOUNT
+     * =====================================================
      */
+
     const profileResponse =
       await fetch(
         GMAIL_PROFILE_URL,
@@ -183,6 +239,7 @@ export async function GET(
             Authorization:
               `Bearer ${accessToken}`,
           },
+
           cache: "no-store",
         }
       );
@@ -211,17 +268,19 @@ export async function GET(
     }
 
     /*
-     * Only the official Sauti Tamu
-     * Gmail account may be connected.
+     * =====================================================
+     * ONLY ALLOW SAUTI TAMU GMAIL
+     * =====================================================
      */
+
     if (
       email.toLowerCase() !==
-      "sautitamupianocenter@gmail.com"
+      ALLOWED_GMAIL
     ) {
       return NextResponse.redirect(
         new URL(
           `/admin?gmail=error&reason=${encodeURIComponent(
-            "Please connect sautitamupianocenter@gmail.com"
+            `Please connect ${ALLOWED_GMAIL}`
           )}`,
           request.url
         )
@@ -229,9 +288,14 @@ export async function GET(
     }
 
     /*
-     * Save the refresh token.
+     * =====================================================
+     * SAVE GMAIL CONNECTION
+     * =====================================================
      */
-    const { error: dbError } =
+
+    const {
+      error: dbError,
+    } =
       await supabaseServer
         .from("gmail_connections")
         .upsert(
@@ -267,13 +331,11 @@ export async function GET(
     }
 
     /*
-     * Gmail connection succeeded.
-     *
-     * IMPORTANT:
-     * Redirect to /admin instead of / so
-     * the Gmail result is not lost by the
-     * public root-page redirect.
+     * =====================================================
+     * SUCCESS
+     * =====================================================
      */
+
     return NextResponse.redirect(
       new URL(
         `/admin?gmail=connected&email=${encodeURIComponent(
