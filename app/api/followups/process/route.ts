@@ -435,7 +435,8 @@ async function processFollowups(request: NextRequest) {
         const emailResult =
           await resend.emails.send({
             from:
-              "Sauti Tamu Piano Center <onboarding@resend.dev>",
+              from:
+  "Sauti Tamu Piano Center <noreply@sautitamupianocenter.co.ke>",
 
             to: [
               lead.email.trim(),
