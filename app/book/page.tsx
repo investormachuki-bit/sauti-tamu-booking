@@ -5,8 +5,6 @@ import {
   ArrowLeft,
   ArrowRight,
   Check,
-  ChevronDown,
-  ChevronUp,
   Clock3,
   Guitar,
   Loader2,
@@ -276,9 +274,6 @@ export default function BookingPage() {
   const [email, setEmail] = useState("");
   const [whatsapp, setWhatsapp] =
     useState("");
-
-  const [showMoreDetails, setShowMoreDetails] =
-    useState(false);
 
   const [loading, setLoading] =
     useState(true);
@@ -944,243 +939,218 @@ export default function BookingPage() {
                 </div>
               )}
 
-            {/* SHOW MORE */}
+            {/* EXPANDED DETAILS — ALWAYS VISIBLE */}
 
-            <button
-              type="button"
-              onClick={() =>
-                setShowMoreDetails(
-                  !showMoreDetails
-                )
-              }
-              className="mt-6 flex w-full max-w-[760px] items-center justify-center gap-2 rounded-xl border border-[var(--st-border)] bg-white px-4 py-3.5 text-[12px] font-bold text-[var(--st-charcoal-dark)] transition-colors hover:bg-[var(--st-bg-soft)]"
-            >
-              {showMoreDetails
-                ? "Show less"
-                : "Show more"}
+            <div className="mt-8 max-w-[760px]">
 
-              {showMoreDetails ? (
-                <ChevronUp size={16} />
-              ) : (
-                <ChevronDown size={16} />
+              {/* DURING YOUR VISIT */}
+
+              {settings
+                .description_visit_items
+                ?.length > 0 && (
+                <div>
+
+                  <p className="m-0 text-[11px] font-bold uppercase tracking-[0.12em] text-[var(--st-charcoal-dark)]">
+                    {
+                      settings.description_visit_title
+                    }
+                  </p>
+
+                  <div className="mt-5 space-y-3.5">
+
+                    {settings.description_visit_items.map(
+                      (
+                        item,
+                        index
+                      ) => (
+                        <div
+                          key={`${item}-${index}`}
+                          className="flex items-start gap-3"
+                        >
+
+                          <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[var(--st-bg-soft)] text-[var(--st-red)]">
+                            <Check
+                              size={12}
+                            />
+                          </div>
+
+                          <p className="m-0 text-[12px] leading-relaxed text-[var(--st-gray)]">
+                            {item}
+                          </p>
+
+                        </div>
+                      )
+                    )}
+
+                  </div>
+
+                </div>
               )}
 
-            </button>
+              {/* WHAT TO BRING */}
 
-            {/* EXPANDED DETAILS */}
+              {settings
+                .what_to_bring_items
+                ?.length > 0 && (
+                <div className="mt-9 border-t border-[var(--st-border)] pt-8">
 
-            {showMoreDetails && (
-              <div className="mt-8 max-w-[760px]">
+                  <p className="m-0 text-[11px] font-bold uppercase tracking-[0.12em] text-[var(--st-charcoal-dark)]">
+                    {
+                      settings.what_to_bring_title
+                    }
+                  </p>
 
-                {/* DURING YOUR VISIT */}
+                  <div className="mt-4 flex flex-wrap gap-2">
 
-                {settings
-                  .description_visit_items
-                  ?.length > 0 && (
+                    {settings.what_to_bring_items.map(
+                      (
+                        item,
+                        index
+                      ) => (
+                        <span
+                          key={`${item}-${index}`}
+                          className="rounded-full bg-[var(--st-bg-soft)] px-4 py-2.5 text-[11px] font-semibold text-[var(--st-gray)]"
+                        >
+                          {item}
+                        </span>
+                      )
+                    )}
+
+                  </div>
+
+                </div>
+              )}
+
+              {/* PROGRAM */}
+
+              {settings
+                .program_items
+                ?.length > 0 && (
+                <div className="mt-9 border-t border-[var(--st-border)] pt-8">
+
+                  <p className="m-0 text-[11px] font-bold uppercase tracking-[0.12em] text-[var(--st-charcoal-dark)]">
+                    {
+                      settings.program_title
+                    }
+                  </p>
+
+                  <div className="mt-5 space-y-3">
+
+                    {settings.program_items.map(
+                      (
+                        item,
+                        index
+                      ) => (
+                        <p
+                          key={`${item}-${index}`}
+                          className="m-0 text-[12px] leading-relaxed text-[var(--st-gray)]"
+                        >
+                          • {item}
+                        </p>
+                      )
+                    )}
+
+                  </div>
+
+                </div>
+              )}
+
+              {/* LOCATION */}
+
+              <div className="mt-9 border-t border-[var(--st-border)] pt-8">
+
+                <div className="flex items-start gap-3">
+
+                  <MapPin
+                    size={19}
+                    className="mt-0.5 shrink-0 text-[var(--st-red)]"
+                  />
+
                   <div>
 
                     <p className="m-0 text-[11px] font-bold uppercase tracking-[0.12em] text-[var(--st-charcoal-dark)]">
                       {
-                        settings.description_visit_title
+                        settings.location_title
                       }
                     </p>
 
-                    <div className="mt-5 space-y-3.5">
-
-                      {settings.description_visit_items.map(
-                        (
-                          item,
-                          index
-                        ) => (
-                          <div
-                            key={`${item}-${index}`}
-                            className="flex items-start gap-3"
-                          >
-
-                            <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[var(--st-bg-soft)] text-[var(--st-red)]">
-                              <Check
-                                size={12}
-                              />
-                            </div>
-
-                            <p className="m-0 text-[12px] leading-relaxed text-[var(--st-gray)]">
-                              {item}
-                            </p>
-
-                          </div>
-                        )
-                      )}
-
-                    </div>
-
-                  </div>
-                )}
-
-                {/* WHAT TO BRING */}
-
-                {settings
-                  .what_to_bring_items
-                  ?.length > 0 && (
-                  <div className="mt-9 border-t border-[var(--st-border)] pt-8">
-
-                    <p className="m-0 text-[11px] font-bold uppercase tracking-[0.12em] text-[var(--st-charcoal-dark)]">
+                    <p className="mt-3 text-[13px] font-bold text-[var(--st-charcoal-dark)]">
                       {
-                        settings.what_to_bring_title
+                        settings.location_name
                       }
                     </p>
 
-                    <div className="mt-4 flex flex-wrap gap-2">
-
-                      {settings.what_to_bring_items.map(
-                        (
-                          item,
-                          index
-                        ) => (
-                          <span
-                            key={`${item}-${index}`}
-                            className="rounded-full bg-[var(--st-bg-soft)] px-4 py-2.5 text-[11px] font-semibold text-[var(--st-gray)]"
-                          >
-                            {item}
-                          </span>
-                        )
-                      )}
-
-                    </div>
-
-                  </div>
-                )}
-
-                {/* PROGRAM */}
-
-                {settings
-                  .program_items
-                  ?.length > 0 && (
-                  <div className="mt-9 border-t border-[var(--st-border)] pt-8">
-
-                    <p className="m-0 text-[11px] font-bold uppercase tracking-[0.12em] text-[var(--st-charcoal-dark)]">
+                    <p className="mt-2 text-[11px] leading-[1.7] text-[var(--st-gray)]">
                       {
-                        settings.program_title
+                        settings.location_address
+                      }
+                      <br />
+                      {
+                        settings.location_landmark
                       }
                     </p>
 
-                    <div className="mt-5 space-y-3">
-
-                      {settings.program_items.map(
-                        (
-                          item,
-                          index
-                        ) => (
-                          <p
-                            key={`${item}-${index}`}
-                            className="m-0 text-[12px] leading-relaxed text-[var(--st-gray)]"
-                          >
-                            • {item}
-                          </p>
-                        )
-                      )}
-
-                    </div>
-
-                  </div>
-                )}
-
-                {/* LOCATION */}
-
-                <div className="mt-9 border-t border-[var(--st-border)] pt-8">
-
-                  <div className="flex items-start gap-3">
-
-                    <MapPin
-                      size={19}
-                      className="mt-0.5 shrink-0 text-[var(--st-red)]"
-                    />
-
-                    <div>
-
-                      <p className="m-0 text-[11px] font-bold uppercase tracking-[0.12em] text-[var(--st-charcoal-dark)]">
-                        {
-                          settings.location_title
+                    {settings.location_maps_url && (
+                      <a
+                        href={
+                          settings.location_maps_url
                         }
-                      </p>
-
-                      <p className="mt-3 text-[13px] font-bold text-[var(--st-charcoal-dark)]">
-                        {
-                          settings.location_name
-                        }
-                      </p>
-
-                      <p className="mt-2 text-[11px] leading-[1.7] text-[var(--st-gray)]">
-                        {
-                          settings.location_address
-                        }
-                        <br />
-                        {
-                          settings.location_landmark
-                        }
-                      </p>
-
-                      {settings.location_maps_url && (
-                        <a
-                          href={
-                            settings.location_maps_url
-                          }
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="mt-4 inline-flex items-center gap-2 text-[11px] font-bold text-[var(--st-red)]"
-                        >
-                          View on Google Maps
-                          <ArrowRight
-                            size={13}
-                          />
-                        </a>
-                      )}
-
-                    </div>
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="mt-4 inline-flex items-center gap-2 text-[11px] font-bold text-[var(--st-red)]"
+                      >
+                        View on Google Maps
+                        <ArrowRight
+                          size={13}
+                        />
+                      </a>
+                    )}
 
                   </div>
 
                 </div>
 
-                {/* WORKING HOURS */}
-
-                {settings.working_hours_text && (
-                  <div className="mt-8 rounded-2xl bg-[var(--st-bg-soft)] p-5">
-
-                    <p className="m-0 text-[11px] font-bold uppercase tracking-[0.1em] text-[var(--st-charcoal-dark)]">
-                      {
-                        settings.working_hours_title
-                      }
-                    </p>
-
-                    <p className="mt-2 mb-0 text-[11px] leading-relaxed text-[var(--st-gray)]">
-                      {
-                        settings.working_hours_text
-                      }
-                    </p>
-
-                  </div>
-                )}
-
-                {/* ARRIVAL */}
-
-                {settings.arrival_instruction && (
-                  <div className="mt-4 rounded-2xl border border-[var(--st-border)] p-5">
-
-                    <p className="m-0 text-[11px] font-bold text-[var(--st-charcoal-dark)]">
-                      Before your visit
-                    </p>
-
-                    <p className="mt-2 mb-0 text-[11px] leading-relaxed text-[var(--st-gray)]">
-                      {
-                        settings.arrival_instruction
-                      }
-                    </p>
-
-                  </div>
-                )}
-
               </div>
-            )}
+
+              {/* WORKING HOURS */}
+
+              {settings.working_hours_text && (
+                <div className="mt-8 rounded-2xl bg-[var(--st-bg-soft)] p-5">
+
+                  <p className="m-0 text-[11px] font-bold uppercase tracking-[0.1em] text-[var(--st-charcoal-dark)]">
+                    {
+                      settings.working_hours_title
+                    }
+                  </p>
+
+                  <p className="mt-2 mb-0 text-[11px] leading-relaxed text-[var(--st-gray)]">
+                    {
+                      settings.working_hours_text
+                    }
+                  </p>
+
+                </div>
+              )}
+
+              {/* ARRIVAL */}
+
+              {settings.arrival_instruction && (
+                <div className="mt-4 rounded-2xl border border-[var(--st-border)] p-5">
+
+                  <p className="m-0 text-[11px] font-bold text-[var(--st-charcoal-dark)]">
+                    Before your visit
+                  </p>
+
+                  <p className="mt-2 mb-0 text-[11px] leading-relaxed text-[var(--st-gray)]">
+                    {
+                      settings.arrival_instruction
+                    }
+                  </p>
+
+                </div>
+              )}
+
+            </div>
 
           </section>
 
@@ -1195,11 +1165,11 @@ export default function BookingPage() {
             {!selectedSlot && (
               <div>
 
-                <p className="m-0 text-[11px] font-bold uppercase tracking-[0.14em] text-[var(--st-red)]">
+                <p className="m-0 text-[9px] font-bold uppercase tracking-[0.14em] text-[var(--st-red)]">
                   STEP 1
                 </p>
 
-                <h2 className="mt-2 text-[25px] font-bold tracking-[-0.035em] text-[var(--st-charcoal-dark)] sm:text-[28px]">
+                <h2 className="mt-2 text-[21px] font-bold tracking-[-0.035em] text-[var(--st-charcoal-dark)] sm:text-[24px]">
                   Choose an instrument
                 </h2>
 
@@ -1257,7 +1227,7 @@ export default function BookingPage() {
 
                         <div className="flex-1">
 
-                          <p className="m-0 text-[16px] font-bold text-[var(--st-charcoal-dark)]">
+                          <p className="m-0 text-[25px] font-bold tracking-[-0.035em] text-[var(--st-charcoal-dark)] sm:text-[28px]">
                             {
                               instrumentInfo[
                                 item
@@ -1294,11 +1264,11 @@ export default function BookingPage() {
                 {instrument && (
                   <div className="mt-9">
 
-                    <p className="m-0 text-[11px] font-bold uppercase tracking-[0.14em] text-[var(--st-red)]">
+                    <p className="m-0 text-[9px] font-bold uppercase tracking-[0.14em] text-[var(--st-red)]">
                       STEP 2
                     </p>
 
-                    <h2 className="mt-2 text-[25px] font-bold tracking-[-0.035em] text-[var(--st-charcoal-dark)] sm:text-[28px]">
+                    <h2 className="mt-2 text-[21px] font-bold tracking-[-0.035em] text-[var(--st-charcoal-dark)] sm:text-[24px]">
                       Select a date and time
                     </h2>
 
@@ -1451,11 +1421,11 @@ export default function BookingPage() {
               instrument && (
                 <div>
 
-                  <p className="m-0 text-[11px] font-bold uppercase tracking-[0.14em] text-[var(--st-red)]">
+                  <p className="m-0 text-[9px] font-bold uppercase tracking-[0.14em] text-[var(--st-red)]">
                     STEP 2
                   </p>
 
-                  <h2 className="mt-2 text-[25px] font-bold tracking-[-0.035em] text-[var(--st-charcoal-dark)] sm:text-[28px]">
+                  <h2 className="mt-2 text-[21px] font-bold tracking-[-0.035em] text-[var(--st-charcoal-dark)] sm:text-[24px]">
                     Your selected appointment
                   </h2>
 
@@ -1517,11 +1487,11 @@ export default function BookingPage() {
 
                   <div className="mt-7">
 
-                    <p className="m-0 text-[11px] font-bold uppercase tracking-[0.14em] text-[var(--st-red)]">
+                    <p className="m-0 text-[9px] font-bold uppercase tracking-[0.14em] text-[var(--st-red)]">
                       STEP 3
                     </p>
 
-                    <h2 className="mt-2 text-[25px] font-bold tracking-[-0.035em] text-[var(--st-charcoal-dark)]">
+                    <h2 className="mt-2 text-[21px] font-bold tracking-[-0.035em] text-[var(--st-charcoal-dark)]">
                       Your details
                     </h2>
 
