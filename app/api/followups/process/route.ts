@@ -8,6 +8,38 @@ const resend = new Resend(
 
 const NAIROBI_TIME_ZONE = "Africa/Nairobi";
 
+/*
+ * --------------------------------------------------
+ * EMAIL CONFIGURATION
+ * --------------------------------------------------
+ *
+ * Resend must send from the verified domain.
+ *
+ * You can override this through:
+ *
+ * RESEND_FROM_EMAIL
+ *
+ * Example:
+ *
+ * Sauti Tamu Piano Center <noreply@sautitamupianocenter.co.ke>
+ */
+
+const RESEND_FROM_EMAIL =
+  process.env.RESEND_FROM_EMAIL ||
+  "Sauti Tamu Piano Center <noreply@sautitamupianocenter.co.ke>";
+
+/*
+ * Admin email is kept available for the
+ * wider booking/email system.
+ *
+ * Follow-up reminders themselves are sent
+ * to the customer who made the booking.
+ */
+
+const ADMIN_EMAIL =
+  process.env.ADMIN_EMAIL ||
+  "sautitamupianocenter@gmail.com";
+
 function formatDate(dateString: string) {
   return new Intl.DateTimeFormat("en-KE", {
     weekday: "long",
@@ -84,7 +116,9 @@ export async function POST(request: NextRequest) {
   return processFollowups(request);
 }
 
-async function processFollowups(request: NextRequest) {
+async function processFollowups(
+  request: NextRequest
+) {
   try {
     /*
      * --------------------------------------------------
@@ -428,15 +462,21 @@ async function processFollowups(request: NextRequest) {
 
         /*
          * ------------------------------------------------
-         * SEND EMAIL
+         * SEND EMAIL THROUGH RESEND
          * ------------------------------------------------
+         *
+         * IMPORTANT:
+         *
+         * This now sends from the verified
+         * saut...co.ke domain.
+         *
+         * The recipient remains the customer's
+         * email address.
          */
 
         const emailResult =
           await resend.emails.send({
-       
-              from:
-  "Sauti Tamu Piano Center <noreply@sautitamupianocenter.co.ke>",
+            from: RESEND_FROM_EMAIL,
 
             to: [
               lead.email.trim(),
@@ -615,6 +655,14 @@ async function processFollowups(request: NextRequest) {
           error
         );
 
+        /*
+         * Keep the task pending when possible.
+         *
+         * This allows a later cron execution to retry
+         * a temporary failure instead of permanently
+         * losing the reminder.
+         */
+
         await supabaseServer
           .from("follow_up_tasks")
           .update({
@@ -639,6 +687,8 @@ async function processFollowups(request: NextRequest) {
       sent,
       failed,
       results,
+      sender: RESEND_FROM_EMAIL,
+      adminEmail: ADMIN_EMAIL,
     });
 
   } catch (error) {
