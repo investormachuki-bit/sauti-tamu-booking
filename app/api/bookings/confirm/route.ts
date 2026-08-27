@@ -51,9 +51,6 @@ function getInstrumentName(
  * ----------------------------------------
  * HTML ESCAPE
  * ----------------------------------------
- *
- * Prevents customer-provided values such as
- * names from being interpreted as HTML.
  */
 
 function escapeHtml(value: string) {
@@ -174,8 +171,8 @@ export async function POST(
       whatsappNumber.trim();
 
     /*
-     * Escaped versions are used only inside
-     * HTML emails.
+     * Escaped versions are used only
+     * inside HTML emails.
      */
 
     const emailName =
@@ -191,14 +188,6 @@ export async function POST(
      * --------------------------------------
      * CREATE BOOKING ATOMICALLY
      * --------------------------------------
-     *
-     * The database RPC:
-     *
-     * - claims the slot
-     * - prevents double booking
-     * - creates the lead
-     * - creates the booking
-     * - marks the slot unavailable
      */
 
     const {
@@ -223,11 +212,6 @@ export async function POST(
 
       const message =
         bookingError.message || "";
-
-      /*
-       * Friendly response when the slot has
-       * already been taken.
-       */
 
       if (
         message.includes(
@@ -315,19 +299,17 @@ export async function POST(
         detailsError
       );
 
-      return NextResponse.json(
-        {
-          success: true,
-          bookingCreated: true,
-          confirmationSent: false,
-          adminNotificationSent: false,
-          followUpsCreated: false,
-          warning:
-            "Your booking was created, but we could not prepare the confirmation message.",
-          bookingId:
-            booking.booking_id,
-        }
-      );
+      return NextResponse.json({
+        success: true,
+        bookingCreated: true,
+        confirmationSent: false,
+        adminNotificationSent: false,
+        followUpsCreated: 0,
+        warning:
+          "Your booking was created, but we could not prepare the confirmation message.",
+        bookingId:
+          booking.booking_id,
+      });
     }
 
     /*
@@ -360,10 +342,6 @@ export async function POST(
      * --------------------------------------
      * CUSTOMER CONFIRMATION EMAIL
      * --------------------------------------
-     *
-     * IMPORTANT:
-     * The sender now uses the verified
-     * Sauti Tamu domain.
      */
 
     const customerEmailResult =
@@ -672,6 +650,19 @@ export async function POST(
      * ======================================
      * AUTOMATIC FOLLOW-UP TASKS
      * ======================================
+     *
+     * The email processor expects:
+     *
+     * trial_reminder_7d
+     * trial_reminder_3d
+     * trial_reminder_24h
+     * trial_reminder_6h
+     * trial_reminder_1h
+     *
+     * Therefore the task creation below uses
+     * exactly those names and sets:
+     *
+     * channel = "email"
      */
 
     let followUpsCreated = 0;
@@ -686,66 +677,153 @@ export async function POST(
       const lessonEnd =
         new Date(endsAt);
 
-      const possibleFollowUps = [
+      /*
+       * --------------------------------------
+       * REMINDER DEFINITIONS
+       * --------------------------------------
+       */
+
+      const reminderDefinitions = [
         {
-          lead_id:
-            bookingDetails.lead_id,
+          task_type:
+            "trial_reminder_7d",
 
-          booking_id:
-            bookingDetails.id,
+          milliseconds:
+            7 *
+            24 *
+            60 *
+            60 *
+            1000,
 
+          message:
+            `Reminder: ${cleanName} has a ${instrumentName} trial lesson scheduled in 7 days on ${dateText} at ${timeText}.`,
+        },
+
+        {
+          task_type:
+            "trial_reminder_3d",
+
+          milliseconds:
+            3 *
+            24 *
+            60 *
+            60 *
+            1000,
+
+          message:
+            `Reminder: ${cleanName} has a ${instrumentName} trial lesson scheduled in 3 days on ${dateText} at ${timeText}.`,
+        },
+
+        {
           task_type:
             "trial_reminder_24h",
 
-          due_at:
-            new Date(
-              lessonStart.getTime() -
-                24 *
-                  60 *
-                  60 *
-                  1000
-            ).toISOString(),
+          milliseconds:
+            24 *
+            60 *
+            60 *
+            1000,
 
-          status:
-            "pending",
-
-          channel:
-            null,
-
-          message_template:
-            `Reminder: ${cleanName} has a ${instrumentName} trial lesson scheduled for ${dateText} at ${timeText}.`,
+          message:
+            `Reminder: ${cleanName} has a ${instrumentName} trial lesson tomorrow at ${timeText}.`,
         },
 
         {
-          lead_id:
-            bookingDetails.lead_id,
-
-          booking_id:
-            bookingDetails.id,
-
           task_type:
-            "trial_reminder_2h",
+            "trial_reminder_6h",
 
-          due_at:
-            new Date(
-              lessonStart.getTime() -
-                2 *
-                  60 *
-                  60 *
-                  1000
-            ).toISOString(),
+          milliseconds:
+            6 *
+            60 *
+            60 *
+            1000,
 
-          status:
-            "pending",
-
-          channel:
-            null,
-
-          message_template:
-            `Final reminder: ${cleanName} has a ${instrumentName} trial lesson today at ${timeText}.`,
+          message:
+            `Reminder: ${cleanName} has a ${instrumentName} trial lesson coming up in 6 hours at ${timeText}.`,
         },
 
         {
+          task_type:
+            "trial_reminder_1h",
+
+          milliseconds:
+            1 *
+            60 *
+            60 *
+            1000,
+
+          message:
+            `Reminder: ${cleanName} has a ${instrumentName} trial lesson starting in 1 hour at ${timeText}.`,
+        },
+      ];
+
+      /*
+       * --------------------------------------
+       * BUILD REMINDER TASKS
+       * --------------------------------------
+       */
+
+      const reminderTasks =
+        reminderDefinitions
+          .map(
+            (reminder) => {
+              const dueAt =
+                new Date(
+                  lessonStart.getTime() -
+                    reminder.milliseconds
+                );
+
+              return {
+                lead_id:
+                  bookingDetails.lead_id,
+
+                booking_id:
+                  bookingDetails.id,
+
+                task_type:
+                  reminder.task_type,
+
+                due_at:
+                  dueAt.toISOString(),
+
+                status:
+                  "pending",
+
+                channel:
+                  "email",
+
+                message_template:
+                  reminder.message,
+              };
+            }
+          )
+          .filter(
+            (task) =>
+              new Date(
+                task.due_at
+              ).getTime() >
+              now.getTime()
+          );
+
+      /*
+       * --------------------------------------
+       * POST-TRIAL FOLLOW-UP
+       * --------------------------------------
+       */
+
+      const postTrialDueAt =
+        new Date(
+          lessonEnd.getTime() +
+            60 *
+              60 *
+              1000
+        );
+
+      if (
+        postTrialDueAt.getTime() >
+        now.getTime()
+      ) {
+        reminderTasks.push({
           lead_id:
             bookingDetails.lead_id,
 
@@ -756,32 +834,28 @@ export async function POST(
             "post_trial_follow_up",
 
           due_at:
-            new Date(
-              lessonEnd.getTime() +
-                60 *
-                  60 *
-                  1000
-            ).toISOString(),
+            postTrialDueAt.toISOString(),
 
           status:
             "pending",
 
           channel:
-            null,
+            "email",
 
           message_template:
             `Follow up with ${cleanName} after their ${instrumentName} trial lesson and discuss registration.`,
-        },
-      ];
+        });
+      }
 
-      const futureFollowUps =
-        possibleFollowUps.filter(
-          (task) =>
-            new Date(
-              task.due_at
-            ).getTime() >
-            now.getTime()
-        );
+      /*
+       * --------------------------------------
+       * CHECK EXISTING TASKS
+       * --------------------------------------
+       *
+       * This prevents duplicate reminders if
+       * this endpoint is accidentally called
+       * again for the same booking.
+       */
 
       const {
         data: existingTasks,
@@ -815,12 +889,18 @@ export async function POST(
           );
 
         const tasksToCreate =
-          futureFollowUps.filter(
+          reminderTasks.filter(
             (task) =>
               !existingTaskTypes.has(
                 task.task_type
               )
           );
+
+        /*
+         * ------------------------------------
+         * INSERT NEW TASKS
+         * ------------------------------------
+         */
 
         if (
           tasksToCreate.length >
@@ -851,6 +931,14 @@ export async function POST(
             console.log(
               `Created ${tasksToCreate.length} follow-up task(s) for booking ${bookingDetails.id}`
             );
+
+            console.log(
+              "Follow-up task types:",
+              tasksToCreate.map(
+                (task) =>
+                  task.task_type
+              )
+            );
           }
         } else {
           console.log(
@@ -862,8 +950,9 @@ export async function POST(
       followUpError
     ) {
       /*
-       * Follow-up failure must NEVER turn a
-       * successful booking into a failed booking.
+       * Follow-up failure must NEVER turn
+       * a successful booking into a failed
+       * booking.
        */
 
       console.error(
