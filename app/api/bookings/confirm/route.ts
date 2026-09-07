@@ -188,6 +188,19 @@ export async function POST(
      * --------------------------------------
      * CREATE BOOKING ATOMICALLY
      * --------------------------------------
+     *
+     * IMPORTANT:
+     *
+     * The Supabase RPC is now responsible for:
+     *
+     * 1. Claiming the slot
+     * 2. Creating/updating the lead
+     * 3. Creating the booking
+     * 4. Making the slot unavailable
+     * 5. Creating the follow-up tasks
+     *
+     * The Next.js API does NOT manually create
+     * follow-up tasks anymore.
      */
 
     const {
@@ -647,319 +660,23 @@ export async function POST(
     }
 
     /*
-     * ======================================
-     * AUTOMATIC FOLLOW-UP TASKS
-     * ======================================
+     * --------------------------------------
+     * FOLLOW-UP TASKS
+     * --------------------------------------
      *
-     * The email processor expects:
+     * IMPORTANT:
      *
-     * trial_reminder_7d
-     * trial_reminder_3d
-     * trial_reminder_24h
-     * trial_reminder_6h
-     * trial_reminder_1h
+     * Follow-up tasks are now created by
+     * the Supabase create_trial_booking()
+     * database function.
      *
-     * Therefore the task creation below uses
-     * exactly those names and sets:
+     * This API route deliberately does NOT
+     * insert follow_up_tasks.
      *
-     * channel = "email"
+     * This prevents duplicate task creation.
      */
 
-    let followUpsCreated = 0;
-
-    try {
-      const now =
-        new Date();
-
-      const lessonStart =
-        new Date(startsAt);
-
-      const lessonEnd =
-        new Date(endsAt);
-
-      /*
-       * --------------------------------------
-       * REMINDER DEFINITIONS
-       * --------------------------------------
-       */
-
-      const reminderDefinitions = [
-        {
-          task_type:
-            "trial_reminder_7d",
-
-          milliseconds:
-            7 *
-            24 *
-            60 *
-            60 *
-            1000,
-
-          message:
-            `Reminder: ${cleanName} has a ${instrumentName} trial lesson scheduled in 7 days on ${dateText} at ${timeText}.`,
-        },
-
-        {
-          task_type:
-            "trial_reminder_3d",
-
-          milliseconds:
-            3 *
-            24 *
-            60 *
-            60 *
-            1000,
-
-          message:
-            `Reminder: ${cleanName} has a ${instrumentName} trial lesson scheduled in 3 days on ${dateText} at ${timeText}.`,
-        },
-
-        {
-          task_type:
-            "trial_reminder_24h",
-
-          milliseconds:
-            24 *
-            60 *
-            60 *
-            1000,
-
-          message:
-            `Reminder: ${cleanName} has a ${instrumentName} trial lesson tomorrow at ${timeText}.`,
-        },
-
-        {
-          task_type:
-            "trial_reminder_6h",
-
-          milliseconds:
-            6 *
-            60 *
-            60 *
-            1000,
-
-          message:
-            `Reminder: ${cleanName} has a ${instrumentName} trial lesson coming up in 6 hours at ${timeText}.`,
-        },
-
-        {
-          task_type:
-            "trial_reminder_1h",
-
-          milliseconds:
-            1 *
-            60 *
-            60 *
-            1000,
-
-          message:
-            `Reminder: ${cleanName} has a ${instrumentName} trial lesson starting in 1 hour at ${timeText}.`,
-        },
-      ];
-
-      /*
-       * --------------------------------------
-       * BUILD REMINDER TASKS
-       * --------------------------------------
-       */
-
-      const reminderTasks =
-        reminderDefinitions
-          .map(
-            (reminder) => {
-              const dueAt =
-                new Date(
-                  lessonStart.getTime() -
-                    reminder.milliseconds
-                );
-
-              return {
-                lead_id:
-                  bookingDetails.lead_id,
-
-                booking_id:
-                  bookingDetails.id,
-
-                task_type:
-                  reminder.task_type,
-
-                due_at:
-                  dueAt.toISOString(),
-
-                status:
-                  "pending",
-
-                channel:
-                  "email",
-
-                message_template:
-                  reminder.message,
-              };
-            }
-          )
-          .filter(
-            (task) =>
-              new Date(
-                task.due_at
-              ).getTime() >
-              now.getTime()
-          );
-
-      /*
-       * --------------------------------------
-       * POST-TRIAL FOLLOW-UP
-       * --------------------------------------
-       */
-
-      const postTrialDueAt =
-        new Date(
-          lessonEnd.getTime() +
-            60 *
-              60 *
-              1000
-        );
-
-      if (
-        postTrialDueAt.getTime() >
-        now.getTime()
-      ) {
-        reminderTasks.push({
-          lead_id:
-            bookingDetails.lead_id,
-
-          booking_id:
-            bookingDetails.id,
-
-          task_type:
-            "post_trial_follow_up",
-
-          due_at:
-            postTrialDueAt.toISOString(),
-
-          status:
-            "pending",
-
-          channel:
-            "email",
-
-          message_template:
-            `Follow up with ${cleanName} after their ${instrumentName} trial lesson and discuss registration.`,
-        });
-      }
-
-      /*
-       * --------------------------------------
-       * CHECK EXISTING TASKS
-       * --------------------------------------
-       *
-       * This prevents duplicate reminders if
-       * this endpoint is accidentally called
-       * again for the same booking.
-       */
-
-      const {
-        data: existingTasks,
-        error:
-          existingTasksError,
-      } = await supabaseServer
-        .from("follow_up_tasks")
-        .select(
-          "id, task_type"
-        )
-        .eq(
-          "booking_id",
-          bookingDetails.id
-        );
-
-      if (existingTasksError) {
-        console.error(
-          "Could not check existing follow-up tasks:",
-          existingTasksError
-        );
-      } else {
-        const existingTaskTypes =
-          new Set(
-            (
-              existingTasks ||
-              []
-            ).map(
-              (task) =>
-                task.task_type
-            )
-          );
-
-        const tasksToCreate =
-          reminderTasks.filter(
-            (task) =>
-              !existingTaskTypes.has(
-                task.task_type
-              )
-          );
-
-        /*
-         * ------------------------------------
-         * INSERT NEW TASKS
-         * ------------------------------------
-         */
-
-        if (
-          tasksToCreate.length >
-          0
-        ) {
-          const {
-            error:
-              followUpInsertError,
-          } = await supabaseServer
-            .from(
-              "follow_up_tasks"
-            )
-            .insert(
-              tasksToCreate
-            );
-
-          if (
-            followUpInsertError
-          ) {
-            console.error(
-              "Follow-up task creation failed:",
-              followUpInsertError
-            );
-          } else {
-            followUpsCreated =
-              tasksToCreate.length;
-
-            console.log(
-              `Created ${tasksToCreate.length} follow-up task(s) for booking ${bookingDetails.id}`
-            );
-
-            console.log(
-              "Follow-up task types:",
-              tasksToCreate.map(
-                (task) =>
-                  task.task_type
-              )
-            );
-          }
-        } else {
-          console.log(
-            `No new follow-up tasks needed for booking ${bookingDetails.id}`
-          );
-        }
-      }
-    } catch (
-      followUpError
-    ) {
-      /*
-       * Follow-up failure must NEVER turn
-       * a successful booking into a failed
-       * booking.
-       */
-
-      console.error(
-        "Unexpected follow-up creation error:",
-        followUpError
-      );
-    }
+    const followUpsCreated = 0;
 
     /*
      * --------------------------------------
