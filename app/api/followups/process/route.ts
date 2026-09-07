@@ -12,33 +12,21 @@ const NAIROBI_TIME_ZONE = "Africa/Nairobi";
  * --------------------------------------------------
  * EMAIL CONFIGURATION
  * --------------------------------------------------
- *
- * Resend must send from the verified domain.
- *
- * You can override this through:
- *
- * RESEND_FROM_EMAIL
- *
- * Example:
- *
- * Sauti Tamu Piano Center <noreply@sautitamupianocenter.co.ke>
  */
 
 const RESEND_FROM_EMAIL =
   process.env.RESEND_FROM_EMAIL ||
   "Sauti Tamu Piano Center <noreply@sautitamupianocenter.co.ke>";
 
-/*
- * Admin email is kept available for the
- * wider booking/email system.
- *
- * Follow-up reminders themselves are sent
- * to the customer who made the booking.
- */
-
 const ADMIN_EMAIL =
   process.env.ADMIN_EMAIL ||
   "sautitamupianocenter@gmail.com";
+
+/*
+ * --------------------------------------------------
+ * DATE / TIME HELPERS
+ * --------------------------------------------------
+ */
 
 function formatDate(dateString: string) {
   return new Intl.DateTimeFormat("en-KE", {
@@ -64,6 +52,12 @@ function getInstrumentName(instrument: string) {
     : "Guitar";
 }
 
+/*
+ * --------------------------------------------------
+ * EMAIL TITLES
+ * --------------------------------------------------
+ */
+
 function getReminderTitle(taskType: string) {
   switch (taskType) {
     case "trial_reminder_7d":
@@ -81,10 +75,19 @@ function getReminderTitle(taskType: string) {
     case "trial_reminder_1h":
       return "Your trial lesson starts in 1 hour";
 
+    case "post_trial_follow_up":
+      return "How was your Sauti Tamu trial lesson?";
+
     default:
       return "Reminder about your Sauti Tamu trial lesson";
   }
 }
+
+/*
+ * --------------------------------------------------
+ * EMAIL LABELS
+ * --------------------------------------------------
+ */
 
 function getReminderLabel(taskType: string) {
   switch (taskType) {
@@ -103,10 +106,19 @@ function getReminderLabel(taskType: string) {
     case "trial_reminder_1h":
       return "1-HOUR REMINDER";
 
+    case "post_trial_follow_up":
+      return "POST-TRIAL FOLLOW-UP";
+
     default:
       return "TRIAL LESSON REMINDER";
   }
 }
+
+/*
+ * --------------------------------------------------
+ * ROUTES
+ * --------------------------------------------------
+ */
 
 export async function GET(request: NextRequest) {
   return processFollowups(request);
@@ -115,6 +127,12 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   return processFollowups(request);
 }
+
+/*
+ * --------------------------------------------------
+ * FOLLOW-UP PROCESSOR
+ * --------------------------------------------------
+ */
 
 async function processFollowups(
   request: NextRequest
@@ -188,8 +206,19 @@ async function processFollowups(
 
     /*
      * --------------------------------------------------
-     * FIND DUE EMAIL REMINDERS
+     * FIND DUE EMAIL FOLLOW-UPS
      * --------------------------------------------------
+     *
+     * The database creates the follow-up tasks.
+     *
+     * This processor only finds tasks that are:
+     *
+     * - pending
+     * - email
+     * - due now
+     *
+     * It then sends the email and marks the task
+     * as sent.
      */
 
     const now =
@@ -221,6 +250,7 @@ async function processFollowups(
         "trial_reminder_24h",
         "trial_reminder_6h",
         "trial_reminder_1h",
+        "post_trial_follow_up",
       ])
       .order("due_at", {
         ascending: true,
@@ -243,6 +273,12 @@ async function processFollowups(
       );
     }
 
+    /*
+     * --------------------------------------------------
+     * NOTHING DUE
+     * --------------------------------------------------
+     */
+
     if (!tasks || tasks.length === 0) {
       return NextResponse.json({
         success: true,
@@ -256,7 +292,7 @@ async function processFollowups(
 
     /*
      * --------------------------------------------------
-     * PROCESS EACH REMINDER
+     * PROCESS EACH FOLLOW-UP
      * --------------------------------------------------
      */
 
@@ -361,7 +397,7 @@ async function processFollowups(
 
           /*
            * Cancelled / no-show bookings should
-           * never receive future reminders.
+           * never receive follow-up emails.
            */
 
           if (
@@ -423,7 +459,7 @@ async function processFollowups(
 
         /*
          * ------------------------------------------------
-         * BUILD EMAIL CONTENT
+         * BUILD LESSON DETAILS
          * ------------------------------------------------
          */
 
@@ -460,18 +496,45 @@ async function processFollowups(
             task.task_type
           );
 
+        const isPostTrial =
+          task.task_type ===
+          "post_trial_follow_up";
+
+        /*
+         * ------------------------------------------------
+         * EMAIL CONTENT
+         * ------------------------------------------------
+         */
+
+        const introText = isPostTrial
+          ? `
+              We hope you enjoyed your free
+              ${instrumentName} trial lesson at
+              Sauti Tamu Piano Center.
+            `
+          : `
+              This is a friendly reminder about your
+              free ${instrumentName} trial lesson
+              at Sauti Tamu Piano Center.
+            `;
+
+        const actionText = isPostTrial
+          ? `
+              If you enjoyed the lesson and would like
+              to continue learning, we would be happy
+              to help you get started with your regular
+              lessons.
+            `
+          : `
+              We look forward to welcoming you and
+              helping you get started with your musical
+              journey.
+            `;
+
         /*
          * ------------------------------------------------
          * SEND EMAIL THROUGH RESEND
          * ------------------------------------------------
-         *
-         * IMPORTANT:
-         *
-         * This now sends from the verified
-         * saut...co.ke domain.
-         *
-         * The recipient remains the customer's
-         * email address.
          */
 
         const emailResult =
@@ -517,11 +580,12 @@ async function processFollowups(
                     </p>
 
                     <p style="font-size:14px;line-height:1.7;color:#5B6573;margin:12px 0 0;">
-                      This is a friendly reminder about your
-                      free ${instrumentName} trial lesson
-                      at Sauti Tamu Piano Center.
+                      ${introText}
                     </p>
 
+                    ${
+                      !isPostTrial
+                        ? `
                     <div style="margin-top:26px;background:#f7f7f7;border-radius:16px;padding:22px;">
 
                       <div style="font-size:10px;font-weight:700;letter-spacing:1.2px;color:#888888;">
@@ -578,6 +642,37 @@ async function processFollowups(
                       </div>
 
                     </div>
+                    `
+                        : `
+                    <div style="margin-top:26px;background:#f7f7f7;border-radius:16px;padding:22px;">
+
+                      <div style="font-size:10px;font-weight:700;letter-spacing:1.2px;color:#888888;">
+                        YOUR TRIAL LESSON
+                      </div>
+
+                      <div style="font-size:23px;font-weight:800;color:#1F2933;margin-top:8px;">
+                        ${instrumentName}
+                      </div>
+
+                      <div style="font-size:14px;color:#333333;margin-top:18px;">
+                        📅 ${dateText}
+                      </div>
+
+                      <div style="font-size:23px;font-weight:800;color:#C62828;margin-top:8px;">
+                        ${timeText}
+                      </div>
+
+                    </div>
+
+                    <div style="margin-top:22px;background:#fff7f7;border-radius:14px;padding:20px;">
+
+                      <div style="font-size:13px;line-height:1.7;color:#5B6573;">
+                        ${actionText}
+                      </div>
+
+                    </div>
+                    `
+                    }
 
                     <div style="margin-top:30px;padding-top:20px;border-top:1px solid #eeeeee;font-size:11px;line-height:1.6;color:#999999;">
                       Sauti Tamu Piano Center<br/>
@@ -608,9 +703,12 @@ async function processFollowups(
 
         /*
          * ------------------------------------------------
-         * MARK TASK SENT
+         * MARK TASK AS SENT
          * ------------------------------------------------
          */
+
+        const sentAt =
+          new Date().toISOString();
 
         const {
           error: updateError,
@@ -618,10 +716,8 @@ async function processFollowups(
           .from("follow_up_tasks")
           .update({
             status: "sent",
-            sent_at:
-              new Date().toISOString(),
-            updated_at:
-              new Date().toISOString(),
+            sent_at: sentAt,
+            updated_at: sentAt,
           })
           .eq("id", task.id)
           .eq("status", "pending");
@@ -656,11 +752,8 @@ async function processFollowups(
         );
 
         /*
-         * Keep the task pending when possible.
-         *
-         * This allows a later cron execution to retry
-         * a temporary failure instead of permanently
-         * losing the reminder.
+         * Keep the task pending so that a later
+         * processor run can retry it.
          */
 
         await supabaseServer
@@ -680,6 +773,12 @@ async function processFollowups(
         });
       }
     }
+
+    /*
+     * --------------------------------------------------
+     * RESPONSE
+     * --------------------------------------------------
+     */
 
     return NextResponse.json({
       success: true,
