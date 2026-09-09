@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useEffect, useMemo, useState } from "react";
 import {
@@ -13,19 +13,21 @@ import {
   RefreshCw,
   Search,
   User,
+  UserCheck,
+  UserPlus,
+  UserX,
   X,
   XCircle,
-  UserPlus,
-  UserCheck,
-  UserX,
 } from "lucide-react";
 
-import AddStudentModal from "../../../components/students/AddStudentModal";
 import { useRouter } from "next/navigation";
+
+import RegistrationModal, {
+  RegistrationFormValues,
+  RegistrationModalMode,
+} from "../../../components/students/RegistrationModal";
+
 import { supabase } from "@/lib/supabase";
-import {
-  ensureStudentFromLead,
-} from "@/lib/services/studentRegistration";
 
 type BookingStatus =
   | "confirmed"
@@ -49,6 +51,7 @@ type Booking = {
   attended_at: string | null;
   completed_at: string | null;
   cancelled_at: string | null;
+  called_at: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -74,18 +77,16 @@ type BookingRecord = {
   slot: LessonSlot | null;
 };
 
-type Student = {
-  id: string;
-  lead_id: string;
-  full_name: string;
-  email: string;
-  whatsapp_number: string;
-  status: string;
-};
-
 type FollowUpTaskType =
   | "post_trial_follow_up"
   | "trial_reschedule_follow_up";
+
+type EnrollmentStatus =
+  | "registered"
+  | "active"
+  | "paused"
+  | "inactive"
+  | "completed";
 
 const NAIROBI_TIME_ZONE = "Africa/Nairobi";
 
@@ -113,7 +114,9 @@ function getNairobiStartOfToday() {
 function getNairobiEndOfToday() {
   const today = getNairobiDateKey(new Date());
 
-  const date = new Date(`${today}T00:00:00+03:00`);
+  const date = new Date(
+    `${today}T00:00:00+03:00`
+  );
 
   date.setDate(date.getDate() + 1);
 
@@ -152,7 +155,7 @@ function formatTimeRange(
   startsAt: string,
   endsAt: string
 ) {
-  return `${formatTime(startsAt)} Ã¢â‚¬â€œ ${formatTime(endsAt)}`;
+  return `${formatTime(startsAt)} – ${formatTime(endsAt)}`;
 }
 
 function initials(name: string) {
@@ -163,6 +166,13 @@ function initials(name: string) {
     .join("")
     .slice(0, 2)
     .toUpperCase();
+}
+
+function instrumentLabel(instrument: Instrument) {
+  return (
+    instrument.charAt(0).toUpperCase() +
+    instrument.slice(1)
+  );
 }
 
 /*
@@ -269,6 +279,27 @@ export default function AdminBookingsPage() {
 
   /*
    * =========================================================
+   * REGISTRATION MODAL
+   * =========================================================
+   */
+
+  const [registrationModalOpen, setRegistrationModalOpen] =
+    useState(false);
+
+  const [registrationModalMode, setRegistrationModalMode] =
+    useState<RegistrationModalMode>("register");
+
+  const [registrationBooking, setRegistrationBooking] =
+    useState<BookingRecord | null>(null);
+
+  const [registering, setRegistering] =
+    useState(false);
+
+  const [registrationError, setRegistrationError] =
+    useState("");
+
+  /*
+   * =========================================================
    * LOAD BOOKINGS
    * =========================================================
    */
@@ -300,6 +331,7 @@ export default function AdminBookingsPage() {
           attended_at,
           completed_at,
           cancelled_at,
+          called_at,
           created_at,
           updated_at
         `
@@ -339,8 +371,7 @@ export default function AdminBookingsPage() {
     const leadIds = Array.from(
       new Set(
         bookings.map(
-          (booking) =>
-            booking.lead_id
+          (booking) => booking.lead_id
         )
       )
     );
@@ -348,8 +379,7 @@ export default function AdminBookingsPage() {
     const slotIds = Array.from(
       new Set(
         bookings.map(
-          (booking) =>
-            booking.slot_id
+          (booking) => booking.slot_id
         )
       )
     );
@@ -399,17 +429,12 @@ export default function AdminBookingsPage() {
     }
 
     const leads =
-      (leadsResult.data ??
-        []) as Lead[];
+      (leadsResult.data ?? []) as Lead[];
 
     const slots =
-      (slotsResult.data ??
-        []) as LessonSlot[];
+      (slotsResult.data ?? []) as LessonSlot[];
 
-    const leadMap = new Map<
-      string,
-      Lead
-    >();
+    const leadMap = new Map<string, Lead>();
 
     leads.forEach((lead) => {
       leadMap.set(
@@ -481,8 +506,7 @@ export default function AdminBookingsPage() {
 
           if (
             filter !== "all" &&
-            booking.status !==
-              filter
+            booking.status !== filter
           ) {
             return false;
           }
@@ -494,8 +518,7 @@ export default function AdminBookingsPage() {
           const searchable = [
             lead?.full_name ?? "",
             lead?.email ?? "",
-            lead?.whatsapp_number ??
-              "",
+            lead?.whatsapp_number ?? "",
             booking.instrument,
             booking.status,
             slot
@@ -601,59 +624,7 @@ export default function AdminBookingsPage() {
 
   /*
    * =========================================================
-   * COMMON BOOKING UPDATE
-   * =========================================================
-   */
-
-  async function updateBooking(
-    bookingId: string,
-    updates: Record<
-      string,
-      string | null
-    >
-  ) {
-    const {
-      data,
-      error: updateError,
-    } = await supabase
-      .from("bookings")
-      .update(updates)
-      .eq("id", bookingId)
-      .select(
-        `
-          id,
-          lead_id,
-          slot_id,
-          instrument,
-          status,
-          confirmation_sent_at,
-          reminder_24h_sent_at,
-          reminder_2h_sent_at,
-          attended_at,
-          completed_at,
-          cancelled_at,
-          created_at,
-          updated_at
-        `
-      )
-      .single();
-
-    if (updateError) {
-      throw updateError;
-    }
-
-    return data as Booking;
-  }
-
-  /*
-   * =========================================================
-   * FIND OPEN FOLLOW-UP OF A SPECIFIC TYPE
-   *
-   * This is deliberately more precise than checking only
-   * booking_id.
-   *
-   * A registration follow-up and reschedule follow-up
-   * are different business events.
+   * FOLLOW-UP HELPERS
    * =========================================================
    */
 
@@ -691,12 +662,6 @@ export default function AdminBookingsPage() {
       (data ?? []).length > 0
     );
   }
-
-  /*
-   * =========================================================
-   * CREATE POST-TRIAL REGISTRATION FOLLOW-UP
-   * =========================================================
-   */
 
   async function createRegistrationFollowUp(
     record: BookingRecord
@@ -741,36 +706,23 @@ export default function AdminBookingsPage() {
     } = await supabase
       .from("follow_up_tasks")
       .insert({
-        lead_id:
-          lead.id,
-        booking_id:
-          booking.id,
+        lead_id: lead.id,
+        booking_id: booking.id,
         task_type:
           "post_trial_follow_up",
-        due_at:
-          dueAt,
-        status:
-          "pending",
-        channel:
-          null,
+        due_at: dueAt,
+        status: "pending",
+        channel: null,
         message_template:
-          `Trial attended Ã¢â‚¬â€ follow up with ${lead.full_name} regarding registration after the ${booking.instrument} trial on ${lessonText}.`,
-        sent_at:
-          null,
-        completed_at:
-          null,
+          `Trial attended — follow up with ${lead.full_name} regarding registration after the ${booking.instrument} trial on ${lessonText}.`,
+        sent_at: null,
+        completed_at: null,
       });
 
     if (error) {
       throw error;
     }
   }
-
-  /*
-   * =========================================================
-   * CREATE RESCHEDULE FOLLOW-UP
-   * =========================================================
-   */
 
   async function createRescheduleFollowUp(
     record: BookingRecord
@@ -802,24 +754,18 @@ export default function AdminBookingsPage() {
     } = await supabase
       .from("follow_up_tasks")
       .insert({
-        lead_id:
-          lead.id,
-        booking_id:
-          booking.id,
+        lead_id: lead.id,
+        booking_id: booking.id,
         task_type:
           "trial_reschedule_follow_up",
         due_at:
           new Date().toISOString(),
-        status:
-          "pending",
-        channel:
-          null,
+        status: "pending",
+        channel: null,
         message_template:
-          `Missed trial Ã¢â‚¬â€ contact ${lead.full_name} to reschedule their ${booking.instrument} trial lesson.`,
-        sent_at:
-          null,
-        completed_at:
-          null,
+          `${booking.status === "cancelled" ? "Cancelled trial" : "Missed trial"} — contact ${lead.full_name} to reschedule their ${booking.instrument} trial lesson.`,
+        sent_at: null,
+        completed_at: null,
       });
 
     if (error) {
@@ -831,14 +777,8 @@ export default function AdminBookingsPage() {
    * =========================================================
    * MARK ATTENDED
    *
-   * This means:
-   *
-   * "The learner actually came for the trial."
-   *
-   * It does NOT automatically create a student.
-   *
-   * It creates a follow-up asking staff to convert the
-   * learner after the trial.
+   * Booking becomes completed.
+   * Student is NOT automatically created.
    * =========================================================
    */
 
@@ -862,50 +802,29 @@ export default function AdminBookingsPage() {
     setError("");
 
     try {
-      const now =
-        new Date().toISOString();
-
-      const updatedBooking =
-        await updateBooking(
-          booking.id,
-          {
-            status:
-              "completed",
-            attended_at:
-              booking.attended_at ??
-              now,
-            completed_at:
-              booking.completed_at ??
-              now,
-            cancelled_at:
-              null,
-          }
-        );
-
-      const updatedRecord: BookingRecord =
+      const {
+        data,
+        error: rpcError,
+      } = await supabase.rpc(
+        "mark_trial_attended",
         {
-          ...record,
-          booking:
-            updatedBooking,
-        };
-
-      await createRegistrationFollowUp(
-        updatedRecord
+          p_booking_id:
+            booking.id,
+        }
       );
 
-      setRecords((current) =>
-        current.map(
-          (item) =>
-            item.booking.id ===
-            booking.id
-              ? updatedRecord
-              : item
-        )
+      if (rpcError) {
+        throw rpcError;
+      }
+
+      console.log(
+        "mark_trial_attended:",
+        data
       );
 
-      setSelectedBooking(
-        null
-      );
+      await loadBookings(true);
+
+      setSelectedBooking(null);
     } catch (err) {
       console.error(
         "Attended action error:",
@@ -914,8 +833,7 @@ export default function AdminBookingsPage() {
 
       setError(
         err &&
-        typeof err ===
-          "object" &&
+        typeof err === "object" &&
         "message" in err
           ? String(
               (
@@ -930,159 +848,6 @@ export default function AdminBookingsPage() {
       setUpdatingId(null);
     }
   }
-
-  /*
-   * =========================================================
-   * BOOKED / REGISTERED
-   *
-   * This means:
-   *
-   * "The learner has decided to become a student."
-   *
-   * We:
-   *
-   * 1. Create/reuse student.
-   * 2. Mark trial completed.
-   * 3. Record attendance if missing.
-   * 4. Open Students.
-   *
-   * Enrollment/programme/payment remains in Students.
-   * =========================================================
-   */
-
-  
-          
-        async function markBooked(
-  record: BookingRecord
-) {
-  const booking = record.booking;
-
-  if (
-    booking.status !== "confirmed" &&
-    booking.status !== "completed"
-  ) {
-    return;
-  }
-
-  setUpdatingId(booking.id);
-  setError("");
-
-  try {
-    /*
-     * =====================================================
-     * CREATE / REUSE STUDENT
-     * =====================================================
-     *
-     * The shared registration service handles:
-     * - finding an existing student
-     * - creating a new student when necessary
-     * - linking the student to the lead
-     *
-     * Do this FIRST so a failed registration does not
-     * change the booking status.
-     */
-
-    const lead = record.lead;
-
-    if (!lead) {
-      throw new Error(
-        "This booking has no linked lead."
-      );
-    }
-
-    await ensureStudentFromLead({
-      leadId: lead.id,
-      fullName: lead.full_name,
-      email: lead.email,
-      whatsappNumber:
-        lead.whatsapp_number,
-    });
-
-    /*
-     * =====================================================
-     * MARK BOOKING COMPLETED
-     * =====================================================
-     */
-
-    const now =
-      new Date().toISOString();
-
-    const updatedBooking =
-      await updateBooking(
-        booking.id,
-        {
-          status: "completed",
-
-          attended_at:
-            booking.attended_at ??
-            now,
-
-          completed_at:
-            booking.completed_at ??
-            now,
-
-          cancelled_at: null,
-        }
-      );
-
-    const updatedRecord:
-      BookingRecord = {
-        ...record,
-        booking:
-          updatedBooking,
-      };
-
-    /*
-     * Update local state.
-     */
-
-    setRecords((current) =>
-      current.map(
-        (item) =>
-          item.booking.id ===
-          booking.id
-            ? updatedRecord
-            : item
-      )
-    );
-
-    /*
-     * Close booking details.
-     */
-
-    setSelectedBooking(null);
-
-    /*
-     * Student now exists.
-     * Continue registration inside Students.
-     */
-
-    router.push(
-      "/admin/students"
-    );
-  } catch (err) {
-    console.error(
-      "Booked action error:",
-      err
-    );
-
-    setError(
-      err &&
-      typeof err === "object" &&
-      "message" in err
-        ? String(
-            (
-              err as {
-                message: string;
-              }
-            ).message
-          )
-        : "We couldn't register this learner as a student."
-    );
-  } finally {
-    setUpdatingId(null);
-  }
-}
 
   /*
    * =========================================================
@@ -1110,45 +875,29 @@ export default function AdminBookingsPage() {
     setError("");
 
     try {
-      const updatedBooking =
-        await updateBooking(
-          booking.id,
-          {
-            status:
-              "no_show",
-            attended_at:
-              null,
-            completed_at:
-              null,
-            cancelled_at:
-              null,
-          }
-        );
-
-      const updatedRecord: BookingRecord =
+      const {
+        data,
+        error: rpcError,
+      } = await supabase.rpc(
+        "mark_trial_missed",
         {
-          ...record,
-          booking:
-            updatedBooking,
-        };
-
-      await createRescheduleFollowUp(
-        updatedRecord
+          p_booking_id:
+            booking.id,
+        }
       );
 
-      setRecords((current) =>
-        current.map(
-          (item) =>
-            item.booking.id ===
-            booking.id
-              ? updatedRecord
-              : item
-        )
+      if (rpcError) {
+        throw rpcError;
+      }
+
+      console.log(
+        "mark_trial_missed:",
+        data
       );
 
-      setSelectedBooking(
-        null
-      );
+      await loadBookings(true);
+
+      setSelectedBooking(null);
     } catch (err) {
       console.error(
         "Missed trial action error:",
@@ -1157,8 +906,7 @@ export default function AdminBookingsPage() {
 
       setError(
         err &&
-        typeof err ===
-          "object" &&
+        typeof err === "object" &&
         "message" in err
           ? String(
               (
@@ -1176,11 +924,87 @@ export default function AdminBookingsPage() {
 
   /*
    * =========================================================
-   * CALL
+   * CANCELLED
    * =========================================================
    */
 
-  function callLearner(
+  async function markCancelled(
+    record: BookingRecord
+  ) {
+    const booking =
+      record.booking;
+
+    if (
+      booking.status !==
+      "confirmed"
+    ) {
+      return;
+    }
+
+    setUpdatingId(
+      booking.id
+    );
+
+    setError("");
+
+    try {
+      const {
+        data,
+        error: rpcError,
+      } = await supabase.rpc(
+        "mark_trial_cancelled",
+        {
+          p_booking_id:
+            booking.id,
+        }
+      );
+
+      if (rpcError) {
+        throw rpcError;
+      }
+
+      console.log(
+        "mark_trial_cancelled:",
+        data
+      );
+
+      await loadBookings(true);
+
+      setSelectedBooking(null);
+    } catch (err) {
+      console.error(
+        "Cancelled action error:",
+        err
+      );
+
+      setError(
+        err &&
+        typeof err === "object" &&
+        "message" in err
+          ? String(
+              (
+                err as {
+                  message: string;
+                }
+              ).message
+            )
+          : "We couldn't cancel this trial."
+      );
+    } finally {
+      setUpdatingId(null);
+    }
+  }
+
+  /*
+   * =========================================================
+   * CALL
+   *
+   * CALL does NOT change booking status.
+   * Every call is permanently logged.
+   * =========================================================
+   */
+
+  async function callLearner(
     record: BookingRecord
   ) {
     const phone =
@@ -1188,11 +1012,67 @@ export default function AdminBookingsPage() {
         ?.whatsapp_number;
 
     if (!phone) {
+      setError(
+        "This learner has no phone number."
+      );
+
       return;
     }
 
-    window.location.href =
-      `tel:${phone}`;
+    setError("");
+
+    try {
+      const {
+        error: rpcError,
+      } = await supabase.rpc(
+        "record_booking_call",
+        {
+          p_booking_id:
+            record.booking.id,
+          p_notes:
+            "Call initiated from Booking page.",
+          p_outcome:
+            "called",
+        }
+      );
+
+      if (rpcError) {
+        throw rpcError;
+      }
+
+      /*
+       * Refresh first so the latest called_at
+       * appears on the page.
+       */
+
+      await loadBookings(true);
+
+      /*
+       * Open the device dialer.
+       */
+
+      window.location.href =
+        `tel:${phone}`;
+    } catch (err) {
+      console.error(
+        "Call logging error:",
+        err
+      );
+
+      setError(
+        err &&
+        typeof err === "object" &&
+        "message" in err
+          ? String(
+              (
+                err as {
+                  message: string;
+                }
+              ).message
+            )
+          : "We couldn't log this call."
+      );
+    }
   }
 
   /*
@@ -1262,6 +1142,475 @@ export default function AdminBookingsPage() {
 
   /*
    * =========================================================
+   * OPEN REGISTRATION MODAL
+   *
+   * REGISTERED = learner has registered but
+   * course clock has NOT started.
+   * =========================================================
+   */
+
+  function openRegistration(
+    record: BookingRecord
+  ) {
+    setRegistrationError("");
+
+    setRegistrationBooking(
+      record
+    );
+
+    setRegistrationModalMode(
+      "register"
+    );
+
+    setRegistrationModalOpen(
+      true
+    );
+
+    setSelectedBooking(null);
+  }
+
+  /*
+   * =========================================================
+   * OPEN BOOKED MODAL
+   *
+   * BOOKED = learner has started learning.
+   *
+   * This supports:
+   * 1. Direct confirmed trial -> BOOKED
+   * 2. Completed trial -> BOOKED
+   * 3. Existing registered/paused enrollment -> BOOKED
+   * =========================================================
+   */
+
+  function openBooked(
+    record: BookingRecord
+  ) {
+    setRegistrationError("");
+
+    setRegistrationBooking(
+      record
+    );
+
+    setRegistrationModalMode(
+      "book"
+    );
+
+    setRegistrationModalOpen(
+      true
+    );
+
+    setSelectedBooking(null);
+  }
+
+  /*
+   * =========================================================
+   * REGISTRATION SUBMIT
+   *
+   * Used only by RegistrationModal mode="register".
+   * =========================================================
+   */
+
+  async function registerLearner(
+    values: RegistrationFormValues
+  ) {
+    const record =
+      registrationBooking;
+
+    if (!record) {
+      throw new Error(
+        "No booking selected."
+      );
+    }
+
+    setRegistering(true);
+    setRegistrationError("");
+    setError("");
+
+    try {
+      const {
+        data,
+        error: rpcError,
+      } = await supabase.rpc(
+        "register_booking_student",
+        {
+          p_booking_id:
+            record.booking.id,
+
+          p_programme_name:
+            values.programmeName,
+
+          p_start_date:
+            values.plannedStartDate,
+
+          p_total_fee:
+            Number(
+              values.totalFee
+            ),
+
+          p_initial_payment:
+            Number(
+              values.initialPayment
+            ),
+
+          p_payment_method:
+            values.paymentMethod,
+
+          p_payment_reference:
+            values.paymentReference ||
+            null,
+
+          p_notes:
+            values.notes || null,
+        }
+      );
+
+      if (rpcError) {
+        throw rpcError;
+      }
+
+      console.log(
+        "register_booking_student:",
+        data
+      );
+
+      /*
+       * Registration succeeded.
+       *
+       * The database function handles:
+       * - student creation/reuse
+       * - registered enrollment
+       * - initial payment
+       * - registration receipt event
+       * - payment receipt event
+       * - lead status
+       *
+       * Course clock remains unstarted.
+       */
+
+      setRegistrationModalOpen(
+        false
+      );
+
+      setRegistrationBooking(
+        null
+      );
+
+      setRegistrationError("");
+
+      await loadBookings(true);
+    } catch (err) {
+      console.error(
+        "Registration error:",
+        err
+      );
+
+      const message =
+        err &&
+        typeof err === "object" &&
+        "message" in err
+          ? String(
+              (
+                err as {
+                  message: string;
+                }
+              ).message
+            )
+          : "We couldn't register this learner.";
+
+      setRegistrationError(
+        message
+      );
+
+      throw err;
+    } finally {
+      setRegistering(false);
+    }
+  }
+
+  /*
+   * =========================================================
+   * BOOKED SUBMIT
+   *
+   * Used only by RegistrationModal mode="book".
+   * =========================================================
+   */
+
+  async function bookLearner(
+    values: RegistrationFormValues
+  ) {
+    const record =
+      registrationBooking;
+
+    if (!record) {
+      throw new Error(
+        "No booking selected."
+      );
+    }
+
+    setRegistering(true);
+    setRegistrationError("");
+    setError("");
+
+    try {
+      const leadId =
+        record.booking.lead_id;
+
+      /*
+       * Look for an existing student linked
+       * to this lead.
+       */
+
+      const {
+        data: student,
+        error: studentError,
+      } = await supabase
+        .from("students")
+        .select(
+          "id, lead_id, full_name, email, whatsapp_number, status"
+        )
+        .eq(
+          "lead_id",
+          leadId
+        )
+        .maybeSingle();
+
+      if (studentError) {
+        throw studentError;
+      }
+
+      /*
+       * If a student already exists, look for
+       * their current registered/paused/active
+       * enrollment.
+       *
+       * This is what allows REGISTERED -> BOOKED
+       * to reuse the same enrollment.
+       */
+
+      let enrollmentId:
+        | string
+        | null = null;
+
+      if (student?.id) {
+        const {
+          data: enrollment,
+          error: enrollmentError,
+        } = await supabase
+          .from(
+            "student_enrollments"
+          )
+          .select(
+            `
+              id,
+              student_id,
+              instrument,
+              programme_name,
+              status,
+              planned_start_date,
+              actual_start_date,
+              total_fee
+            `
+          )
+          .eq(
+            "student_id",
+            student.id
+          )
+          .in("status", [
+            "registered",
+            "paused",
+            "active",
+          ] as EnrollmentStatus[])
+          .order(
+            "created_at",
+            {
+              ascending: false,
+            }
+          )
+          .limit(1)
+          .maybeSingle();
+
+        if (enrollmentError) {
+          throw enrollmentError;
+        }
+
+        enrollmentId =
+          enrollment?.id ??
+          null;
+      }
+
+      /*
+       * Call the authoritative lifecycle RPC.
+       *
+       * enrollmentId:
+       *
+       * null
+       *   -> direct trial-to-booked path
+       *
+       * existing ID
+       *   -> activate/reuse existing enrollment
+       */
+
+      const {
+        data,
+        error: rpcError,
+      } = await supabase.rpc(
+        "book_booking_student",
+        {
+          p_booking_id:
+            record.booking.id,
+
+          p_programme_name:
+            values.programmeName,
+
+          p_start_date:
+            values.plannedStartDate,
+
+          p_total_fee:
+            Number(
+              values.totalFee
+            ),
+
+          p_initial_payment:
+            Number(
+              values.initialPayment
+            ),
+
+          p_payment_method:
+            values.paymentMethod,
+
+          p_payment_reference:
+            values.paymentReference ||
+            null,
+
+          p_notes:
+            values.notes || null,
+
+          p_enrollment_id:
+            enrollmentId,
+        }
+      );
+
+      if (rpcError) {
+        throw rpcError;
+      }
+
+      console.log(
+        "book_booking_student:",
+        data
+      );
+
+      /*
+       * Successful BOOKED action.
+       *
+       * Database handles:
+       * - student creation/reuse
+       * - enrollment creation/reuse
+       * - activation
+       * - payment
+       * - payment receipt
+       * - learning-started email event
+       */
+
+      setRegistrationModalOpen(
+        false
+      );
+
+      setRegistrationBooking(
+        null
+      );
+
+      setRegistrationError("");
+
+      await loadBookings(true);
+
+      /*
+       * Take staff to Students after successful
+       * BOOKED conversion.
+       */
+
+      router.push(
+        "/admin/students"
+      );
+    } catch (err) {
+      console.error(
+        "Booked action error:",
+        err
+      );
+
+      const message =
+        err &&
+        typeof err === "object" &&
+        "message" in err
+          ? String(
+              (
+                err as {
+                  message: string;
+                }
+              ).message
+            )
+          : "We couldn't start learning for this learner.";
+
+      setRegistrationError(
+        message
+      );
+
+      throw err;
+    } finally {
+      setRegistering(false);
+    }
+  }
+
+  /*
+   * =========================================================
+   * REGISTRATION MODAL SUBMIT ROUTER
+   *
+   * The explicit modal mode prevents the old bug where
+   * BOOKED on a completed booking could accidentally be
+   * treated as REGISTERED.
+   * =========================================================
+   */
+
+  async function handleRegistrationSubmit(
+    values: RegistrationFormValues
+  ) {
+    if (
+      registrationModalMode ===
+      "register"
+    ) {
+      return registerLearner(
+        values
+      );
+    }
+
+    return bookLearner(
+      values
+    );
+  }
+
+  /*
+   * =========================================================
+   * CLOSE REGISTRATION MODAL
+   * =========================================================
+   */
+
+  function closeRegistrationModal() {
+    if (registering) {
+      return;
+    }
+
+    setRegistrationModalOpen(
+      false
+    );
+
+    setRegistrationBooking(
+      null
+    );
+
+    setRegistrationError("");
+  }
+
+  /*
+   * =========================================================
    * RENDER
    * =========================================================
    */
@@ -1286,8 +1635,8 @@ export default function AdminBookingsPage() {
 
           <p className="st-page-description">
             Manage trial learners from booking
-            through attendance, registration and
-            rescheduling.
+            through attendance, registration,
+            learning and rescheduling.
           </p>
         </div>
 
@@ -1306,6 +1655,7 @@ export default function AdminBookingsPage() {
                 : ""
             }
           />
+
           Refresh
         </button>
 
@@ -1563,25 +1913,27 @@ export default function AdminBookingsPage() {
                   updatingId ===
                   booking.id;
 
-                const canAct =
+                const isConfirmed =
                   booking.status ===
                   "confirmed";
+
+                const isCompleted =
+                  booking.status ===
+                  "completed";
 
                 return (
                   <div
                     key={booking.id}
-                    className={`st-card overflow-hidden p-0 transition-all ${
-                      canAct
-                        ? "hover:border-[var(--st-red)]"
-                        : ""
-                    }`}
+                    className="st-card overflow-hidden p-0 transition-all"
                   >
 
                     <div className="p-5">
 
-                      <div className="flex items-start gap-4">
+                      {/* =================================================
+                          HEADER
+                      ================================================= */}
 
-                        {/* AVATAR */}
+                      <div className="flex items-start gap-4">
 
                         <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[var(--st-bg-soft)] text-[10px] font-bold text-[var(--st-red)]">
                           {lead
@@ -1590,8 +1942,6 @@ export default function AdminBookingsPage() {
                               )
                             : "BK"}
                         </div>
-
-                        {/* MAIN */}
 
                         <div className="min-w-0 flex-1">
 
@@ -1609,7 +1959,7 @@ export default function AdminBookingsPage() {
                                   {formatDate(
                                     slot.starts_at
                                   )}{" "}
-                                  Ã‚Â·{" "}
+                                  ·{" "}
                                   {formatTimeRange(
                                     slot.starts_at,
                                     slot.ends_at
@@ -1650,14 +2000,9 @@ export default function AdminBookingsPage() {
                               </span>
 
                               <span className="truncate text-[10px] text-[var(--st-gray)]">
-                                {booking.instrument
-                                  .charAt(
-                                    0
-                                  )
-                                  .toUpperCase() +
-                                  booking.instrument.slice(
-                                    1
-                                  )}
+                                {instrumentLabel(
+                                  booking.instrument
+                                )}
                               </span>
 
                             </div>
@@ -1696,129 +2041,210 @@ export default function AdminBookingsPage() {
 
                           </div>
 
+                          {/* CALL INDICATOR */}
+
+                          {booking.called_at && (
+                            <div className="mt-3 flex items-center gap-2 text-[9px] text-green-700">
+                              <Phone size={11} />
+
+                              <span>
+                                Called{" "}
+                                {formatDate(
+                                  booking.called_at
+                                )}{" "}
+                                at{" "}
+                                {formatTime(
+                                  booking.called_at
+                                )}
+                              </span>
+                            </div>
+                          )}
+
                         </div>
 
                       </div>
 
                       {/* =================================================
-                          TRIAL OUTCOME
+                          ACTIONS
                       ================================================= */}
 
                       <div className="mt-5 border-t border-[var(--st-border)] pt-4">
 
                         <p className="mb-3 text-[8px] font-bold uppercase tracking-[0.1em] text-[var(--st-gray)]">
-                          TRIAL OUTCOME
+                          {isCompleted
+                            ? "STUDENT ACTIONS"
+                            : "TRIAL ACTIONS"}
                         </p>
 
-                        <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
+                        <div className="grid grid-cols-2 gap-2 lg:grid-cols-5">
 
                           {/* BOOKED */}
 
-                          <button
-                            type="button"
-                            disabled={
-                              !canAct ||
-                              isUpdating
-                            }
-                            onClick={() =>
-                              markBooked(
-                                record
-                              )
-                            }
-                            className="flex min-h-[46px] items-center justify-center gap-2 rounded-xl bg-[var(--st-red)] px-3 py-3 text-[9px] font-bold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
-                          >
-                            {isUpdating ? (
-                              <RefreshCw
-                                size={14}
-                                className="animate-spin"
-                              />
-                            ) : (
+                          {(isConfirmed ||
+                            isCompleted) && (
+                            <button
+                              type="button"
+                              disabled={
+                                isUpdating
+                              }
+                              onClick={() =>
+                                openBooked(
+                                  record
+                                )
+                              }
+                              className="flex min-h-[46px] items-center justify-center gap-2 rounded-xl bg-[var(--st-red)] px-3 py-3 text-[9px] font-bold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+                            >
+                              {isUpdating ? (
+                                <RefreshCw
+                                  size={14}
+                                  className="animate-spin"
+                                />
+                              ) : (
+                                <UserPlus
+                                  size={14}
+                                />
+                              )}
+
+                              Booked
+                            </button>
+                          )}
+
+                          {/* REGISTERED */}
+
+                          {isCompleted && (
+                            <button
+                              type="button"
+                              disabled={
+                                isUpdating
+                              }
+                              onClick={() =>
+                                openRegistration(
+                                  record
+                                )
+                              }
+                              className="flex min-h-[46px] items-center justify-center gap-2 rounded-xl border border-pink-200 bg-pink-50 px-3 py-3 text-[9px] font-bold text-pink-700 transition hover:bg-pink-100 disabled:cursor-not-allowed disabled:opacity-40"
+                            >
                               <UserPlus
                                 size={14}
                               />
-                            )}
 
-                            Booked
-                          </button>
+                              Registered
+                            </button>
+                          )}
 
                           {/* CALL */}
 
-                          <button
-                            type="button"
-                            disabled={
-                              !lead?.whatsapp_number
-                            }
-                            onClick={() =>
-                              callLearner(
-                                record
-                              )
-                            }
-                            className="flex min-h-[46px] items-center justify-center gap-2 rounded-xl border border-[var(--st-border)] bg-white px-3 py-3 text-[9px] font-bold text-[var(--st-charcoal-dark)] transition hover:border-[var(--st-red)] disabled:cursor-not-allowed disabled:opacity-40"
-                          >
-                            <Phone
-                              size={14}
-                            />
+                          {(isConfirmed ||
+                            isCompleted) && (
+                            <button
+                              type="button"
+                              disabled={
+                                !lead?.whatsapp_number
+                              }
+                              onClick={() =>
+                                callLearner(
+                                  record
+                                )
+                              }
+                              className="flex min-h-[46px] items-center justify-center gap-2 rounded-xl border border-sky-200 bg-sky-50 px-3 py-3 text-[9px] font-bold text-sky-700 transition hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-40"
+                            >
+                              <Phone
+                                size={14}
+                              />
 
-                            Call
-                          </button>
+                              Call
+                            </button>
+                          )}
 
                           {/* ATTENDED */}
 
-                          <button
-                            type="button"
-                            disabled={
-                              !canAct ||
-                              isUpdating
-                            }
-                            onClick={() =>
-                              markAttended(
-                                record
-                              )
-                            }
-                            className="flex min-h-[46px] items-center justify-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-3 py-3 text-[9px] font-bold text-blue-700 transition hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-40"
-                          >
-                            {isUpdating ? (
-                              <RefreshCw
-                                size={14}
-                                className="animate-spin"
-                              />
-                            ) : (
-                              <UserCheck
-                                size={14}
-                              />
-                            )}
+                          {isConfirmed && (
+                            <button
+                              type="button"
+                              disabled={
+                                isUpdating
+                              }
+                              onClick={() =>
+                                markAttended(
+                                  record
+                                )
+                              }
+                              className="flex min-h-[46px] items-center justify-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-3 py-3 text-[9px] font-bold text-blue-700 transition hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-40"
+                            >
+                              {isUpdating ? (
+                                <RefreshCw
+                                  size={14}
+                                  className="animate-spin"
+                                />
+                              ) : (
+                                <UserCheck
+                                  size={14}
+                                />
+                              )}
 
-                            Attended
-                          </button>
+                              Attended
+                            </button>
+                          )}
 
                           {/* MISSED */}
 
-                          <button
-                            type="button"
-                            disabled={
-                              !canAct ||
-                              isUpdating
-                            }
-                            onClick={() =>
-                              markMissedTrial(
-                                record
-                              )
-                            }
-                            className="flex min-h-[46px] items-center justify-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-3 text-[9px] font-bold text-amber-700 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-40"
-                          >
-                            {isUpdating ? (
-                              <RefreshCw
-                                size={14}
-                                className="animate-spin"
-                              />
-                            ) : (
-                              <UserX
-                                size={14}
-                              />
-                            )}
+                          {isConfirmed && (
+                            <button
+                              type="button"
+                              disabled={
+                                isUpdating
+                              }
+                              onClick={() =>
+                                markMissedTrial(
+                                  record
+                                )
+                              }
+                              className="flex min-h-[46px] items-center justify-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-3 text-[9px] font-bold text-amber-700 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-40"
+                            >
+                              {isUpdating ? (
+                                <RefreshCw
+                                  size={14}
+                                  className="animate-spin"
+                                />
+                              ) : (
+                                <UserX
+                                  size={14}
+                                />
+                              )}
 
-                            Missed trial
-                          </button>
+                              Missed
+                            </button>
+                          )}
+
+                          {/* CANCELLED */}
+
+                          {isConfirmed && (
+                            <button
+                              type="button"
+                              disabled={
+                                isUpdating
+                              }
+                              onClick={() =>
+                                markCancelled(
+                                  record
+                                )
+                              }
+                              className="flex min-h-[46px] items-center justify-center gap-2 rounded-xl border border-orange-200 bg-orange-50 px-3 py-3 text-[9px] font-bold text-orange-700 transition hover:bg-orange-100 disabled:cursor-not-allowed disabled:opacity-40"
+                            >
+                              {isUpdating ? (
+                                <RefreshCw
+                                  size={14}
+                                  className="animate-spin"
+                                />
+                              ) : (
+                                <XCircle
+                                  size={14}
+                                />
+                              )}
+
+                              Cancelled
+                            </button>
+                          )}
 
                         </div>
 
@@ -1836,6 +2262,7 @@ export default function AdminBookingsPage() {
                         className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-[var(--st-bg-soft)] px-3 py-3 text-[9px] font-bold text-[var(--st-gray)] transition hover:text-[var(--st-charcoal-dark)]"
                       >
                         View booking details
+
                         <ArrowRight
                           size={13}
                         />
@@ -1915,7 +2342,9 @@ export default function AdminBookingsPage() {
 
             <div className="p-5">
 
-              {/* LESSON */}
+              {/* =================================================
+                  LESSON
+              ================================================= */}
 
               <div className="rounded-2xl bg-[var(--st-bg-soft)] p-5">
 
@@ -1961,7 +2390,9 @@ export default function AdminBookingsPage() {
 
               </div>
 
-              {/* CURRENT OUTCOME */}
+              {/* =================================================
+                  CURRENT OUTCOME
+              ================================================= */}
 
               <div className="mt-5">
 
@@ -1991,7 +2422,9 @@ export default function AdminBookingsPage() {
 
               </div>
 
-              {/* CUSTOMER */}
+              {/* =================================================
+                  CUSTOMER
+              ================================================= */}
 
               <div className="mt-6">
 
@@ -2077,7 +2510,57 @@ export default function AdminBookingsPage() {
 
               </div>
 
-              {/* REMINDERS */}
+              {/* =================================================
+                  CALL HISTORY INDICATOR
+              ================================================= */}
+
+              {selectedBooking.booking
+                .called_at && (
+                <div className="mt-6 rounded-xl border border-green-200 bg-green-50 p-4">
+
+                  <div className="flex items-center gap-2">
+
+                    <Phone
+                      size={14}
+                      className="text-green-700"
+                    />
+
+                    <p className="m-0 text-[9px] font-bold uppercase tracking-[0.08em] text-green-700">
+                      LAST CALL
+                    </p>
+
+                  </div>
+
+                  <p className="mt-2 mb-0 text-[10px] text-green-800">
+                    {formatDate(
+                      selectedBooking
+                        .booking
+                        .called_at
+                    )}{" "}
+                    at{" "}
+                    {formatTime(
+                      selectedBooking
+                        .booking
+                        .called_at
+                    )}
+                  </p>
+
+                  <p className="mt-1 mb-0 text-[8px] text-green-700">
+                    Call history is preserved
+                    in the system.
+                  </p>
+
+                </div>
+              )}
+
+              {/* =================================================
+                  EMAIL & REMINDERS
+                  
+                  NOTE:
+                  We deliberately do not display/reintroduce
+                  the legacy 2-hour reminder as an active
+                  workflow.
+              ================================================= */}
 
               <div className="mt-6">
 
@@ -2085,7 +2568,7 @@ export default function AdminBookingsPage() {
                   EMAIL & REMINDERS
                 </p>
 
-                <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
 
                   <div className="rounded-xl border border-[var(--st-border)] p-3">
 
@@ -2135,51 +2618,32 @@ export default function AdminBookingsPage() {
 
                   </div>
 
-                  <div className="rounded-xl border border-[var(--st-border)] p-3">
-
-                    <p className="m-0 text-[9px] font-bold text-[var(--st-charcoal-dark)]">
-                      2h reminder
-                    </p>
-
-                    <p
-                      className={`mt-1 mb-0 text-[9px] ${
-                        selectedBooking
-                          .booking
-                          .reminder_2h_sent_at
-                          ? "text-green-700"
-                          : "text-[var(--st-gray)]"
-                      }`}
-                    >
-                      {selectedBooking
-                        .booking
-                        .reminder_2h_sent_at
-                        ? "Sent"
-                        : "Pending"}
-                    </p>
-
-                  </div>
-
                 </div>
 
               </div>
 
               {/* =================================================
-                  TRIAL OUTCOME ACTIONS
+                  ACTIONS
               ================================================= */}
 
-              {selectedBooking.booking
-                .status ===
-                "confirmed" && (
-                <div className="mt-6">
+              <div className="mt-6">
 
-                  <p className="mb-3 text-[9px] font-bold uppercase tracking-[0.1em] text-[var(--st-gray)]">
-                    TRIAL OUTCOME
-                  </p>
+                <p className="mb-3 text-[9px] font-bold uppercase tracking-[0.1em] text-[var(--st-gray)]">
+                  ACTIONS
+                </p>
 
-                  <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-2 gap-2">
 
-                    {/* BOOKED */}
+                  {/* BOOKED */}
 
+                  {(selectedBooking
+                    .booking
+                    .status ===
+                    "confirmed" ||
+                    selectedBooking
+                      .booking
+                      .status ===
+                      "completed") && (
                     <button
                       type="button"
                       disabled={
@@ -2189,30 +2653,61 @@ export default function AdminBookingsPage() {
                           .id
                       }
                       onClick={() =>
-                        markBooked(
+                        openBooked(
                           selectedBooking
                         )
                       }
                       className="st-button st-button-primary w-full disabled:opacity-50"
                     >
-                      {updatingId ===
-                      selectedBooking
-                        .booking.id ? (
-                        <RefreshCw
-                          size={14}
-                          className="animate-spin"
-                        />
-                      ) : (
-                        <UserPlus
-                          size={14}
-                        />
-                      )}
+                      <UserPlus
+                        size={14}
+                      />
 
                       Booked
                     </button>
+                  )}
 
-                    {/* CALL */}
+                  {/* REGISTERED */}
 
+                  {selectedBooking
+                    .booking
+                    .status ===
+                    "completed" && (
+                    <button
+                      type="button"
+                      disabled={
+                        updatingId ===
+                        selectedBooking
+                          .booking
+                          .id
+                      }
+                      onClick={() =>
+                        openRegistration(
+                          selectedBooking
+                        )
+                      }
+                      className="w-full rounded-xl border border-pink-200 bg-pink-50 px-4 py-3 text-[9px] font-bold text-pink-700 disabled:opacity-50"
+                    >
+                      <span className="inline-flex items-center gap-2">
+                        <UserPlus
+                          size={14}
+                        />
+
+                        Registered
+                      </span>
+                    </button>
+                  )}
+
+                  {/* CALL */}
+
+                  {(selectedBooking
+                    .booking
+                    .status ===
+                    "confirmed" ||
+                    selectedBooking
+                      .booking
+                      .status ===
+                      "completed") && (
                     <button
                       type="button"
                       disabled={
@@ -2230,9 +2725,14 @@ export default function AdminBookingsPage() {
                       <Phone size={14} />
                       Call
                     </button>
+                  )}
 
-                    {/* ATTENDED */}
+                  {/* ATTENDED */}
 
+                  {selectedBooking
+                    .booking
+                    .status ===
+                    "confirmed" && (
                     <button
                       type="button"
                       disabled={
@@ -2252,12 +2752,18 @@ export default function AdminBookingsPage() {
                         <UserCheck
                           size={14}
                         />
+
                         Attended
                       </span>
                     </button>
+                  )}
 
-                    {/* MISSED */}
+                  {/* MISSED */}
 
+                  {selectedBooking
+                    .booking
+                    .status ===
+                    "confirmed" && (
                     <button
                       type="button"
                       disabled={
@@ -2277,16 +2783,50 @@ export default function AdminBookingsPage() {
                         <UserX
                           size={14}
                         />
+
                         Missed trial
                       </span>
                     </button>
+                  )}
 
-                  </div>
+                  {/* CANCELLED */}
+
+                  {selectedBooking
+                    .booking
+                    .status ===
+                    "confirmed" && (
+                    <button
+                      type="button"
+                      disabled={
+                        updatingId ===
+                        selectedBooking
+                          .booking
+                          .id
+                      }
+                      onClick={() =>
+                        markCancelled(
+                          selectedBooking
+                        )
+                      }
+                      className="w-full rounded-xl border border-orange-200 bg-orange-50 px-4 py-3 text-[9px] font-bold text-orange-700 disabled:opacity-50"
+                    >
+                      <span className="inline-flex items-center gap-2">
+                        <XCircle
+                          size={14}
+                        />
+
+                        Cancelled
+                      </span>
+                    </button>
+                  )}
 
                 </div>
-              )}
 
-              {/* COMMUNICATION */}
+              </div>
+
+              {/* =================================================
+                  COMMUNICATION
+              ================================================= */}
 
               <div className="mt-6 grid grid-cols-2 gap-2">
 
@@ -2307,6 +2847,7 @@ export default function AdminBookingsPage() {
                   <MessageCircle
                     size={14}
                   />
+
                   WhatsApp
                 </button>
 
@@ -2326,42 +2867,101 @@ export default function AdminBookingsPage() {
                   <CalendarDays
                     size={14}
                   />
+
                   Calendar
                 </button>
 
               </div>
 
+              {/* =================================================
+                  BOOKING ID
+              ================================================= */}
+
+              <div className="mt-6 border-t border-[var(--st-border)] pt-4">
+
+                <p className="m-0 text-[9px] text-[var(--st-gray)]">
+                  Booking ID
+                </p>
+
+                <p className="mt-1 mb-0 break-all font-mono text-[8px] text-[var(--st-gray)]">
+                  {
+                    selectedBooking
+                      .booking
+                      .id
+                  }
+                </p>
+
+              </div>
+
               {/* CLOSE */}
 
-           <button
-  type="button"
-  onClick={() => setSelectedBooking(null)}
-  className="mt-2 w-full rounded-xl px-4 py-3 text-[9px] font-bold text-gray-500 transition hover:bg-gray-100"
->
-  Close
-</button>
+              <button
+                type="button"
+                onClick={() =>
+                  setSelectedBooking(
+                    null
+                  )
+                }
+                className="mt-4 w-full rounded-xl px-4 py-3 text-[9px] font-bold text-gray-500 transition hover:bg-gray-100"
+              >
+                Close
+              </button>
 
-{/* BOOKING ID */}
+            </div>
 
-<div className="mt-6 border-t border-[var(--st-border)] pt-4">
+          </div>
 
-  <p className="m-0 text-[9px] text-[var(--st-gray)]">
-    Booking ID
-  </p>
+        </div>
+      )}
 
-  <p className="mt-1 mb-0 break-all font-mono text-[8px] text-[var(--st-gray)]">
-    {selectedBooking.booking.id}
-  </p>
+      {/* =====================================================
+          REGISTRATION MODAL
+          
+          IMPORTANT:
+          Explicit mode controls whether this action is:
+          
+          register = REGISTERED
+          book     = BOOKED
+      ===================================================== */}
 
-</div>
+      <RegistrationModal
+        show={
+          registrationModalOpen
+        }
+        mode={
+          registrationModalMode
+        }
+        booking={
+          registrationBooking
+            ? {
+                id:
+                  registrationBooking
+                    .booking
+                    .id,
+                instrument:
+                  registrationBooking
+                    .booking
+                    .instrument,
+                lead:
+                  registrationBooking
+                    .lead,
+              }
+            : null
+        }
+        registering={
+          registering
+        }
+        error={
+          registrationError
+        }
+        onClose={
+          closeRegistrationModal
+        }
+        onSubmit={
+          handleRegistrationSubmit
+        }
+      />
 
-</div>
-</div>
-</div>
-)}
-
-</main>
-);
+    </main>
+  );
 }
-
-
