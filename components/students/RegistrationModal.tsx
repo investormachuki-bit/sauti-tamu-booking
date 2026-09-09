@@ -5,6 +5,8 @@ import {
   CalendarDays,
   Check,
   CreditCard,
+  UserCheck,
+  UserPlus,
   X,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
@@ -15,6 +17,10 @@ type PaymentMethod =
   | "bank"
   | "card"
   | "other";
+
+export type RegistrationModalMode =
+  | "register"
+  | "book";
 
 export interface RegistrationFormValues {
   programmeName: string;
@@ -38,39 +44,63 @@ interface RegistrationBooking {
 
 interface RegistrationModalProps {
   show: boolean;
+  mode?: RegistrationModalMode;
   booking: RegistrationBooking | null;
   registering?: boolean;
   error?: string;
   onClose: () => void;
-  onSubmit: (values: RegistrationFormValues) => void | Promise<void>;
+  onSubmit: (
+    values: RegistrationFormValues,
+  ) => void | Promise<void>;
 }
 
-const DEFAULT_PROGRAMME = "3 Month Training Programme";
+const DEFAULT_PROGRAMME =
+  "3 Month Training Programme";
+
 const DEFAULT_FEE = "26850";
 
-function todayString() {
+function getTodayString() {
   const date = new Date();
-  const offset = date.getTimezoneOffset();
-  const local = new Date(date.getTime() - offset * 60 * 1000);
 
-  return local.toISOString().slice(0, 10);
+  const offset =
+    date.getTimezoneOffset();
+
+  const localDate = new Date(
+    date.getTime() -
+      offset * 60 * 1000,
+  );
+
+  return localDate
+    .toISOString()
+    .slice(0, 10);
 }
 
-function formatCurrency(amount: number) {
-  return new Intl.NumberFormat("en-KE", {
-    style: "currency",
-    currency: "KES",
-    maximumFractionDigits: 0,
-  }).format(amount);
+function formatCurrency(
+  amount: number,
+) {
+  return new Intl.NumberFormat(
+    "en-KE",
+    {
+      style: "currency",
+      currency: "KES",
+      maximumFractionDigits: 0,
+    },
+  ).format(amount);
 }
 
-function instrumentName(instrument?: "piano" | "guitar") {
-  if (instrument === "guitar") return "Acoustic Guitar";
+function getInstrumentName(
+  instrument?: "piano" | "guitar",
+) {
+  if (instrument === "guitar") {
+    return "Acoustic Guitar";
+  }
+
   return "Piano";
 }
 
 export default function RegistrationModal({
   show,
+  mode = "register",
   booking,
   registering = false,
   error = "",
@@ -81,7 +111,7 @@ export default function RegistrationModal({
     useState(DEFAULT_PROGRAMME);
 
   const [plannedStartDate, setPlannedStartDate] =
-    useState(todayString());
+    useState(getTodayString());
 
   const [totalFee, setTotalFee] =
     useState(DEFAULT_FEE);
@@ -95,70 +125,148 @@ export default function RegistrationModal({
   const [paymentReference, setPaymentReference] =
     useState("");
 
-  const [notes, setNotes] = useState("");
+  const [notes, setNotes] =
+    useState("");
 
   const [validationError, setValidationError] =
     useState("");
 
+  const isBookingMode =
+    mode === "book";
+
+  const title = isBookingMode
+    ? "Start learning"
+    : "Register learner";
+
+  const eyebrow = isBookingMode
+    ? "START LEARNING"
+    : "STUDENT REGISTRATION";
+
+  const description = isBookingMode
+    ? "Start the learner's programme and begin the course clock."
+    : "Reserve the learner and programme before lessons officially begin.";
+
+  const submitLabel = isBookingMode
+    ? "Start Learning"
+    : "Register Learner";
+
+  const submittingLabel = isBookingMode
+    ? "Starting..."
+    : "Registering...";
+
   useEffect(() => {
-    if (!show || !booking) return;
+    if (!show || !booking) {
+      return;
+    }
 
-    setProgrammeName(DEFAULT_PROGRAMME);
-    setPlannedStartDate(todayString());
-    setTotalFee(DEFAULT_FEE);
+    setProgrammeName(
+      DEFAULT_PROGRAMME,
+    );
+
+    setPlannedStartDate(
+      getTodayString(),
+    );
+
+    setTotalFee(
+      DEFAULT_FEE,
+    );
+
     setInitialPayment("");
+
     setPaymentMethod("mpesa");
+
     setPaymentReference("");
+
     setNotes("");
+
     setValidationError("");
-  }, [show, booking?.id]);
+  }, [
+    show,
+    booking?.id,
+    mode,
+  ]);
 
-  const numericTotalFee = useMemo(() => {
-    const value = Number(totalFee);
-    return Number.isFinite(value) && value > 0 ? value : 0;
-  }, [totalFee]);
+  const numericTotalFee =
+    useMemo(() => {
+      const value =
+        Number(totalFee);
 
-  const numericInitialPayment = useMemo(() => {
-    const value = Number(initialPayment);
-    return Number.isFinite(value) && value > 0 ? value : 0;
-  }, [initialPayment]);
+      if (
+        !Number.isFinite(value) ||
+        value <= 0
+      ) {
+        return 0;
+      }
 
-  const remainingBalance = Math.max(
-    numericTotalFee - numericInitialPayment,
-    0,
-  );
+      return value;
+    }, [totalFee]);
+
+  const numericInitialPayment =
+    useMemo(() => {
+      const value =
+        Number(initialPayment);
+
+      if (
+        !Number.isFinite(value) ||
+        value <= 0
+      ) {
+        return 0;
+      }
+
+      return value;
+    }, [initialPayment]);
+
+  const remainingBalance =
+    Math.max(
+      numericTotalFee -
+        numericInitialPayment,
+      0,
+    );
 
   function handleSubmit() {
     setValidationError("");
 
     if (!booking) {
-      setValidationError("No booking selected.");
+      setValidationError(
+        "No booking selected.",
+      );
       return;
     }
 
     if (!programmeName.trim()) {
-      setValidationError("Please enter the programme name.");
+      setValidationError(
+        "Please enter the programme name.",
+      );
       return;
     }
 
     if (!plannedStartDate) {
-      setValidationError("Please select the planned start date.");
+      setValidationError(
+        "Please select the planned start date.",
+      );
       return;
     }
 
     if (numericTotalFee <= 0) {
-      setValidationError("Please enter a valid course fee.");
+      setValidationError(
+        "Please enter a valid course fee.",
+      );
       return;
     }
 
-    if (numericInitialPayment <= 0) {
+    if (
+      numericInitialPayment <= 0
+    ) {
       setValidationError(
         "Please enter the initial payment amount.",
       );
       return;
     }
 
-    if (numericInitialPayment > numericTotalFee) {
+    if (
+      numericInitialPayment >
+      numericTotalFee
+    ) {
       setValidationError(
         "Initial payment cannot be greater than the course fee.",
       );
@@ -166,26 +274,43 @@ export default function RegistrationModal({
     }
 
     onSubmit({
-      programmeName: programmeName.trim(),
+      programmeName:
+        programmeName.trim(),
+
       plannedStartDate,
-      totalFee: numericTotalFee,
-      initialPayment: numericInitialPayment,
+
+      totalFee:
+        numericTotalFee,
+
+      initialPayment:
+        numericInitialPayment,
+
       paymentMethod,
-      paymentReference: paymentReference.trim(),
-      notes: notes.trim(),
+
+      paymentReference:
+        paymentReference.trim(),
+
+      notes:
+        notes.trim(),
     });
   }
 
-  if (!show || !booking) return null;
+  if (!show || !booking) {
+    return null;
+  }
 
   const studentName =
-    booking.lead?.full_name || "Unnamed learner";
+    booking.lead?.full_name ||
+    "Unnamed learner";
 
   const whatsapp =
-    booking.lead?.whatsapp_number || "No WhatsApp number";
+    booking.lead
+      ?.whatsapp_number ||
+    "No WhatsApp number";
 
   const email =
-    booking.lead?.email || "No email address";
+    booking.lead?.email ||
+    "No email address";
 
   return (
     <div
@@ -196,26 +321,31 @@ export default function RegistrationModal({
     >
       <div className="max-h-[94vh] w-full max-w-[560px] overflow-y-auto rounded-t-3xl bg-white shadow-2xl sm:rounded-3xl">
 
-        {/* HEADER */}
+        {/* =====================================================
+            HEADER
+        ===================================================== */}
+
         <div className="sticky top-0 z-30 border-b border-[var(--st-border)] bg-white px-5 py-4">
+
           <div className="flex items-start justify-between gap-4">
 
             <div>
+
               <p className="st-eyebrow">
-                STUDENT REGISTRATION
+                {eyebrow}
               </p>
 
               <h2
                 id="registration-modal-title"
                 className="mt-1 text-[21px] font-bold text-[var(--st-charcoal-dark)]"
               >
-                Register learner
+                {title}
               </h2>
 
               <p className="mt-1 text-[10px] leading-relaxed text-[var(--st-gray)]">
-                Reserve the learner and programme before lessons
-                officially begin.
+                {description}
               </p>
+
             </div>
 
             <button
@@ -223,41 +353,86 @@ export default function RegistrationModal({
               onClick={onClose}
               disabled={registering}
               className="st-icon-button disabled:opacity-40"
-              aria-label="Close registration modal"
+              aria-label="Close"
             >
               <X size={17} />
             </button>
 
           </div>
+
         </div>
 
         <div className="p-5">
 
           {/* =====================================================
-              REGISTRATION STATUS
+              LIFECYCLE MESSAGE
           ===================================================== */}
 
-          <div className="rounded-2xl border border-[var(--st-border)] bg-[var(--st-bg-soft)] p-4">
+          <div
+            className={`rounded-2xl border p-4 ${
+              isBookingMode
+                ? "border-purple-200 bg-purple-50"
+                : "border-pink-200 bg-pink-50"
+            }`}
+          >
 
             <div className="flex items-start gap-3">
 
               <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white">
-                <Check
-                  size={15}
-                  className="text-[var(--st-red)]"
-                />
+
+                {isBookingMode ? (
+                  <UserPlus
+                    size={15}
+                    className="text-purple-700"
+                  />
+                ) : (
+                  <UserCheck
+                    size={15}
+                    className="text-pink-700"
+                  />
+                )}
+
               </div>
 
               <div>
-                <p className="m-0 text-[10px] font-bold uppercase tracking-[0.08em] text-[var(--st-charcoal-dark)]">
-                  REGISTERED
+
+                <p
+                  className={`m-0 text-[10px] font-bold uppercase tracking-[0.08em] ${
+                    isBookingMode
+                      ? "text-purple-800"
+                      : "text-pink-800"
+                  }`}
+                >
+                  {isBookingMode
+                    ? "BOOKED"
+                    : "REGISTERED"}
                 </p>
 
                 <p className="mt-1 mb-0 text-[9px] leading-relaxed text-[var(--st-gray)]">
-                  Registration reserves the learner. Their course
-                  clock does <strong>not</strong> start until they
-                  are marked <strong>BOOKED</strong>.
+
+                  {isBookingMode ? (
+                    <>
+                      This action starts the learner's
+                      programme. Their course clock begins
+                      from the actual learning start.
+                    </>
+                  ) : (
+                    <>
+                      This action reserves the learner.
+                      Their course clock does{" "}
+                      <strong>
+                        not
+                      </strong>{" "}
+                      start until they are marked{" "}
+                      <strong>
+                        BOOKED
+                      </strong>
+                      .
+                    </>
+                  )}
+
                 </p>
+
               </div>
 
             </div>
@@ -271,6 +446,7 @@ export default function RegistrationModal({
           <div className="mt-7">
 
             <div className="mb-4">
+
               <p className="st-eyebrow">
                 01 · LEARNER
               </p>
@@ -278,11 +454,13 @@ export default function RegistrationModal({
               <h3 className="mt-1 text-[14px] font-bold text-[var(--st-charcoal-dark)]">
                 Learner details
               </h3>
+
             </div>
 
             <div className="rounded-2xl border border-[var(--st-border)] bg-white">
 
               <div className="border-b border-[var(--st-border)] px-4 py-4">
+
                 <p className="m-0 text-[9px] font-bold uppercase tracking-[0.07em] text-[var(--st-gray)]">
                   Full name
                 </p>
@@ -290,11 +468,13 @@ export default function RegistrationModal({
                 <p className="mt-1 mb-0 text-[13px] font-bold text-[var(--st-charcoal-dark)]">
                   {studentName}
                 </p>
+
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2">
 
                 <div className="border-b border-[var(--st-border)] px-4 py-4 sm:border-r">
+
                   <p className="m-0 text-[9px] font-bold uppercase tracking-[0.07em] text-[var(--st-gray)]">
                     WhatsApp
                   </p>
@@ -302,9 +482,11 @@ export default function RegistrationModal({
                   <p className="mt-1 mb-0 break-all text-[10px] font-medium text-[var(--st-charcoal-dark)]">
                     {whatsapp}
                   </p>
+
                 </div>
 
                 <div className="border-b border-[var(--st-border)] px-4 py-4 sm:border-b-0">
+
                   <p className="m-0 text-[9px] font-bold uppercase tracking-[0.07em] text-[var(--st-gray)]">
                     Email
                   </p>
@@ -312,18 +494,23 @@ export default function RegistrationModal({
                   <p className="mt-1 mb-0 break-all text-[10px] font-medium text-[var(--st-charcoal-dark)]">
                     {email}
                   </p>
+
                 </div>
 
               </div>
 
               <div className="px-4 py-4">
+
                 <p className="m-0 text-[9px] font-bold uppercase tracking-[0.07em] text-[var(--st-gray)]">
                   Instrument
                 </p>
 
                 <p className="mt-1 mb-0 text-[11px] font-bold text-[var(--st-charcoal-dark)]">
-                  {instrumentName(booking.instrument)}
+                  {getInstrumentName(
+                    booking.instrument,
+                  )}
                 </p>
+
               </div>
 
             </div>
@@ -337,6 +524,7 @@ export default function RegistrationModal({
           <div className="mt-7 border-t border-[var(--st-border)] pt-7">
 
             <div className="mb-4">
+
               <p className="st-eyebrow">
                 02 · PROGRAMME
               </p>
@@ -344,11 +532,13 @@ export default function RegistrationModal({
               <h3 className="mt-1 text-[14px] font-bold text-[var(--st-charcoal-dark)]">
                 Training programme
               </h3>
+
             </div>
 
             <div className="space-y-4">
 
               <div>
+
                 <label className="mb-2 block text-[9px] font-bold uppercase tracking-[0.08em] text-[var(--st-charcoal)]">
                   Programme name *
                 </label>
@@ -357,17 +547,23 @@ export default function RegistrationModal({
                   type="text"
                   value={programmeName}
                   onChange={(event) =>
-                    setProgrammeName(event.target.value)
+                    setProgrammeName(
+                      event.target.value,
+                    )
                   }
                   placeholder="e.g. 3 Month Training Programme"
                   disabled={registering}
                   className="w-full rounded-xl border border-[var(--st-border)] px-4 py-3.5 text-[11px] outline-none transition focus:border-[var(--st-red)] disabled:opacity-60"
                 />
+
               </div>
 
               <div>
+
                 <label className="mb-2 block text-[9px] font-bold uppercase tracking-[0.08em] text-[var(--st-charcoal)]">
-                  Planned start date *
+                  {isBookingMode
+                    ? "Learning start date *"
+                    : "Planned start date *"}
                 </label>
 
                 <div className="relative">
@@ -381,7 +577,9 @@ export default function RegistrationModal({
                     type="date"
                     value={plannedStartDate}
                     onChange={(event) =>
-                      setPlannedStartDate(event.target.value)
+                      setPlannedStartDate(
+                        event.target.value,
+                      )
                     }
                     disabled={registering}
                     className="w-full rounded-xl border border-[var(--st-border)] bg-white py-3.5 pl-10 pr-3 text-[11px] outline-none focus:border-[var(--st-red)] disabled:opacity-60"
@@ -390,10 +588,22 @@ export default function RegistrationModal({
                 </div>
 
                 <p className="mt-2 mb-0 text-[8px] leading-relaxed text-[var(--st-gray)]">
-                  This is the intended start date. The actual
-                  course clock begins only when the learner is
-                  marked BOOKED.
+
+                  {isBookingMode ? (
+                    <>
+                      This date becomes the learner's
+                      actual programme start date.
+                    </>
+                  ) : (
+                    <>
+                      This is the intended start date.
+                      The course clock remains paused until
+                      the learner is BOOKED.
+                    </>
+                  )}
+
                 </p>
+
               </div>
 
             </div>
@@ -407,25 +617,31 @@ export default function RegistrationModal({
           <div className="mt-7 border-t border-[var(--st-border)] pt-7">
 
             <div className="mb-4">
+
               <p className="st-eyebrow">
                 03 · PAYMENT
               </p>
 
               <h3 className="mt-1 text-[14px] font-bold text-[var(--st-charcoal-dark)]">
-                Registration payment
+                {isBookingMode
+                  ? "Learning payment"
+                  : "Registration payment"}
               </h3>
 
               <p className="mt-1 text-[9px] leading-relaxed text-[var(--st-gray)]">
-                The learner can start with any amount. The
-                remaining balance stays on the enrolment.
+                The learner can start with any amount.
+                The remaining balance stays on the
+                enrolment.
               </p>
+
             </div>
 
             <div className="space-y-4">
 
-              {/* COURSE FEE */}
+              {/* TOTAL FEE */}
 
               <div>
+
                 <label className="mb-2 block text-[9px] font-bold uppercase tracking-[0.08em] text-[var(--st-charcoal)]">
                   Total programme fee *
                 </label>
@@ -441,7 +657,9 @@ export default function RegistrationModal({
                     min="1"
                     value={totalFee}
                     onChange={(event) =>
-                      setTotalFee(event.target.value)
+                      setTotalFee(
+                        event.target.value,
+                      )
                     }
                     disabled={registering}
                     placeholder="26850"
@@ -449,6 +667,7 @@ export default function RegistrationModal({
                   />
 
                 </div>
+
               </div>
 
               {/* INITIAL PAYMENT */}
@@ -458,13 +677,15 @@ export default function RegistrationModal({
                 <div className="mb-3 flex items-center justify-between gap-3">
 
                   <div>
+
                     <p className="m-0 text-[9px] font-bold uppercase tracking-[0.06em] text-[var(--st-gray)]">
                       Initial payment *
                     </p>
 
                     <p className="mt-1 mb-0 text-[8px] text-[var(--st-gray)]">
-                      Amount received at registration
+                      Amount received now
                     </p>
+
                   </div>
 
                   <CreditCard
@@ -479,7 +700,9 @@ export default function RegistrationModal({
                   min="1"
                   value={initialPayment}
                   onChange={(event) =>
-                    setInitialPayment(event.target.value)
+                    setInitialPayment(
+                      event.target.value,
+                    )
                   }
                   disabled={registering}
                   placeholder="e.g. 5000"
@@ -491,6 +714,7 @@ export default function RegistrationModal({
               {/* PAYMENT METHOD */}
 
               <div>
+
                 <label className="mb-2 block text-[9px] font-bold uppercase tracking-[0.08em] text-[var(--st-charcoal)]">
                   Payment method *
                 </label>
@@ -499,23 +723,41 @@ export default function RegistrationModal({
                   value={paymentMethod}
                   onChange={(event) =>
                     setPaymentMethod(
-                      event.target.value as PaymentMethod,
+                      event.target
+                        .value as PaymentMethod,
                     )
                   }
                   disabled={registering}
                   className="w-full rounded-xl border border-[var(--st-border)] bg-white px-4 py-3.5 text-[11px] outline-none focus:border-[var(--st-red)] disabled:opacity-60"
                 >
-                  <option value="mpesa">M-Pesa</option>
-                  <option value="cash">Cash</option>
-                  <option value="bank">Bank</option>
-                  <option value="card">Card</option>
-                  <option value="other">Other</option>
+                  <option value="mpesa">
+                    M-Pesa
+                  </option>
+
+                  <option value="cash">
+                    Cash
+                  </option>
+
+                  <option value="bank">
+                    Bank
+                  </option>
+
+                  <option value="card">
+                    Card
+                  </option>
+
+                  <option value="other">
+                    Other
+                  </option>
+
                 </select>
+
               </div>
 
-              {/* REFERENCE */}
+              {/* PAYMENT REFERENCE */}
 
               <div>
+
                 <label className="mb-2 block text-[9px] font-bold uppercase tracking-[0.08em] text-[var(--st-charcoal)]">
                   Payment reference
                 </label>
@@ -524,12 +766,15 @@ export default function RegistrationModal({
                   type="text"
                   value={paymentReference}
                   onChange={(event) =>
-                    setPaymentReference(event.target.value)
+                    setPaymentReference(
+                      event.target.value,
+                    )
                   }
                   disabled={registering}
                   placeholder="e.g. M-Pesa transaction code"
                   className="w-full rounded-xl border border-[var(--st-border)] px-4 py-3.5 text-[11px] outline-none focus:border-[var(--st-red)] disabled:opacity-60"
                 />
+
               </div>
 
               {/* BALANCE */}
@@ -539,17 +784,21 @@ export default function RegistrationModal({
                 <div className="flex items-center justify-between gap-4">
 
                   <div>
+
                     <p className="m-0 text-[9px] font-bold uppercase tracking-[0.06em] text-[var(--st-gray)]">
-                      Balance after registration
+                      Balance after payment
                     </p>
 
                     <p className="mt-1 mb-0 text-[8px] text-[var(--st-gray)]">
-                      Amount remaining on the programme
+                      Amount remaining on programme
                     </p>
+
                   </div>
 
                   <p className="m-0 text-[16px] font-bold text-[var(--st-charcoal-dark)]">
-                    {formatCurrency(remainingBalance)}
+                    {formatCurrency(
+                      remainingBalance,
+                    )}
                   </p>
 
                 </div>
@@ -567,31 +816,40 @@ export default function RegistrationModal({
           <div className="mt-7 border-t border-[var(--st-border)] pt-7">
 
             <div className="mb-4">
+
               <p className="st-eyebrow">
                 04 · NOTES
               </p>
 
               <h3 className="mt-1 text-[14px] font-bold text-[var(--st-charcoal-dark)]">
-                Registration notes
+                {isBookingMode
+                  ? "Learning notes"
+                  : "Registration notes"}
               </h3>
+
             </div>
 
             <textarea
               value={notes}
               onChange={(event) =>
-                setNotes(event.target.value)
+                setNotes(
+                  event.target.value,
+                )
               }
               disabled={registering}
               rows={4}
-              placeholder="Optional notes about the registration..."
+              placeholder="Optional notes..."
               className="w-full resize-none rounded-xl border border-[var(--st-border)] px-4 py-3 text-[11px] outline-none focus:border-[var(--st-red)] disabled:opacity-60"
             />
 
           </div>
 
-          {/* ERROR */}
+          {/* =====================================================
+              ERROR
+          ===================================================== */}
 
-          {(validationError || error) && (
+          {(validationError ||
+            error) && (
             <div className="mt-5 flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 p-3">
 
               <AlertCircle
@@ -600,13 +858,16 @@ export default function RegistrationModal({
               />
 
               <p className="m-0 text-[9px] leading-relaxed text-red-700">
-                {validationError || error}
+                {validationError ||
+                  error}
               </p>
 
             </div>
           )}
 
-          {/* FOOTER */}
+          {/* =====================================================
+              FOOTER
+          ===================================================== */}
 
           <div className="mt-7 flex flex-col-reverse gap-2 border-t border-[var(--st-border)] pt-5 sm:flex-row sm:justify-end">
 
@@ -623,14 +884,36 @@ export default function RegistrationModal({
               type="button"
               onClick={handleSubmit}
               disabled={registering}
-              className="w-full rounded-xl bg-[var(--st-charcoal-dark)] px-5 py-3.5 text-[10px] font-bold uppercase tracking-[0.08em] text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
+              className={`flex w-full items-center justify-center gap-2 rounded-xl px-5 py-3.5 text-[10px] font-bold uppercase tracking-[0.08em] text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto ${
+                isBookingMode
+                  ? "bg-purple-700"
+                  : "bg-pink-700"
+              }`}
             >
-              {registering ? "Registering..." : "Register Learner"}
+
+              {registering ? (
+                <>
+                  <span className="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/40 border-t-white" />
+                  {submittingLabel}
+                </>
+              ) : (
+                <>
+                  {isBookingMode ? (
+                    <UserPlus size={14} />
+                  ) : (
+                    <UserCheck size={14} />
+                  )}
+
+                  {submitLabel}
+                </>
+              )}
+
             </button>
 
           </div>
 
         </div>
+
       </div>
     </div>
   );
