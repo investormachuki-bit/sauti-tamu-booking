@@ -7,11 +7,14 @@ import {
   Check,
   CheckCircle2,
   Clock3,
+  Edit3,
+  MessageSquare,
   Mail,
   MessageCircle,
   Phone,
   RefreshCw,
   Search,
+  Save,
   User,
   UserCheck,
   UserPlus,
@@ -120,6 +123,41 @@ type BookingRecord = {
   student: StudentSummary;
   enrollment: EnrollmentSummary;
 };
+
+type BookingCallLog = {
+  id: string;
+  booking_id: string;
+  lead_id: string;
+  called_at: string;
+  notes: string | null;
+  outcome: string | null;
+  created_at: string;
+};
+
+const CALL_OUTCOMES = [
+  { value: "called", label: "Call logged" },
+  { value: "no_answer", label: "No answer" },
+  { value: "interested", label: "Interested" },
+  { value: "wants_to_register", label: "Wants to register" },
+  { value: "wants_to_think", label: "Wants to think" },
+  { value: "call_back_later", label: "Call back later" },
+  { value: "not_interested", label: "Not interested" },
+  { value: "already_registered", label: "Already registered" },
+  { value: "wrong_number", label: "Wrong number" },
+  { value: "other", label: "Other" },
+];
+
+function callOutcomeLabel(outcome: string | null) {
+  if (!outcome) {
+    return "Not recorded";
+  }
+
+  return (
+    CALL_OUTCOMES.find(
+      (item) => item.value === outcome
+    )?.label ?? outcome
+  );
+}
 
 type FollowUpTaskType =
   | "post_trial_follow_up"
@@ -511,6 +549,21 @@ export default function AdminBookingsPage() {
   const [updatingId, setUpdatingId] =
     useState<string | null>(null);
 
+  const [callLogsByBooking, setCallLogsByBooking] =
+    useState<Record<string, BookingCallLog[]>>({});
+
+  const [editingCallId, setEditingCallId] =
+    useState<string | null>(null);
+
+  const [callNotesDraft, setCallNotesDraft] =
+    useState("");
+
+  const [callOutcomeDraft, setCallOutcomeDraft] =
+    useState("called");
+
+  const [savingCallId, setSavingCallId] =
+    useState<string | null>(null);
+
   /*
    * =========================================================
    * REGISTRATION MODAL
@@ -601,6 +654,7 @@ export default function AdminBookingsPage() {
 
       if (bookings.length === 0) {
         setRecords([]);
+        setCallLogsByBooking({});
         return;
       }
 
@@ -622,9 +676,14 @@ export default function AdminBookingsPage() {
         )
       );
 
+      const bookingIds = bookings.map(
+        (booking) => booking.id
+      );
+
       const [
         leadsResult,
         slotsResult,
+        callLogsResult,
       ] = await Promise.all([
         supabase
           .from("leads")
@@ -650,6 +709,24 @@ export default function AdminBookingsPage() {
             `
           )
           .in("id", slotIds),
+
+        supabase
+          .from("booking_call_logs")
+          .select(
+            `
+              id,
+              booking_id,
+              lead_id,
+              called_at,
+              notes,
+              outcome,
+              created_at
+            `
+          )
+          .in("booking_id", bookingIds)
+          .order("called_at", {
+            ascending: false,
+          }),
       ]);
 
       if (leadsResult.error) {
@@ -659,6 +736,33 @@ export default function AdminBookingsPage() {
       if (slotsResult.error) {
         throw slotsResult.error;
       }
+
+      if (callLogsResult.error) {
+        throw callLogsResult.error;
+      }
+
+      const callLogs =
+        (callLogsResult.data ??
+          []) as BookingCallLog[];
+
+      const callLogsMap: Record<
+        string,
+        BookingCallLog[]
+      > = {};
+
+      callLogs.forEach((call) => {
+        if (!callLogsMap[call.booking_id]) {
+          callLogsMap[call.booking_id] = [];
+        }
+
+        callLogsMap[call.booking_id].push(
+          call
+        );
+      });
+
+      setCallLogsByBooking(
+        callLogsMap
+      );
 
       const leads =
         (leadsResult.data ??
@@ -1646,6 +1750,78 @@ export default function AdminBookingsPage() {
             )
           : "We couldn't log this call."
       );
+    }
+  }
+
+  function startEditingCall(
+    call: BookingCallLog
+  ) {
+    setEditingCallId(call.id);
+    setCallNotesDraft(
+      call.notes ===
+        "Call initiated from Booking page."
+        ? ""
+        : call.notes ?? ""
+    );
+    setCallOutcomeDraft(
+      call.outcome ?? "called"
+    );
+  }
+
+  function cancelEditingCall() {
+    setEditingCallId(null);
+    setCallNotesDraft("");
+    setCallOutcomeDraft("called");
+  }
+
+  async function saveCallResponse(
+    callId: string
+  ) {
+    setSavingCallId(callId);
+    setError("");
+
+    try {
+      const {
+        error: rpcError,
+      } = await supabase.rpc(
+        "update_booking_call_log",
+        {
+          p_call_id: callId,
+          p_notes:
+            callNotesDraft.trim() ||
+            null,
+          p_outcome:
+            callOutcomeDraft || null,
+        }
+      );
+
+      if (rpcError) {
+        throw rpcError;
+      }
+
+      cancelEditingCall();
+      await loadBookings(true);
+    } catch (err) {
+      console.error(
+        "Call response save error:",
+        err
+      );
+
+      setError(
+        err &&
+          typeof err === "object" &&
+          "message" in err
+          ? String(
+              (
+                err as {
+                  message: string;
+                }
+              ).message
+            )
+          : "We couldn't save the call response."
+      );
+    } finally {
+      setSavingCallId(null);
     }
   }
 
@@ -3250,44 +3426,269 @@ export default function AdminBookingsPage() {
 
               {/* CALL HISTORY */}
 
-              {selectedBooking.booking
-                .called_at && (
-                <div className="mt-6 rounded-xl border border-green-200 bg-green-50 p-4">
+              <div className="mt-6">
 
-                  <div className="flex items-center gap-2">
+                <div className="mb-3 flex items-center justify-between gap-3">
 
-                    <Phone
-                      size={14}
-                      className="text-green-700"
-                    />
-
-                    <p className="m-0 text-[9px] font-bold uppercase tracking-[0.08em] text-green-700">
-                      LAST CALL
+                  <div>
+                    <p className="m-0 text-[9px] font-bold uppercase tracking-[0.1em] text-[var(--st-gray)]">
+                      CALL HISTORY
                     </p>
 
+                    <p className="mt-1 mb-0 text-[9px] text-[var(--st-gray)]">
+                      Record what the lead said after every call.
+                    </p>
                   </div>
 
-                  <p className="mt-2 mb-0 text-[10px] text-green-800">
-                    {formatDate(
-                      selectedBooking
-                        .booking
-                        .called_at
-                    )}{" "}
-                    at{" "}
-                    {formatTime(
-                      selectedBooking
-                        .booking
-                        .called_at
-                    )}
-                  </p>
-
-                  <p className="mt-1 mb-0 text-[8px] text-green-700">
-                    Call history is preserved
-                    in the system.
-                  </p>
+                  <MessageSquare
+                    size={16}
+                    className="shrink-0 text-[var(--st-red)]"
+                  />
 
                 </div>
-              )}
+
+                {(callLogsByBooking[
+                  selectedBooking.booking.id
+                ] ?? []).length === 0 ? (
+                  <div className="rounded-2xl border border-dashed border-[var(--st-border)] bg-[var(--st-bg-soft)] p-4">
+                    <p className="m-0 text-[9px] text-[var(--st-gray)]">
+                      No calls have been recorded for this booking yet.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+
+                    {(callLogsByBooking[
+                      selectedBooking.booking.id
+                    ] ?? []).map((call, index) => {
+
+                      const isEditing =
+                        editingCallId ===
+                        call.id;
+
+                      const displayNotes =
+                        call.notes ===
+                          "Call initiated from Booking page."
+                          ? ""
+                          : call.notes;
+
+                      return (
+                        <div
+                          key={call.id}
+                          className="rounded-2xl border border-[var(--st-border)] bg-white p-4"
+                        >
+
+                          <div className="flex items-start justify-between gap-3">
+
+                            <div className="min-w-0">
+
+                              <div className="flex flex-wrap items-center gap-2">
+
+                                <span className="inline-flex items-center gap-1.5 rounded-full bg-green-50 px-2.5 py-1 text-[8px] font-bold text-green-700">
+                                  <Phone size={10} />
+                                  CALL {index + 1}
+                                </span>
+
+                                <span className="text-[9px] font-semibold text-[var(--st-charcoal-dark)]">
+                                  {formatDate(
+                                    call.called_at
+                                  )}{" "}
+                                  at{" "}
+                                  {formatTime(
+                                    call.called_at
+                                  )}
+                                </span>
+
+                              </div>
+
+                              {!isEditing && (
+                                <p className="mt-2 mb-0 text-[9px] font-semibold text-[var(--st-gray)]">
+                                  {callOutcomeLabel(
+                                    call.outcome
+                                  )}
+                                </p>
+                              )}
+
+                            </div>
+
+                            {!isEditing && (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  startEditingCall(
+                                    call
+                                  )
+                                }
+                                className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-[var(--st-border)] px-2.5 py-2 text-[8px] font-bold text-[var(--st-charcoal-dark)] transition hover:bg-[var(--st-bg-soft)]"
+                              >
+                                {displayNotes ? (
+                                  <Edit3 size={11} />
+                                ) : (
+                                  <MessageSquare
+                                    size={11}
+                                  />
+                                )}
+
+                                {displayNotes
+                                  ? "Edit response"
+                                  : "Record response"}
+                              </button>
+                            )}
+
+                          </div>
+
+                          {isEditing ? (
+                            <div className="mt-4 space-y-3">
+
+                              <div>
+                                <label
+                                  htmlFor={`call-outcome-${call.id}`}
+                                  className="mb-1.5 block text-[8px] font-bold uppercase tracking-[0.08em] text-[var(--st-gray)]"
+                                >
+                                  Call outcome
+                                </label>
+
+                                <select
+                                  id={`call-outcome-${call.id}`}
+                                  value={
+                                    callOutcomeDraft
+                                  }
+                                  onChange={(
+                                    event
+                                  ) =>
+                                    setCallOutcomeDraft(
+                                      event.target.value
+                                    )
+                                  }
+                                  className="w-full rounded-xl border border-[var(--st-border)] bg-white px-3 py-3 text-[10px] font-semibold text-[var(--st-charcoal-dark)] outline-none focus:border-[var(--st-red)] focus:ring-2 focus:ring-[var(--st-red)]/10"
+                                >
+                                  {CALL_OUTCOMES.map(
+                                    (option) => (
+                                      <option
+                                        key={
+                                          option.value
+                                        }
+                                        value={
+                                          option.value
+                                        }
+                                      >
+                                        {option.label}
+                                      </option>
+                                    )
+                                  )}
+                                </select>
+                              </div>
+
+                              <div>
+                                <label
+                                  htmlFor={`call-notes-${call.id}`}
+                                  className="mb-1.5 block text-[8px] font-bold uppercase tracking-[0.08em] text-[var(--st-gray)]"
+                                >
+                                  What did the lead say?
+                                </label>
+
+                                <textarea
+                                  id={`call-notes-${call.id}`}
+                                  value={
+                                    callNotesDraft
+                                  }
+                                  onChange={(
+                                    event
+                                  ) =>
+                                    setCallNotesDraft(
+                                      event.target.value
+                                    )
+                                  }
+                                  rows={5}
+                                  placeholder="Record the lead's response, questions, objections, interest, requested callback time, or any other important information..."
+                                  className="w-full resize-y rounded-xl border border-[var(--st-border)] bg-white px-3 py-3 text-[10px] leading-relaxed text-[var(--st-charcoal-dark)] outline-none placeholder:text-gray-400 focus:border-[var(--st-red)] focus:ring-2 focus:ring-[var(--st-red)]/10"
+                                />
+                              </div>
+
+                              <div className="flex gap-2">
+
+                                <button
+                                  type="button"
+                                  disabled={
+                                    savingCallId ===
+                                    call.id
+                                  }
+                                  onClick={() =>
+                                    saveCallResponse(
+                                      call.id
+                                    )
+                                  }
+                                  className="inline-flex min-h-[42px] flex-1 items-center justify-center gap-2 rounded-xl bg-[var(--st-red)] px-3 py-3 text-[9px] font-bold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+                                >
+                                  {savingCallId ===
+                                  call.id ? (
+                                    <RefreshCw
+                                      size={13}
+                                      className="animate-spin"
+                                    />
+                                  ) : (
+                                    <Save
+                                      size={13}
+                                    />
+                                  )}
+
+                                  Save response
+                                </button>
+
+                                <button
+                                  type="button"
+                                  disabled={
+                                    savingCallId ===
+                                    call.id
+                                  }
+                                  onClick={
+                                    cancelEditingCall
+                                  }
+                                  className="inline-flex min-h-[42px] items-center justify-center gap-2 rounded-xl border border-[var(--st-border)] px-3 py-3 text-[9px] font-bold text-[var(--st-gray)] transition hover:bg-[var(--st-bg-soft)] disabled:opacity-50"
+                                >
+                                  <X size={13} />
+                                  Cancel
+                                </button>
+
+                              </div>
+
+                            </div>
+                          ) : (
+                            <div className="mt-3 rounded-xl bg-[var(--st-bg-soft)] p-3">
+
+                              <div className="flex items-start gap-2">
+
+                                <MessageSquare
+                                  size={12}
+                                  className="mt-0.5 shrink-0 text-[var(--st-red)]"
+                                />
+
+                                <div className="min-w-0">
+
+                                  <p className="m-0 text-[8px] font-bold uppercase tracking-[0.08em] text-[var(--st-gray)]">
+                                    Lead response
+                                  </p>
+
+                                  <p className="mt-1 mb-0 whitespace-pre-wrap text-[10px] leading-relaxed text-[var(--st-charcoal-dark)]">
+                                    {displayNotes ||
+                                      "No response recorded yet."}
+                                  </p>
+
+                                </div>
+
+                              </div>
+
+                            </div>
+                          )}
+
+                        </div>
+                      );
+                    })}
+
+                  </div>
+                )}
+
+              </div>
 
               {/* EMAIL & REMINDERS */}
 
