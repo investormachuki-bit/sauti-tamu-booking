@@ -29,6 +29,12 @@ import RegistrationModal, {
 
 import { supabase } from "@/lib/supabase";
 
+/*
+ * =========================================================
+ * TYPES
+ * =========================================================
+ */
+
 type BookingStatus =
   | "confirmed"
   | "completed"
@@ -38,6 +44,17 @@ type BookingStatus =
 type Instrument =
   | "piano"
   | "guitar";
+
+type BookingFilter =
+  | "today"
+  | "tomorrow"
+  | "all"
+  | "confirmed"
+  | "completed"
+  | "booked"
+  | "registered"
+  | "cancelled"
+  | "no_show";
 
 type Booking = {
   id: string;
@@ -71,16 +88,6 @@ type LessonSlot = {
   is_available: boolean;
 };
 
-type BookingRecord = {
-  booking: Booking;
-  lead: Lead | null;
-  slot: LessonSlot | null;
-};
-
-type FollowUpTaskType =
-  | "post_trial_follow_up"
-  | "trial_reschedule_follow_up";
-
 type EnrollmentStatus =
   | "registered"
   | "active"
@@ -88,7 +95,110 @@ type EnrollmentStatus =
   | "inactive"
   | "completed";
 
+type StudentSummary = {
+  id: string;
+  lead_id: string;
+  status: string;
+} | null;
+
+type EnrollmentSummary = {
+  id: string;
+  student_id: string;
+  instrument: Instrument;
+  programme_name: string;
+  status: EnrollmentStatus;
+  planned_start_date: string | null;
+  actual_start_date: string | null;
+  total_fee: number | null;
+  created_at: string;
+} | null;
+
+type BookingRecord = {
+  booking: Booking;
+  lead: Lead | null;
+  slot: LessonSlot | null;
+  student: StudentSummary;
+  enrollment: EnrollmentSummary;
+};
+
+type FollowUpTaskType =
+  | "post_trial_follow_up"
+  | "trial_reschedule_follow_up";
+
 const NAIROBI_TIME_ZONE = "Africa/Nairobi";
+
+/*
+ * =========================================================
+ * FILTER CONFIG
+ * =========================================================
+ */
+
+const FILTER_LABELS: Record<
+  BookingFilter,
+  string
+> = {
+  today: "TODAY",
+  tomorrow: "TOMORROW",
+  all: "ALL",
+  confirmed: "CONFIRMED",
+  completed: "ATTENDED",
+  booked: "BOOKED",
+  registered: "REGISTERED",
+  cancelled: "CANCELLED",
+  no_show: "MISSED",
+};
+
+const FILTER_BUTTONS: Array<{
+  key: BookingFilter;
+  label: string;
+  color: string;
+}> = [
+  {
+    key: "today",
+    label: "Today",
+    color: "bg-blue-600 text-white",
+  },
+  {
+    key: "tomorrow",
+    label: "Tomorrow",
+    color: "bg-violet-600 text-white",
+  },
+  {
+    key: "all",
+    label: "All",
+    color: "bg-slate-900 text-white",
+  },
+  {
+    key: "confirmed",
+    label: "Confirmed",
+    color: "bg-emerald-500 text-white",
+  },
+  {
+    key: "completed",
+    label: "Attended",
+    color: "bg-cyan-600 text-white",
+  },
+  {
+    key: "booked",
+    label: "Booked",
+    color: "bg-orange-500 text-white",
+  },
+  {
+    key: "registered",
+    label: "Registered",
+    color: "bg-amber-500 text-white",
+  },
+  {
+    key: "cancelled",
+    label: "Cancelled",
+    color: "bg-red-600 text-white",
+  },
+  {
+    key: "no_show",
+    label: "Missed",
+    color: "bg-fuchsia-600 text-white",
+  },
+];
 
 /*
  * =========================================================
@@ -105,70 +215,111 @@ function getNairobiDateKey(date: Date) {
   }).format(date);
 }
 
-function getNairobiStartOfToday() {
-  const today = getNairobiDateKey(new Date());
+function getNairobiDateKeyOffset(days: number) {
+  const todayKey = getNairobiDateKey(
+    new Date()
+  );
 
-  return new Date(`${today}T00:00:00+03:00`);
+  const base = new Date(
+    `${todayKey}T12:00:00+03:00`
+  );
+
+  base.setDate(
+    base.getDate() + days
+  );
+
+  return getNairobiDateKey(base);
+}
+
+function getNairobiStartOfToday() {
+  const today = getNairobiDateKey(
+    new Date()
+  );
+
+  return new Date(
+    `${today}T00:00:00+03:00`
+  );
 }
 
 function getNairobiEndOfToday() {
-  const today = getNairobiDateKey(new Date());
+  const today = getNairobiDateKey(
+    new Date()
+  );
 
   const date = new Date(
     `${today}T00:00:00+03:00`
   );
 
-  date.setDate(date.getDate() + 1);
+  date.setDate(
+    date.getDate() + 1
+  );
 
   return date;
 }
 
 function formatDate(dateString: string) {
-  return new Intl.DateTimeFormat("en-KE", {
-    timeZone: NAIROBI_TIME_ZONE,
-    weekday: "short",
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  }).format(new Date(dateString));
+  return new Intl.DateTimeFormat(
+    "en-KE",
+    {
+      timeZone: NAIROBI_TIME_ZONE,
+      weekday: "short",
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+    }
+  ).format(new Date(dateString));
 }
 
-function formatLongDate(dateString: string) {
-  return new Intl.DateTimeFormat("en-KE", {
-    timeZone: NAIROBI_TIME_ZONE,
-    weekday: "long",
-    day: "numeric",
-    month: "long",
-    year: "numeric",
-  }).format(new Date(dateString));
+function formatLongDate(
+  dateString: string
+) {
+  return new Intl.DateTimeFormat(
+    "en-KE",
+    {
+      timeZone: NAIROBI_TIME_ZONE,
+      weekday: "long",
+      day: "numeric",
+      month: "long",
+      year: "numeric",
+    }
+  ).format(new Date(dateString));
 }
 
 function formatTime(dateString: string) {
-  return new Intl.DateTimeFormat("en-KE", {
-    timeZone: NAIROBI_TIME_ZONE,
-    hour: "numeric",
-    minute: "2-digit",
-  }).format(new Date(dateString));
+  return new Intl.DateTimeFormat(
+    "en-KE",
+    {
+      timeZone: NAIROBI_TIME_ZONE,
+      hour: "numeric",
+      minute: "2-digit",
+    }
+  ).format(new Date(dateString));
 }
 
 function formatTimeRange(
   startsAt: string,
   endsAt: string
 ) {
-  return `${formatTime(startsAt)} – ${formatTime(endsAt)}`;
+  return `${formatTime(
+    startsAt
+  )} – ${formatTime(endsAt)}`;
 }
 
 function initials(name: string) {
   return name
     .trim()
     .split(/\s+/)
-    .map((word) => word[0])
+    .map(
+      (word) => word[0]
+    )
     .join("")
     .slice(0, 2)
     .toUpperCase();
 }
 
-function instrumentLabel(instrument: Instrument) {
+function instrumentLabel(
+  instrument: Instrument
+) {
   return (
     instrument.charAt(0).toUpperCase() +
     instrument.slice(1)
@@ -177,11 +328,13 @@ function instrumentLabel(instrument: Instrument) {
 
 /*
  * =========================================================
- * STATUS HELPERS
+ * BOOKING STATUS HELPERS
  * =========================================================
  */
 
-function prettyStatus(status: BookingStatus) {
+function prettyStatus(
+  status: BookingStatus
+) {
   switch (status) {
     case "confirmed":
       return "Confirmed";
@@ -200,7 +353,9 @@ function prettyStatus(status: BookingStatus) {
   }
 }
 
-function statusClasses(status: BookingStatus) {
+function statusClasses(
+  status: BookingStatus
+) {
   switch (status) {
     case "confirmed":
       return "bg-green-50 text-green-700";
@@ -219,7 +374,9 @@ function statusClasses(status: BookingStatus) {
   }
 }
 
-function statusIcon(status: BookingStatus) {
+function statusIcon(
+  status: BookingStatus
+) {
   switch (status) {
     case "confirmed":
       return <CheckCircle2 size={12} />;
@@ -235,6 +392,89 @@ function statusIcon(status: BookingStatus) {
 
     default:
       return null;
+  }
+}
+
+/*
+ * =========================================================
+ * ENROLLMENT HELPERS
+ * =========================================================
+ */
+
+function enrollmentLabel(
+  enrollment: EnrollmentSummary
+) {
+  if (!enrollment) {
+    return "Not enrolled";
+  }
+
+  switch (enrollment.status) {
+    case "active":
+      return "Booked";
+
+    case "registered":
+      return "Registered";
+
+    case "paused":
+      return "Paused";
+
+    case "completed":
+      return "Completed";
+
+    case "inactive":
+      return "Inactive";
+
+    default:
+      return enrollment.status;
+  }
+}
+
+function enrollmentClasses(
+  enrollment: EnrollmentSummary
+) {
+  if (!enrollment) {
+    return "bg-gray-50 text-gray-600";
+  }
+
+  switch (enrollment.status) {
+    case "active":
+      return "bg-orange-50 text-orange-700";
+
+    case "registered":
+      return "bg-amber-50 text-amber-700";
+
+    case "paused":
+      return "bg-purple-50 text-purple-700";
+
+    case "completed":
+      return "bg-blue-50 text-blue-700";
+
+    default:
+      return "bg-gray-50 text-gray-600";
+  }
+}
+
+function enrollmentPriority(
+  status: EnrollmentStatus
+) {
+  switch (status) {
+    case "active":
+      return 0;
+
+    case "registered":
+      return 1;
+
+    case "paused":
+      return 2;
+
+    case "inactive":
+      return 3;
+
+    case "completed":
+      return 4;
+
+    default:
+      return 99;
   }
 }
 
@@ -263,13 +503,7 @@ export default function AdminBookingsPage() {
     useState("");
 
   const [filter, setFilter] =
-    useState<
-      | "all"
-      | "confirmed"
-      | "completed"
-      | "cancelled"
-      | "no_show"
-    >("all");
+    useState<BookingFilter>("all");
 
   const [selectedBooking, setSelectedBooking] =
     useState<BookingRecord | null>(null);
@@ -283,20 +517,34 @@ export default function AdminBookingsPage() {
    * =========================================================
    */
 
-  const [registrationModalOpen, setRegistrationModalOpen] =
-    useState(false);
+  const [
+    registrationModalOpen,
+    setRegistrationModalOpen,
+  ] = useState(false);
 
-  const [registrationModalMode, setRegistrationModalMode] =
-    useState<RegistrationModalMode>("register");
+  const [
+    registrationModalMode,
+    setRegistrationModalMode,
+  ] =
+    useState<RegistrationModalMode>(
+      "register"
+    );
 
-  const [registrationBooking, setRegistrationBooking] =
-    useState<BookingRecord | null>(null);
+  const [
+    registrationBooking,
+    setRegistrationBooking,
+  ] =
+    useState<BookingRecord | null>(
+      null
+    );
 
   const [registering, setRegistering] =
     useState(false);
 
-  const [registrationError, setRegistrationError] =
-    useState("");
+  const [
+    registrationError,
+    setRegistrationError,
+  ] = useState("");
 
   /*
    * =========================================================
@@ -304,7 +552,9 @@ export default function AdminBookingsPage() {
    * =========================================================
    */
 
-  async function loadBookings(silent = false) {
+  async function loadBookings(
+    silent = false
+  ) {
     if (silent) {
       setRefreshing(true);
     } else {
@@ -313,167 +563,398 @@ export default function AdminBookingsPage() {
 
     setError("");
 
-    const {
-      data: bookingData,
-      error: bookingError,
-    } = await supabase
-      .from("bookings")
-      .select(
-        `
-          id,
-          lead_id,
-          slot_id,
-          instrument,
-          status,
-          confirmation_sent_at,
-          reminder_24h_sent_at,
-          reminder_2h_sent_at,
-          attended_at,
-          completed_at,
-          cancelled_at,
-          called_at,
-          created_at,
-          updated_at
-        `
-      )
-      .order("created_at", {
-        ascending: false,
+    try {
+      const {
+        data: bookingData,
+        error: bookingError,
+      } = await supabase
+        .from("bookings")
+        .select(
+          `
+            id,
+            lead_id,
+            slot_id,
+            instrument,
+            status,
+            confirmation_sent_at,
+            reminder_24h_sent_at,
+            reminder_2h_sent_at,
+            attended_at,
+            completed_at,
+            cancelled_at,
+            called_at,
+            created_at,
+            updated_at
+          `
+        )
+        .order("created_at", {
+          ascending: false,
+        });
+
+      if (bookingError) {
+        throw bookingError;
+      }
+
+      const bookings =
+        (bookingData ??
+          []) as Booking[];
+
+      if (bookings.length === 0) {
+        setRecords([]);
+        return;
+      }
+
+      const leadIds = Array.from(
+        new Set(
+          bookings.map(
+            (booking) =>
+              booking.lead_id
+          )
+        )
+      );
+
+      const slotIds = Array.from(
+        new Set(
+          bookings.map(
+            (booking) =>
+              booking.slot_id
+          )
+        )
+      );
+
+      const [
+        leadsResult,
+        slotsResult,
+      ] = await Promise.all([
+        supabase
+          .from("leads")
+          .select(
+            `
+              id,
+              full_name,
+              email,
+              whatsapp_number
+            `
+          )
+          .in("id", leadIds),
+
+        supabase
+          .from("lesson_slots")
+          .select(
+            `
+              id,
+              starts_at,
+              ends_at,
+              instrument,
+              is_available
+            `
+          )
+          .in("id", slotIds),
+      ]);
+
+      if (leadsResult.error) {
+        throw leadsResult.error;
+      }
+
+      if (slotsResult.error) {
+        throw slotsResult.error;
+      }
+
+      const leads =
+        (leadsResult.data ??
+          []) as Lead[];
+
+      const slots =
+        (slotsResult.data ??
+          []) as LessonSlot[];
+
+      const leadMap =
+        new Map<string, Lead>();
+
+      leads.forEach((lead) => {
+        leadMap.set(
+          lead.id,
+          lead
+        );
       });
 
-    if (bookingError) {
+      const slotMap =
+        new Map<
+          string,
+          LessonSlot
+        >();
+
+      slots.forEach((slot) => {
+        slotMap.set(
+          slot.id,
+          slot
+        );
+      });
+
+      /*
+       * -------------------------------------------------------
+       * STUDENTS
+       * -------------------------------------------------------
+       */
+
+      const [
+        studentsResult,
+      ] = await Promise.all([
+        leadIds.length > 0
+          ? supabase
+              .from("students")
+              .select(
+                `
+                  id,
+                  lead_id,
+                  status
+                `
+              )
+              .in(
+                "lead_id",
+                leadIds
+              )
+          : Promise.resolve({
+              data: [],
+              error: null,
+            }),
+      ]);
+
+      if (studentsResult.error) {
+        throw studentsResult.error;
+      }
+
+      const students =
+        (studentsResult.data ??
+          []) as Array<{
+          id: string;
+          lead_id: string;
+          status: string;
+        }>;
+
+      const studentMap =
+        new Map<
+          string,
+          StudentSummary
+        >();
+
+      students.forEach(
+        (student) => {
+          studentMap.set(
+            student.lead_id,
+            {
+              id: student.id,
+              lead_id:
+                student.lead_id,
+              status:
+                student.status,
+            }
+          );
+        }
+      );
+
+      /*
+       * -------------------------------------------------------
+       * ENROLLMENTS
+       * -------------------------------------------------------
+       *
+       * We deliberately load all relevant enrollments in one
+       * query rather than doing an N+1 query for every booking.
+       *
+       * Active = BOOKED
+       * Registered = REGISTERED
+       */
+
+      const studentIds =
+        students.map(
+          (student) =>
+            student.id
+        );
+
+      const enrollmentsResult =
+        studentIds.length > 0
+          ? await supabase
+              .from(
+                "student_enrollments"
+              )
+              .select(
+                `
+                  id,
+                  student_id,
+                  instrument,
+                  programme_name,
+                  status,
+                  planned_start_date,
+                  actual_start_date,
+                  total_fee,
+                  created_at
+                `
+              )
+              .in(
+                "student_id",
+                studentIds
+              )
+          : {
+              data: [],
+              error: null,
+            };
+
+      if (enrollmentsResult.error) {
+        throw enrollmentsResult.error;
+      }
+
+      const enrollments =
+        (enrollmentsResult.data ??
+          []) as Array<{
+          id: string;
+          student_id: string;
+          instrument: Instrument;
+          programme_name: string;
+          status: EnrollmentStatus;
+          planned_start_date:
+            | string
+            | null;
+          actual_start_date:
+            | string
+            | null;
+          total_fee:
+            | number
+            | null;
+          created_at: string;
+        }>;
+
+      /*
+       * For each student + instrument, keep the enrollment
+       * representing the current lifecycle state.
+       *
+       * Priority:
+       * active -> registered -> paused -> inactive/completed
+       * then newest created_at.
+       */
+
+      const enrollmentMap =
+        new Map<
+          string,
+          EnrollmentSummary
+        >();
+
+      enrollments.forEach(
+        (enrollment) => {
+          const key = `${enrollment.student_id}:${enrollment.instrument}`;
+
+          const existing =
+            enrollmentMap.get(
+              key
+            );
+
+          if (!existing) {
+            enrollmentMap.set(
+              key,
+              enrollment
+            );
+            return;
+          }
+
+          const currentPriority =
+            enrollmentPriority(
+              enrollment.status
+            );
+
+          const existingPriority =
+            enrollmentPriority(
+              existing.status
+            );
+
+          if (
+            currentPriority <
+            existingPriority
+          ) {
+            enrollmentMap.set(
+              key,
+              enrollment
+            );
+            return;
+          }
+
+          if (
+            currentPriority ===
+              existingPriority &&
+            new Date(
+              enrollment.created_at
+            ).getTime() >
+              new Date(
+                existing.created_at
+              ).getTime()
+          ) {
+            enrollmentMap.set(
+              key,
+              enrollment
+            );
+          }
+        }
+      );
+
+      const loadedRecords =
+        bookings.map(
+          (booking) => {
+            const lead =
+              leadMap.get(
+                booking.lead_id
+              ) ?? null;
+
+            const student =
+              lead
+                ? studentMap.get(
+                    lead.id
+                  ) ?? null
+                : null;
+
+            const enrollment =
+              student
+                ? enrollmentMap.get(
+                    `${student.id}:${booking.instrument}`
+                  ) ?? null
+                : null;
+
+            return {
+              booking,
+              lead,
+              slot:
+                slotMap.get(
+                  booking.slot_id
+                ) ?? null,
+              student,
+              enrollment,
+            };
+          }
+        );
+
+      setRecords(
+        loadedRecords
+      );
+    } catch (err) {
       console.error(
         "Booking load error:",
-        bookingError
+        err
       );
 
       setError(
-        "We couldn't load bookings. Please try again."
+        err &&
+          typeof err === "object" &&
+          "message" in err
+          ? String(
+              (
+                err as {
+                  message: string;
+                }
+              ).message
+            )
+          : "We couldn't load bookings. Please try again."
       );
-
+    } finally {
       setLoading(false);
       setRefreshing(false);
-
-      return;
     }
-
-    const bookings =
-      (bookingData ?? []) as Booking[];
-
-    if (bookings.length === 0) {
-      setRecords([]);
-
-      setLoading(false);
-      setRefreshing(false);
-
-      return;
-    }
-
-    const leadIds = Array.from(
-      new Set(
-        bookings.map(
-          (booking) => booking.lead_id
-        )
-      )
-    );
-
-    const slotIds = Array.from(
-      new Set(
-        bookings.map(
-          (booking) => booking.slot_id
-        )
-      )
-    );
-
-    const [
-      leadsResult,
-      slotsResult,
-    ] = await Promise.all([
-      supabase
-        .from("leads")
-        .select(
-          `
-            id,
-            full_name,
-            email,
-            whatsapp_number
-          `
-        )
-        .in("id", leadIds),
-
-      supabase
-        .from("lesson_slots")
-        .select(
-          `
-            id,
-            starts_at,
-            ends_at,
-            instrument,
-            is_available
-          `
-        )
-        .in("id", slotIds),
-    ]);
-
-    if (leadsResult.error) {
-      console.error(
-        "Lead load error:",
-        leadsResult.error
-      );
-    }
-
-    if (slotsResult.error) {
-      console.error(
-        "Slot load error:",
-        slotsResult.error
-      );
-    }
-
-    const leads =
-      (leadsResult.data ?? []) as Lead[];
-
-    const slots =
-      (slotsResult.data ?? []) as LessonSlot[];
-
-    const leadMap = new Map<string, Lead>();
-
-    leads.forEach((lead) => {
-      leadMap.set(
-        lead.id,
-        lead
-      );
-    });
-
-    const slotMap = new Map<
-      string,
-      LessonSlot
-    >();
-
-    slots.forEach((slot) => {
-      slotMap.set(
-        slot.id,
-        slot
-      );
-    });
-
-    const loadedRecords =
-      bookings.map((booking) => ({
-        booking,
-        lead:
-          leadMap.get(
-            booking.lead_id
-          ) ?? null,
-        slot:
-          slotMap.get(
-            booking.slot_id
-          ) ?? null,
-      }));
-
-    setRecords(
-      loadedRecords
-    );
-
-    setLoading(false);
-    setRefreshing(false);
   }
 
   useEffect(() => {
@@ -493,6 +974,14 @@ export default function AdminBookingsPage() {
           .trim()
           .toLowerCase();
 
+      const todayKey =
+        getNairobiDateKey(
+          new Date()
+        );
+
+      const tomorrowKey =
+        getNairobiDateKeyOffset(1);
+
       return records.filter(
         (record) => {
           const booking =
@@ -504,12 +993,82 @@ export default function AdminBookingsPage() {
           const slot =
             record.slot;
 
-          if (
-            filter !== "all" &&
-            booking.status !== filter
-          ) {
-            return false;
+          const slotDateKey =
+            slot
+              ? getNairobiDateKey(
+                  new Date(
+                    slot.starts_at
+                  )
+                )
+              : null;
+
+          /*
+           * ---------------------------------------------------
+           * FILTER
+           * ---------------------------------------------------
+           */
+
+          switch (filter) {
+            case "today":
+              if (
+                slotDateKey !==
+                todayKey
+              ) {
+                return false;
+              }
+              break;
+
+            case "tomorrow":
+              if (
+                slotDateKey !==
+                tomorrowKey
+              ) {
+                return false;
+              }
+              break;
+
+            case "confirmed":
+            case "completed":
+            case "cancelled":
+            case "no_show":
+              if (
+                booking.status !==
+                filter
+              ) {
+                return false;
+              }
+              break;
+
+            case "booked":
+              if (
+                record.enrollment
+                  ?.status !==
+                "active"
+              ) {
+                return false;
+              }
+              break;
+
+            case "registered":
+              if (
+                record.enrollment
+                  ?.status !==
+                "registered"
+              ) {
+                return false;
+              }
+              break;
+
+            case "all":
+            default:
+              break;
           }
+
+          /*
+           * ---------------------------------------------------
+           * SEARCH
+           * ---------------------------------------------------
+           */
 
           if (!query) {
             return true;
@@ -518,9 +1077,20 @@ export default function AdminBookingsPage() {
           const searchable = [
             lead?.full_name ?? "",
             lead?.email ?? "",
-            lead?.whatsapp_number ?? "",
+            lead?.whatsapp_number ??
+              "",
             booking.instrument,
             booking.status,
+            prettyStatus(
+              booking.status
+            ),
+            record.enrollment
+              ? enrollmentLabel(
+                  record.enrollment
+                )
+              : "",
+            record.enrollment
+              ?.programme_name ?? "",
             slot
               ? formatDate(
                   slot.starts_at
@@ -561,21 +1131,25 @@ export default function AdminBookingsPage() {
       todayEnd.getTime();
 
     const todayTrials =
-      records.filter((record) => {
-        if (!record.slot) {
-          return false;
+      records.filter(
+        (record) => {
+          if (!record.slot) {
+            return false;
+          }
+
+          const time =
+            new Date(
+              record.slot.starts_at
+            ).getTime();
+
+          return (
+            time >=
+              todayStartMs &&
+            time <
+              todayEndMs
+          );
         }
-
-        const time =
-          new Date(
-            record.slot.starts_at
-          ).getTime();
-
-        return (
-          time >= todayStartMs &&
-          time < todayEndMs
-        );
-      }).length;
+      ).length;
 
     const confirmed =
       records.filter(
@@ -592,27 +1166,31 @@ export default function AdminBookingsPage() {
       ).length;
 
     const upcoming =
-      records.filter((record) => {
-        if (!record.slot) {
-          return false;
-        }
+      records.filter(
+        (record) => {
+          if (!record.slot) {
+            return false;
+          }
 
-        if (
-          record.booking.status ===
-            "cancelled" ||
-          record.booking.status ===
-            "no_show"
-        ) {
-          return false;
-        }
+          if (
+            record.booking
+              .status ===
+              "cancelled" ||
+            record.booking
+              .status ===
+              "no_show"
+          ) {
+            return false;
+          }
 
-        return (
-          new Date(
-            record.slot.starts_at
-          ).getTime() >
-          Date.now()
-        );
-      }).length;
+          return (
+            new Date(
+              record.slot.starts_at
+            ).getTime() >
+            Date.now()
+          );
+        }
+      ).length;
 
     return {
       todayTrials,
@@ -701,23 +1279,23 @@ export default function AdminBookingsPage() {
           )}`
         : "the scheduled trial lesson";
 
-    const {
-      error,
-    } = await supabase
-      .from("follow_up_tasks")
-      .insert({
-        lead_id: lead.id,
-        booking_id: booking.id,
-        task_type:
-          "post_trial_follow_up",
-        due_at: dueAt,
-        status: "pending",
-        channel: null,
-        message_template:
-          `Trial attended — follow up with ${lead.full_name} regarding registration after the ${booking.instrument} trial on ${lessonText}.`,
-        sent_at: null,
-        completed_at: null,
-      });
+    const { error } =
+      await supabase
+        .from("follow_up_tasks")
+        .insert({
+          lead_id: lead.id,
+          booking_id:
+            booking.id,
+          task_type:
+            "post_trial_follow_up",
+          due_at: dueAt,
+          status: "pending",
+          channel: null,
+          message_template:
+            `Trial attended — follow up with ${lead.full_name} regarding registration after the ${booking.instrument} trial on ${lessonText}.`,
+          sent_at: null,
+          completed_at: null,
+        });
 
     if (error) {
       throw error;
@@ -749,24 +1327,29 @@ export default function AdminBookingsPage() {
       return;
     }
 
-    const {
-      error,
-    } = await supabase
-      .from("follow_up_tasks")
-      .insert({
-        lead_id: lead.id,
-        booking_id: booking.id,
-        task_type:
-          "trial_reschedule_follow_up",
-        due_at:
-          new Date().toISOString(),
-        status: "pending",
-        channel: null,
-        message_template:
-          `${booking.status === "cancelled" ? "Cancelled trial" : "Missed trial"} — contact ${lead.full_name} to reschedule their ${booking.instrument} trial lesson.`,
-        sent_at: null,
-        completed_at: null,
-      });
+    const { error } =
+      await supabase
+        .from("follow_up_tasks")
+        .insert({
+          lead_id: lead.id,
+          booking_id:
+            booking.id,
+          task_type:
+            "trial_reschedule_follow_up",
+          due_at:
+            new Date().toISOString(),
+          status: "pending",
+          channel: null,
+          message_template:
+            `${
+              booking.status ===
+              "cancelled"
+                ? "Cancelled trial"
+                : "Missed trial"
+            } — contact ${lead.full_name} to reschedule their ${booking.instrument} trial lesson.`,
+          sent_at: null,
+          completed_at: null,
+        });
 
     if (error) {
       throw error;
@@ -776,9 +1359,6 @@ export default function AdminBookingsPage() {
   /*
    * =========================================================
    * MARK ATTENDED
-   *
-   * Booking becomes completed.
-   * Student is NOT automatically created.
    * =========================================================
    */
 
@@ -824,7 +1404,9 @@ export default function AdminBookingsPage() {
 
       await loadBookings(true);
 
-      setSelectedBooking(null);
+      setSelectedBooking(
+        null
+      );
     } catch (err) {
       console.error(
         "Attended action error:",
@@ -833,8 +1415,8 @@ export default function AdminBookingsPage() {
 
       setError(
         err &&
-        typeof err === "object" &&
-        "message" in err
+          typeof err === "object" &&
+          "message" in err
           ? String(
               (
                 err as {
@@ -851,7 +1433,7 @@ export default function AdminBookingsPage() {
 
   /*
    * =========================================================
-   * MISSED TRIAL
+   * MARK MISSED
    * =========================================================
    */
 
@@ -897,7 +1479,9 @@ export default function AdminBookingsPage() {
 
       await loadBookings(true);
 
-      setSelectedBooking(null);
+      setSelectedBooking(
+        null
+      );
     } catch (err) {
       console.error(
         "Missed trial action error:",
@@ -906,8 +1490,8 @@ export default function AdminBookingsPage() {
 
       setError(
         err &&
-        typeof err === "object" &&
-        "message" in err
+          typeof err === "object" &&
+          "message" in err
           ? String(
               (
                 err as {
@@ -924,7 +1508,7 @@ export default function AdminBookingsPage() {
 
   /*
    * =========================================================
-   * CANCELLED
+   * MARK CANCELLED
    * =========================================================
    */
 
@@ -970,7 +1554,9 @@ export default function AdminBookingsPage() {
 
       await loadBookings(true);
 
-      setSelectedBooking(null);
+      setSelectedBooking(
+        null
+      );
     } catch (err) {
       console.error(
         "Cancelled action error:",
@@ -979,8 +1565,8 @@ export default function AdminBookingsPage() {
 
       setError(
         err &&
-        typeof err === "object" &&
-        "message" in err
+          typeof err === "object" &&
+          "message" in err
           ? String(
               (
                 err as {
@@ -998,9 +1584,6 @@ export default function AdminBookingsPage() {
   /*
    * =========================================================
    * CALL
-   *
-   * CALL does NOT change booking status.
-   * Every call is permanently logged.
    * =========================================================
    */
 
@@ -1040,16 +1623,7 @@ export default function AdminBookingsPage() {
         throw rpcError;
       }
 
-      /*
-       * Refresh first so the latest called_at
-       * appears on the page.
-       */
-
       await loadBookings(true);
-
-      /*
-       * Open the device dialer.
-       */
 
       window.location.href =
         `tel:${phone}`;
@@ -1061,8 +1635,8 @@ export default function AdminBookingsPage() {
 
       setError(
         err &&
-        typeof err === "object" &&
-        "message" in err
+          typeof err === "object" &&
+          "message" in err
           ? String(
               (
                 err as {
@@ -1142,16 +1716,107 @@ export default function AdminBookingsPage() {
 
   /*
    * =========================================================
-   * OPEN REGISTRATION MODAL
+   * LIFECYCLE ACTION RULES
+   * =========================================================
    *
-   * REGISTERED = learner has registered but
-   * course clock has NOT started.
+   * CONFIRMED
+   *   -> BOOKED
+   *   -> ATTENDED
+   *   -> MISSED
+   *   -> CANCELLED
+   *
+   * ATTENDED
+   *   -> BOOKED
+   *   -> REGISTERED
+   *
+   * REGISTERED
+   *   -> BOOKED
+   *
+   * ACTIVE enrollment
+   *   -> already BOOKED; no duplicate BOOKED
+   *
+   * Backend RPCs remain authoritative.
+   */
+
+  function getLifecycleActions(
+    record: BookingRecord
+  ) {
+    const status =
+      record.booking.status;
+
+    const enrollment =
+      record.enrollment;
+
+    const isConfirmed =
+      status === "confirmed";
+
+    const isCompleted =
+      status === "completed";
+
+    const isBooked =
+      enrollment?.status ===
+      "active";
+
+    const isRegistered =
+      enrollment?.status ===
+      "registered";
+
+    const isPaused =
+      enrollment?.status ===
+      "paused";
+
+    const canBook =
+      !isBooked &&
+      (
+        isConfirmed ||
+        isCompleted ||
+        isRegistered ||
+        isPaused
+      );
+
+    const canRegister =
+      isCompleted &&
+      !isBooked &&
+      !isRegistered;
+
+    return {
+      isConfirmed,
+      isCompleted,
+      isBooked,
+      isRegistered,
+      isPaused,
+      canBook,
+      canRegister,
+      canCall:
+        isConfirmed ||
+        isCompleted,
+      canAttend:
+        isConfirmed,
+      canMiss:
+        isConfirmed,
+      canCancel:
+        isConfirmed,
+    };
+  }
+
+  /*
+   * =========================================================
+   * OPEN REGISTRATION MODAL
    * =========================================================
    */
 
   function openRegistration(
     record: BookingRecord
   ) {
+    const actions =
+      getLifecycleActions(
+        record
+      );
+
+    if (!actions.canRegister) {
+      return;
+    }
+
     setRegistrationError("");
 
     setRegistrationBooking(
@@ -1166,25 +1831,29 @@ export default function AdminBookingsPage() {
       true
     );
 
-    setSelectedBooking(null);
+    setSelectedBooking(
+      null
+    );
   }
 
   /*
    * =========================================================
    * OPEN BOOKED MODAL
-   *
-   * BOOKED = learner has started learning.
-   *
-   * This supports:
-   * 1. Direct confirmed trial -> BOOKED
-   * 2. Completed trial -> BOOKED
-   * 3. Existing registered/paused enrollment -> BOOKED
    * =========================================================
    */
 
   function openBooked(
     record: BookingRecord
   ) {
+    const actions =
+      getLifecycleActions(
+        record
+      );
+
+    if (!actions.canBook) {
+      return;
+    }
+
     setRegistrationError("");
 
     setRegistrationBooking(
@@ -1199,14 +1868,14 @@ export default function AdminBookingsPage() {
       true
     );
 
-    setSelectedBooking(null);
+    setSelectedBooking(
+      null
+    );
   }
 
   /*
    * =========================================================
-   * REGISTRATION SUBMIT
-   *
-   * Used only by RegistrationModal mode="register".
+   * REGISTER LEARNER
    * =========================================================
    */
 
@@ -1219,6 +1888,17 @@ export default function AdminBookingsPage() {
     if (!record) {
       throw new Error(
         "No booking selected."
+      );
+    }
+
+    const actions =
+      getLifecycleActions(
+        record
+      );
+
+    if (!actions.canRegister) {
+      throw new Error(
+        "This booking is no longer eligible for registration."
       );
     }
 
@@ -1273,20 +1953,6 @@ export default function AdminBookingsPage() {
         data
       );
 
-      /*
-       * Registration succeeded.
-       *
-       * The database function handles:
-       * - student creation/reuse
-       * - registered enrollment
-       * - initial payment
-       * - registration receipt event
-       * - payment receipt event
-       * - lead status
-       *
-       * Course clock remains unstarted.
-       */
-
       setRegistrationModalOpen(
         false
       );
@@ -1306,8 +1972,8 @@ export default function AdminBookingsPage() {
 
       const message =
         err &&
-        typeof err === "object" &&
-        "message" in err
+          typeof err === "object" &&
+          "message" in err
           ? String(
               (
                 err as {
@@ -1329,9 +1995,7 @@ export default function AdminBookingsPage() {
 
   /*
    * =========================================================
-   * BOOKED SUBMIT
-   *
-   * Used only by RegistrationModal mode="book".
+   * BOOK LEARNER
    * =========================================================
    */
 
@@ -1347,54 +2011,58 @@ export default function AdminBookingsPage() {
       );
     }
 
+    const actions =
+      getLifecycleActions(
+        record
+      );
+
+    if (!actions.canBook) {
+      throw new Error(
+        actions.isBooked
+          ? "This learner is already BOOKED. The existing active enrollment must not be duplicated."
+          : "This booking is no longer eligible to be booked."
+      );
+    }
+
     setRegistering(true);
     setRegistrationError("");
     setError("");
 
     try {
-      const leadId =
-        record.booking.lead_id;
-
-      /*
-       * Look for an existing student linked
-       * to this lead.
-       */
-
-      const {
-        data: student,
-        error: studentError,
-      } = await supabase
-        .from("students")
-        .select(
-          "id, lead_id, full_name, email, whatsapp_number, status"
-        )
-        .eq(
-          "lead_id",
-          leadId
-        )
-        .maybeSingle();
-
-      if (studentError) {
-        throw studentError;
-      }
-
-      /*
-       * If a student already exists, look for
-       * their current registered/paused/active
-       * enrollment.
-       *
-       * This is what allows REGISTERED -> BOOKED
-       * to reuse the same enrollment.
-       */
-
       let enrollmentId:
         | string
         | null = null;
 
-      if (student?.id) {
+      /*
+       * Prefer the enrollment already loaded with this
+       * booking. This is important for REGISTERED -> BOOKED.
+       */
+
+      if (
+        record.enrollment &&
+        (
+          record.enrollment
+            .status ===
+            "registered" ||
+          record.enrollment
+            .status ===
+            "paused"
+        )
+      ) {
+        enrollmentId =
+          record.enrollment.id;
+      } else if (
+        record.student?.id
+      ) {
+        /*
+         * Fallback query in case the page state changed
+         * between opening the modal and submitting it.
+         */
+
         const {
           data: enrollment,
-          error: enrollmentError,
+          error:
+            enrollmentError,
         } = await supabase
           .from(
             "student_enrollments"
@@ -1408,22 +2076,29 @@ export default function AdminBookingsPage() {
               status,
               planned_start_date,
               actual_start_date,
-              total_fee
+              total_fee,
+              created_at
             `
           )
           .eq(
             "student_id",
-            student.id
+            record.student.id
+          )
+          .eq(
+            "instrument",
+            record.booking
+              .instrument
           )
           .in("status", [
             "registered",
             "paused",
             "active",
-          ] as EnrollmentStatus[])
+          ])
           .order(
             "created_at",
             {
-              ascending: false,
+              ascending:
+                false,
             }
           )
           .limit(1)
@@ -1433,21 +2108,31 @@ export default function AdminBookingsPage() {
           throw enrollmentError;
         }
 
+        if (
+          enrollment?.status ===
+          "active"
+        ) {
+          throw new Error(
+            "This learner is already BOOKED. The existing active enrollment must not be duplicated."
+          );
+        }
+
         enrollmentId =
           enrollment?.id ??
           null;
       }
 
       /*
-       * Call the authoritative lifecycle RPC.
+       * The backend remains authoritative here.
        *
-       * enrollmentId:
+       * null enrollment:
+       *   direct confirmed/completed -> BOOKED
        *
-       * null
-       *   -> direct trial-to-booked path
+       * registered enrollment:
+       *   REGISTERED -> BOOKED
        *
-       * existing ID
-       *   -> activate/reuse existing enrollment
+       * paused enrollment:
+       *   PAUSED -> BOOKED
        */
 
       const {
@@ -1499,18 +2184,6 @@ export default function AdminBookingsPage() {
         data
       );
 
-      /*
-       * Successful BOOKED action.
-       *
-       * Database handles:
-       * - student creation/reuse
-       * - enrollment creation/reuse
-       * - activation
-       * - payment
-       * - payment receipt
-       * - learning-started email event
-       */
-
       setRegistrationModalOpen(
         false
       );
@@ -1523,11 +2196,6 @@ export default function AdminBookingsPage() {
 
       await loadBookings(true);
 
-      /*
-       * Take staff to Students after successful
-       * BOOKED conversion.
-       */
-
       router.push(
         "/admin/students"
       );
@@ -1539,8 +2207,8 @@ export default function AdminBookingsPage() {
 
       const message =
         err &&
-        typeof err === "object" &&
-        "message" in err
+          typeof err === "object" &&
+          "message" in err
           ? String(
               (
                 err as {
@@ -1563,10 +2231,6 @@ export default function AdminBookingsPage() {
   /*
    * =========================================================
    * REGISTRATION MODAL SUBMIT ROUTER
-   *
-   * The explicit modal mode prevents the old bug where
-   * BOOKED on a completed booking could accidentally be
-   * treated as REGISTERED.
    * =========================================================
    */
 
@@ -1776,47 +2440,36 @@ export default function AdminBookingsPage() {
 
         </div>
 
-        <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-5">
+        <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
 
-          {[
-            {
-              key: "all",
-              label: "All",
-            },
-            {
-              key: "confirmed",
-              label: "Confirmed",
-            },
-            {
-              key: "completed",
-              label: "Attended",
-            },
-            {
-              key: "cancelled",
-              label: "Cancelled",
-            },
-            {
-              key: "no_show",
-              label: "Missed",
-            },
-          ].map((item) => (
-            <button
-              key={item.key}
-              type="button"
-              onClick={() =>
-                setFilter(
-                  item.key as typeof filter
-                )
-              }
-              className={`rounded-xl px-3 py-3 text-[10px] font-bold transition ${
-                filter === item.key
-                  ? "bg-[var(--st-red)] text-white"
-                  : "bg-[var(--st-bg-soft)] text-[var(--st-gray)] hover:text-[var(--st-charcoal-dark)]"
-              }`}
-            >
-              {item.label}
-            </button>
-          ))}
+          {FILTER_BUTTONS.map(
+            (item) => {
+              const active =
+                filter ===
+                item.key;
+
+              return (
+                <button
+                  key={item.key}
+                  type="button"
+                  onClick={() =>
+                    setFilter(
+                      item.key
+                    )
+                  }
+                  className={[
+                    "min-h-[44px] rounded-xl px-3 py-3 text-[10px] font-bold transition",
+                    item.color,
+                    active
+                      ? "scale-[1.02] ring-2 ring-black ring-offset-2"
+                      : "opacity-90 hover:opacity-100",
+                  ].join(" ")}
+                >
+                  {item.label}
+                </button>
+              );
+            }
+          )}
 
         </div>
 
@@ -1850,11 +2503,7 @@ export default function AdminBookingsPage() {
         <div className="mb-4">
 
           <p className="st-eyebrow">
-            {filter === "all"
-              ? "ALL BOOKINGS"
-              : `${prettyStatus(
-                  filter
-                ).toUpperCase()} BOOKINGS`}
+            {FILTER_LABELS[filter]} BOOKINGS
           </p>
 
           <p className="mt-1 mb-0 text-[10px] text-[var(--st-gray)]">
@@ -1913,25 +2562,22 @@ export default function AdminBookingsPage() {
                   updatingId ===
                   booking.id;
 
-                const isConfirmed =
-                  booking.status ===
-                  "confirmed";
-
-                const isCompleted =
-                  booking.status ===
-                  "completed";
+                const actions =
+                  getLifecycleActions(
+                    record
+                  );
 
                 return (
                   <div
-                    key={booking.id}
+                    key={
+                      booking.id
+                    }
                     className="st-card overflow-hidden p-0 transition-all"
                   >
 
                     <div className="p-5">
 
-                      {/* =================================================
-                          HEADER
-                      ================================================= */}
+                      {/* HEADER */}
 
                       <div className="flex items-start gap-4">
 
@@ -1973,19 +2619,33 @@ export default function AdminBookingsPage() {
 
                             </div>
 
-                            <span
-                              className={`inline-flex w-fit shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-[9px] font-bold uppercase tracking-[0.04em] ${statusClasses(
-                                booking.status
-                              )}`}
-                            >
-                              {statusIcon(
-                                booking.status
-                              )}
+                            <div className="flex flex-wrap items-center gap-2">
 
-                              {prettyStatus(
-                                booking.status
-                              )}
-                            </span>
+                              <span
+                                className={`inline-flex w-fit shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-[9px] font-bold uppercase tracking-[0.04em] ${statusClasses(
+                                  booking.status
+                                )}`}
+                              >
+                                {statusIcon(
+                                  booking.status
+                                )}
+
+                                {prettyStatus(
+                                  booking.status
+                                )}
+                              </span>
+
+                              <span
+                                className={`inline-flex w-fit shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-[9px] font-bold uppercase tracking-[0.04em] ${enrollmentClasses(
+                                  record.enrollment
+                                )}`}
+                              >
+                                {enrollmentLabel(
+                                  record.enrollment
+                                )}
+                              </span>
+
+                            </div>
 
                           </div>
 
@@ -2045,6 +2705,7 @@ export default function AdminBookingsPage() {
 
                           {booking.called_at && (
                             <div className="mt-3 flex items-center gap-2 text-[9px] text-green-700">
+
                               <Phone size={11} />
 
                               <span>
@@ -2057,6 +2718,7 @@ export default function AdminBookingsPage() {
                                   booking.called_at
                                 )}
                               </span>
+
                             </div>
                           )}
 
@@ -2071,7 +2733,7 @@ export default function AdminBookingsPage() {
                       <div className="mt-5 border-t border-[var(--st-border)] pt-4">
 
                         <p className="mb-3 text-[8px] font-bold uppercase tracking-[0.1em] text-[var(--st-gray)]">
-                          {isCompleted
+                          {actions.isCompleted
                             ? "STUDENT ACTIONS"
                             : "TRIAL ACTIONS"}
                         </p>
@@ -2080,8 +2742,7 @@ export default function AdminBookingsPage() {
 
                           {/* BOOKED */}
 
-                          {(isConfirmed ||
-                            isCompleted) && (
+                          {actions.canBook && (
                             <button
                               type="button"
                               disabled={
@@ -2111,7 +2772,7 @@ export default function AdminBookingsPage() {
 
                           {/* REGISTERED */}
 
-                          {isCompleted && (
+                          {actions.canRegister && (
                             <button
                               type="button"
                               disabled={
@@ -2122,7 +2783,7 @@ export default function AdminBookingsPage() {
                                   record
                                 )
                               }
-                              className="flex min-h-[46px] items-center justify-center gap-2 rounded-xl border border-pink-200 bg-pink-50 px-3 py-3 text-[9px] font-bold text-pink-700 transition hover:bg-pink-100 disabled:cursor-not-allowed disabled:opacity-40"
+                              className="flex min-h-[46px] items-center justify-center gap-2 rounded-xl border border-amber-300 bg-amber-50 px-3 py-3 text-[9px] font-bold text-amber-700 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-40"
                             >
                               <UserPlus
                                 size={14}
@@ -2134,8 +2795,7 @@ export default function AdminBookingsPage() {
 
                           {/* CALL */}
 
-                          {(isConfirmed ||
-                            isCompleted) && (
+                          {actions.canCall && (
                             <button
                               type="button"
                               disabled={
@@ -2158,7 +2818,7 @@ export default function AdminBookingsPage() {
 
                           {/* ATTENDED */}
 
-                          {isConfirmed && (
+                          {actions.canAttend && (
                             <button
                               type="button"
                               disabled={
@@ -2188,7 +2848,7 @@ export default function AdminBookingsPage() {
 
                           {/* MISSED */}
 
-                          {isConfirmed && (
+                          {actions.canMiss && (
                             <button
                               type="button"
                               disabled={
@@ -2199,7 +2859,7 @@ export default function AdminBookingsPage() {
                                   record
                                 )
                               }
-                              className="flex min-h-[46px] items-center justify-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-3 text-[9px] font-bold text-amber-700 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-40"
+                              className="flex min-h-[46px] items-center justify-center gap-2 rounded-xl border border-fuchsia-200 bg-fuchsia-50 px-3 py-3 text-[9px] font-bold text-fuchsia-700 transition hover:bg-fuchsia-100 disabled:cursor-not-allowed disabled:opacity-40"
                             >
                               {isUpdating ? (
                                 <RefreshCw
@@ -2218,7 +2878,7 @@ export default function AdminBookingsPage() {
 
                           {/* CANCELLED */}
 
-                          {isConfirmed && (
+                          {actions.canCancel && (
                             <button
                               type="button"
                               disabled={
@@ -2229,7 +2889,7 @@ export default function AdminBookingsPage() {
                                   record
                                 )
                               }
-                              className="flex min-h-[46px] items-center justify-center gap-2 rounded-xl border border-orange-200 bg-orange-50 px-3 py-3 text-[9px] font-bold text-orange-700 transition hover:bg-orange-100 disabled:cursor-not-allowed disabled:opacity-40"
+                              className="flex min-h-[46px] items-center justify-center gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-3 text-[9px] font-bold text-red-700 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-40"
                             >
                               {isUpdating ? (
                                 <RefreshCw
@@ -2342,9 +3002,7 @@ export default function AdminBookingsPage() {
 
             <div className="p-5">
 
-              {/* =================================================
-                  LESSON
-              ================================================= */}
+              {/* LESSON */}
 
               <div className="rounded-2xl bg-[var(--st-bg-soft)] p-5">
 
@@ -2382,49 +3040,48 @@ export default function AdminBookingsPage() {
                     </p>
 
                     <p className="mt-1 mb-0 text-[9px] text-[var(--st-gray)]">
-                      60-minute free trial
-                      lesson
+                      Nairobi time
                     </p>
                   </>
                 )}
 
+                <div className="mt-4 flex flex-wrap gap-2">
+
+                  <span
+                    className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-[9px] font-bold uppercase ${statusClasses(
+                      selectedBooking
+                        .booking
+                        .status
+                    )}`}
+                  >
+                    {statusIcon(
+                      selectedBooking
+                        .booking
+                        .status
+                    )}
+
+                    {prettyStatus(
+                      selectedBooking
+                        .booking
+                        .status
+                    )}
+                  </span>
+
+                  <span
+                    className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-[9px] font-bold uppercase ${enrollmentClasses(
+                      selectedBooking.enrollment
+                    )}`}
+                  >
+                    {enrollmentLabel(
+                      selectedBooking.enrollment
+                    )}
+                  </span>
+
+                </div>
+
               </div>
 
-              {/* =================================================
-                  CURRENT OUTCOME
-              ================================================= */}
-
-              <div className="mt-5">
-
-                <p className="mb-3 text-[9px] font-bold uppercase tracking-[0.1em] text-[var(--st-gray)]">
-                  TRIAL OUTCOME
-                </p>
-
-                <span
-                  className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-[9px] font-bold uppercase ${statusClasses(
-                    selectedBooking
-                      .booking
-                      .status
-                  )}`}
-                >
-                  {statusIcon(
-                    selectedBooking
-                      .booking
-                      .status
-                  )}
-
-                  {prettyStatus(
-                    selectedBooking
-                      .booking
-                      .status
-                  )}
-                </span>
-
-              </div>
-
-              {/* =================================================
-                  CUSTOMER
-              ================================================= */}
+              {/* CUSTOMER */}
 
               <div className="mt-6">
 
@@ -2510,9 +3167,88 @@ export default function AdminBookingsPage() {
 
               </div>
 
-              {/* =================================================
-                  CALL HISTORY INDICATOR
-              ================================================= */}
+              {/* ENROLLMENT */}
+
+              <div className="mt-6">
+
+                <p className="mb-3 text-[9px] font-bold uppercase tracking-[0.1em] text-[var(--st-gray)]">
+                  LEARNER LIFECYCLE
+                </p>
+
+                <div className="rounded-2xl border border-[var(--st-border)] p-4">
+
+                  <div className="flex items-center justify-between gap-3">
+
+                    <div>
+
+                      <p className="m-0 text-[10px] text-[var(--st-gray)]">
+                        Current state
+                      </p>
+
+                      <p className="mt-1 mb-0 text-[13px] font-bold text-[var(--st-charcoal-dark)]">
+                        {enrollmentLabel(
+                          selectedBooking.enrollment
+                        )}
+                      </p>
+
+                    </div>
+
+                    <span
+                      className={`rounded-full px-3 py-1.5 text-[9px] font-bold uppercase ${enrollmentClasses(
+                        selectedBooking.enrollment
+                      )}`}
+                    >
+                      {enrollmentLabel(
+                        selectedBooking.enrollment
+                      )}
+                    </span>
+
+                  </div>
+
+                  {selectedBooking
+                    .enrollment && (
+                    <div className="mt-4 space-y-2 border-t border-[var(--st-border)] pt-3">
+
+                      <div className="flex justify-between gap-3 text-[9px]">
+
+                        <span className="text-[var(--st-gray)]">
+                          Programme
+                        </span>
+
+                        <span className="text-right font-semibold text-[var(--st-charcoal-dark)]">
+                          {
+                            selectedBooking
+                              .enrollment
+                              .programme_name
+                          }
+                        </span>
+
+                      </div>
+
+                      <div className="flex justify-between gap-3 text-[9px]">
+
+                        <span className="text-[var(--st-gray)]">
+                          Enrollment status
+                        </span>
+
+                        <span className="font-semibold text-[var(--st-charcoal-dark)]">
+                          {
+                            selectedBooking
+                              .enrollment
+                              .status
+                          }
+                        </span>
+
+                      </div>
+
+                    </div>
+                  )}
+
+                </div>
+
+              </div>
+
+              {/* CALL HISTORY */}
 
               {selectedBooking.booking
                 .called_at && (
@@ -2553,14 +3289,7 @@ export default function AdminBookingsPage() {
                 </div>
               )}
 
-              {/* =================================================
-                  EMAIL & REMINDERS
-                  
-                  NOTE:
-                  We deliberately do not display/reintroduce
-                  the legacy 2-hour reminder as an active
-                  workflow.
-              ================================================= */}
+              {/* EMAIL & REMINDERS */}
 
               <div className="mt-6">
 
@@ -2622,9 +3351,7 @@ export default function AdminBookingsPage() {
 
               </div>
 
-              {/* =================================================
-                  ACTIONS
-              ================================================= */}
+              {/* ACTIONS */}
 
               <div className="mt-6">
 
@@ -2634,199 +3361,182 @@ export default function AdminBookingsPage() {
 
                 <div className="grid grid-cols-2 gap-2">
 
-                  {/* BOOKED */}
-
-                  {(selectedBooking
-                    .booking
-                    .status ===
-                    "confirmed" ||
-                    selectedBooking
-                      .booking
-                      .status ===
-                      "completed") && (
-                    <button
-                      type="button"
-                      disabled={
-                        updatingId ===
+                  {(() => {
+                    const actions =
+                      getLifecycleActions(
                         selectedBooking
-                          .booking
-                          .id
-                      }
-                      onClick={() =>
-                        openBooked(
-                          selectedBooking
-                        )
-                      }
-                      className="st-button st-button-primary w-full disabled:opacity-50"
-                    >
-                      <UserPlus
-                        size={14}
-                      />
+                      );
 
-                      Booked
-                    </button>
-                  )}
+                    return (
+                      <>
+                        {/* BOOKED */}
 
-                  {/* REGISTERED */}
+                        {actions.canBook && (
+                          <button
+                            type="button"
+                            disabled={
+                              updatingId ===
+                              selectedBooking
+                                .booking
+                                .id
+                            }
+                            onClick={() =>
+                              openBooked(
+                                selectedBooking
+                              )
+                            }
+                            className="st-button st-button-primary w-full disabled:opacity-50"
+                          >
+                            <UserPlus
+                              size={14}
+                            />
 
-                  {selectedBooking
-                    .booking
-                    .status ===
-                    "completed" && (
-                    <button
-                      type="button"
-                      disabled={
-                        updatingId ===
-                        selectedBooking
-                          .booking
-                          .id
-                      }
-                      onClick={() =>
-                        openRegistration(
-                          selectedBooking
-                        )
-                      }
-                      className="w-full rounded-xl border border-pink-200 bg-pink-50 px-4 py-3 text-[9px] font-bold text-pink-700 disabled:opacity-50"
-                    >
-                      <span className="inline-flex items-center gap-2">
-                        <UserPlus
-                          size={14}
-                        />
+                            Booked
+                          </button>
+                        )}
 
-                        Registered
-                      </span>
-                    </button>
-                  )}
+                        {/* REGISTERED */}
 
-                  {/* CALL */}
+                        {actions.canRegister && (
+                          <button
+                            type="button"
+                            disabled={
+                              updatingId ===
+                              selectedBooking
+                                .booking
+                                .id
+                            }
+                            onClick={() =>
+                              openRegistration(
+                                selectedBooking
+                              )
+                            }
+                            className="w-full rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-[9px] font-bold text-amber-700 disabled:opacity-50"
+                          >
+                            <span className="inline-flex items-center gap-2">
+                              <UserPlus
+                                size={14}
+                              />
 
-                  {(selectedBooking
-                    .booking
-                    .status ===
-                    "confirmed" ||
-                    selectedBooking
-                      .booking
-                      .status ===
-                      "completed") && (
-                    <button
-                      type="button"
-                      disabled={
-                        !selectedBooking
-                          .lead
-                          ?.whatsapp_number
-                      }
-                      onClick={() =>
-                        callLearner(
-                          selectedBooking
-                        )
-                      }
-                      className="st-button st-button-secondary w-full disabled:opacity-40"
-                    >
-                      <Phone size={14} />
-                      Call
-                    </button>
-                  )}
+                              Registered
+                            </span>
+                          </button>
+                        )}
 
-                  {/* ATTENDED */}
+                        {/* CALL */}
 
-                  {selectedBooking
-                    .booking
-                    .status ===
-                    "confirmed" && (
-                    <button
-                      type="button"
-                      disabled={
-                        updatingId ===
-                        selectedBooking
-                          .booking
-                          .id
-                      }
-                      onClick={() =>
-                        markAttended(
-                          selectedBooking
-                        )
-                      }
-                      className="w-full rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-[9px] font-bold text-blue-700 disabled:opacity-50"
-                    >
-                      <span className="inline-flex items-center gap-2">
-                        <UserCheck
-                          size={14}
-                        />
+                        {actions.canCall && (
+                          <button
+                            type="button"
+                            disabled={
+                              !selectedBooking
+                                .lead
+                                ?.whatsapp_number
+                            }
+                            onClick={() =>
+                              callLearner(
+                                selectedBooking
+                              )
+                            }
+                            className="st-button st-button-secondary w-full disabled:opacity-40"
+                          >
+                            <Phone size={14} />
+                            Call
+                          </button>
+                        )}
 
-                        Attended
-                      </span>
-                    </button>
-                  )}
+                        {/* ATTENDED */}
 
-                  {/* MISSED */}
+                        {actions.canAttend && (
+                          <button
+                            type="button"
+                            disabled={
+                              updatingId ===
+                              selectedBooking
+                                .booking
+                                .id
+                            }
+                            onClick={() =>
+                              markAttended(
+                                selectedBooking
+                              )
+                            }
+                            className="w-full rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-[9px] font-bold text-blue-700 disabled:opacity-50"
+                          >
+                            <span className="inline-flex items-center gap-2">
+                              <UserCheck
+                                size={14}
+                              />
 
-                  {selectedBooking
-                    .booking
-                    .status ===
-                    "confirmed" && (
-                    <button
-                      type="button"
-                      disabled={
-                        updatingId ===
-                        selectedBooking
-                          .booking
-                          .id
-                      }
-                      onClick={() =>
-                        markMissedTrial(
-                          selectedBooking
-                        )
-                      }
-                      className="w-full rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-[9px] font-bold text-amber-700 disabled:opacity-50"
-                    >
-                      <span className="inline-flex items-center gap-2">
-                        <UserX
-                          size={14}
-                        />
+                              Attended
+                            </span>
+                          </button>
+                        )}
 
-                        Missed trial
-                      </span>
-                    </button>
-                  )}
+                        {/* MISSED */}
 
-                  {/* CANCELLED */}
+                        {actions.canMiss && (
+                          <button
+                            type="button"
+                            disabled={
+                              updatingId ===
+                              selectedBooking
+                                .booking
+                                .id
+                            }
+                            onClick={() =>
+                              markMissedTrial(
+                                selectedBooking
+                              )
+                            }
+                            className="w-full rounded-xl border border-fuchsia-200 bg-fuchsia-50 px-4 py-3 text-[9px] font-bold text-fuchsia-700 disabled:opacity-50"
+                          >
+                            <span className="inline-flex items-center gap-2">
+                              <UserX
+                                size={14}
+                              />
 
-                  {selectedBooking
-                    .booking
-                    .status ===
-                    "confirmed" && (
-                    <button
-                      type="button"
-                      disabled={
-                        updatingId ===
-                        selectedBooking
-                          .booking
-                          .id
-                      }
-                      onClick={() =>
-                        markCancelled(
-                          selectedBooking
-                        )
-                      }
-                      className="w-full rounded-xl border border-orange-200 bg-orange-50 px-4 py-3 text-[9px] font-bold text-orange-700 disabled:opacity-50"
-                    >
-                      <span className="inline-flex items-center gap-2">
-                        <XCircle
-                          size={14}
-                        />
+                              Missed
+                            </span>
+                          </button>
+                        )}
 
-                        Cancelled
-                      </span>
-                    </button>
-                  )}
+                        {/* CANCELLED */}
+
+                        {actions.canCancel && (
+                          <button
+                            type="button"
+                            disabled={
+                              updatingId ===
+                              selectedBooking
+                                .booking
+                                .id
+                            }
+                            onClick={() =>
+                              markCancelled(
+                                selectedBooking
+                              )
+                            }
+                            className="w-full rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-[9px] font-bold text-red-700 disabled:opacity-50"
+                          >
+                            <span className="inline-flex items-center gap-2">
+                              <XCircle
+                                size={14}
+                              />
+
+                              Cancelled
+                            </span>
+                          </button>
+                        )}
+                      </>
+                    );
+                  })()}
 
                 </div>
 
               </div>
 
-              {/* =================================================
-                  COMMUNICATION
-              ================================================= */}
+              {/* COMMUNICATION */}
 
               <div className="mt-6 grid grid-cols-2 gap-2">
 
@@ -2873,9 +3583,7 @@ export default function AdminBookingsPage() {
 
               </div>
 
-              {/* =================================================
-                  BOOKING ID
-              ================================================= */}
+              {/* BOOKING ID */}
 
               <div className="mt-6 border-t border-[var(--st-border)] pt-4">
 
@@ -2916,12 +3624,6 @@ export default function AdminBookingsPage() {
 
       {/* =====================================================
           REGISTRATION MODAL
-          
-          IMPORTANT:
-          Explicit mode controls whether this action is:
-          
-          register = REGISTERED
-          book     = BOOKED
       ===================================================== */}
 
       <RegistrationModal
