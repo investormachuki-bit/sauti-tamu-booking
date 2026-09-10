@@ -1,124 +1,58 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Resend } from "resend";
 import { supabaseServer } from "@/lib/supabase-server";
+import { renderSautiTamuEmail } from "@/lib/email-template-renderer";
 
-const resend = new Resend(
-  process.env.RESEND_API_KEY
-);
-
-const NAIROBI_TIME_ZONE = "Africa/Nairobi";
-
-/*
- * --------------------------------------------------
- * EMAIL CONFIGURATION
- * --------------------------------------------------
- */
+const resend = new Resend(process.env.RESEND_API_KEY);
 
 const RESEND_FROM_EMAIL =
   process.env.RESEND_FROM_EMAIL ||
   "Sauti Tamu Piano Center <noreply@sautitamupianocenter.co.ke>";
 
-const ADMIN_EMAIL =
+const RESEND_ADMIN_EMAIL =
+  process.env.RESEND_ADMIN_EMAIL ||
   process.env.ADMIN_EMAIL ||
   "sautitamupianocenter@gmail.com";
 
-/*
- * --------------------------------------------------
- * DATE / TIME HELPERS
- * --------------------------------------------------
- */
+const AUTOMATED_EMAIL_TASK_TYPES = [
+  "trial_reminder_7d",
+  "trial_reminder_3d",
+  "trial_reminder_24h",
+  "trial_reminder_6h",
+  "trial_reminder_1h",
+  "trial_reminder_2h",
+  "post_trial_follow_up",
+] as const;
 
-function formatDate(dateString: string) {
-  return new Intl.DateTimeFormat("en-KE", {
-    weekday: "long",
-    day: "numeric",
-    month: "long",
-    year: "numeric",
-    timeZone: NAIROBI_TIME_ZONE,
-  }).format(new Date(dateString));
-}
-
-function formatTime(dateString: string) {
-  return new Intl.DateTimeFormat("en-KE", {
-    hour: "numeric",
-    minute: "2-digit",
-    timeZone: NAIROBI_TIME_ZONE,
-  }).format(new Date(dateString));
-}
-
-function getInstrumentName(instrument: string) {
-  return instrument.toLowerCase() === "piano"
-    ? "Piano"
-    : "Guitar";
-}
-
-/*
- * --------------------------------------------------
- * EMAIL TITLES
- * --------------------------------------------------
- */
-
-function getReminderTitle(taskType: string) {
+function templateKeyForTask(taskType: string) {
   switch (taskType) {
     case "trial_reminder_7d":
-      return "Your trial lesson is coming up in 7 days";
-
+      return "trial_reminder_7d";
     case "trial_reminder_3d":
-      return "Your trial lesson is coming up in 3 days";
-
+      return "trial_reminder_3d";
     case "trial_reminder_24h":
-      return "Your trial lesson is tomorrow";
-
+      return "trial_reminder_24h";
     case "trial_reminder_6h":
-      return "Your trial lesson is coming up in 6 hours";
-
+      return "trial_reminder_6h";
     case "trial_reminder_1h":
-      return "Your trial lesson starts in 1 hour";
-
+      return "trial_reminder_1h";
+    case "trial_reminder_2h":
+      // Historical task type: use the closest current reminder template
+      // rather than failing solely because the old 2-hour template does not exist.
+      return "trial_reminder_1h";
     case "post_trial_follow_up":
-      return "How was your Sauti Tamu trial lesson?";
-
+      return "attended_not_registered";
     default:
-      return "Reminder about your Sauti Tamu trial lesson";
+      return taskType;
   }
 }
 
-/*
- * --------------------------------------------------
- * EMAIL LABELS
- * --------------------------------------------------
- */
-
-function getReminderLabel(taskType: string) {
-  switch (taskType) {
-    case "trial_reminder_7d":
-      return "7-DAY REMINDER";
-
-    case "trial_reminder_3d":
-      return "3-DAY REMINDER";
-
-    case "trial_reminder_24h":
-      return "24-HOUR REMINDER";
-
-    case "trial_reminder_6h":
-      return "6-HOUR REMINDER";
-
-    case "trial_reminder_1h":
-      return "1-HOUR REMINDER";
-
-    case "post_trial_follow_up":
-      return "POST-TRIAL FOLLOW-UP";
-
-    default:
-      return "TRIAL LESSON REMINDER";
-  }
+function errorResponse(message: string, status = 500) {
+  return NextResponse.json(
+    { success: false, error: message },
+    { status }
+  );
 }
-
-/*
- * --------------------------------------------------
- * ROUTES
- * --------------------------------------------------
- */
 
 export async function GET(request: NextRequest) {
   return processFollowups(request);
@@ -128,106 +62,33 @@ export async function POST(request: NextRequest) {
   return processFollowups(request);
 }
 
-/*
- * --------------------------------------------------
- * FOLLOW-UP PROCESSOR
- * --------------------------------------------------
- */
-
-async function processFollowups(
-  request: NextRequest
-) {
+async function processFollowups(request: NextRequest) {
   try {
-    /*
-     * --------------------------------------------------
-     * SECURITY
-     * --------------------------------------------------
-     */
-
-    const cronSecret =
-      process.env.FOLLOWUP_CRON_SECRET;
+    const cronSecret = process.env.FOLLOWUP_CRON_SECRET;
 
     if (!cronSecret) {
-      console.error(
-        "Missing FOLLOWUP_CRON_SECRET"
-      );
-
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            "Follow-up processor is not configured.",
-        },
-        { status: 500 }
+      return errorResponse(
+        "Follow-up processor is not configured.",
+        500
       );
     }
 
-    const authorization =
-      request.headers.get("authorization");
+    const authorization = request.headers.get("authorization");
+    const providedSecret = authorization?.startsWith("Bearer ")
+      ? authorization.substring(7)
+      : null;
 
-    const providedSecret =
-      authorization?.startsWith("Bearer ")
-        ? authorization.substring(7)
-        : null;
-
-    if (
-      !providedSecret ||
-      providedSecret !== cronSecret
-    ) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: "Unauthorized.",
-        },
-        { status: 401 }
-      );
+    if (!providedSecret || providedSecret !== cronSecret) {
+      return errorResponse("Unauthorized.", 401);
     }
-
-    /*
-     * --------------------------------------------------
-     * EMAIL CONFIGURATION
-     * --------------------------------------------------
-     */
 
     if (!process.env.RESEND_API_KEY) {
-      console.error(
-        "Missing RESEND_API_KEY"
-      );
-
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            "Email service is not configured.",
-        },
-        { status: 500 }
-      );
+      return errorResponse("Email service is not configured.", 500);
     }
 
-    /*
-     * --------------------------------------------------
-     * FIND DUE EMAIL FOLLOW-UPS
-     * --------------------------------------------------
-     *
-     * The database creates the follow-up tasks.
-     *
-     * This processor only finds tasks that are:
-     *
-     * - pending
-     * - email
-     * - due now
-     *
-     * It then sends the email and marks the task
-     * as sent.
-     */
+    const now = new Date().toISOString();
 
-    const now =
-      new Date().toISOString();
-
-    const {
-      data: tasks,
-      error: taskError,
-    } = await supabaseServer
+    const { data: tasks, error: taskError } = await supabaseServer
       .from("follow_up_tasks")
       .select(
         `
@@ -244,115 +105,57 @@ async function processFollowups(
       .eq("status", "pending")
       .eq("channel", "email")
       .lte("due_at", now)
-      .in("task_type", [
-        "trial_reminder_7d",
-        "trial_reminder_3d",
-        "trial_reminder_24h",
-        "trial_reminder_6h",
-        "trial_reminder_1h",
-        "post_trial_follow_up",
-      ])
-      .order("due_at", {
-        ascending: true,
-      })
+      .in("task_type", [...AUTOMATED_EMAIL_TASK_TYPES])
+      .order("due_at", { ascending: true })
       .limit(20);
 
     if (taskError) {
-      console.error(
-        "Follow-up task query error:",
-        taskError
-      );
-
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            "Could not load due follow-ups.",
-        },
-        { status: 500 }
+      console.error("Follow-up task query error:", taskError);
+      return errorResponse(
+        "Could not load due follow-ups.",
+        500
       );
     }
 
-    /*
-     * --------------------------------------------------
-     * NOTHING DUE
-     * --------------------------------------------------
-     */
-
-    if (!tasks || tasks.length === 0) {
+    if (!tasks?.length) {
       return NextResponse.json({
         success: true,
-        message:
-          "No due follow-ups found.",
+        message: "No due follow-ups found.",
         processed: 0,
         sent: 0,
         failed: 0,
       });
     }
 
-    /*
-     * --------------------------------------------------
-     * PROCESS EACH FOLLOW-UP
-     * --------------------------------------------------
-     */
-
     let sent = 0;
     let failed = 0;
 
     const results: Array<{
       taskId: string;
-      status: "sent" | "failed";
+      status: "sent" | "failed" | "cancelled";
       error?: string;
     }> = [];
 
     for (const task of tasks) {
       try {
-        /*
-         * ------------------------------------------------
-         * LOAD LEAD
-         * ------------------------------------------------
-         */
-
-        const {
-          data: lead,
-          error: leadError,
-        } = await supabaseServer
+        const { data: lead, error: leadError } = await supabaseServer
           .from("leads")
-          .select(
-            `
-              id,
-              full_name,
-              email,
-              whatsapp_number
-            `
-          )
+          .select("id, full_name, email, whatsapp_number")
           .eq("id", task.lead_id)
           .single();
 
         if (leadError || !lead) {
-          throw new Error(
-            "Lead could not be found."
-          );
+          throw new Error("Lead could not be found.");
         }
 
-        if (
-          !lead.email ||
-          !lead.email.trim()
-        ) {
-          throw new Error(
-            "Lead does not have an email address."
-          );
+        if (!lead.email?.trim()) {
+          throw new Error("Lead does not have an email address.");
         }
-
-        /*
-         * ------------------------------------------------
-         * LOAD BOOKING
-         * ------------------------------------------------
-         */
 
         let booking:
           | {
               id: string;
+              lead_id: string;
               instrument: string;
               status: string;
               slot_id: string;
@@ -368,351 +171,101 @@ async function processFollowups(
           | null = null;
 
         if (task.booking_id) {
-          const {
-            data: bookingData,
-            error: bookingError,
-          } = await supabaseServer
-            .from("bookings")
-            .select(
-              `
-                id,
-                instrument,
-                status,
-                slot_id
-              `
-            )
-            .eq("id", task.booking_id)
-            .single();
+          const { data: bookingData, error: bookingError } =
+            await supabaseServer
+              .from("bookings")
+              .select(
+                "id, lead_id, instrument, status, slot_id"
+              )
+              .eq("id", task.booking_id)
+              .single();
 
-          if (
-            bookingError ||
-            !bookingData
-          ) {
-            throw new Error(
-              "Booking could not be found."
-            );
+          if (bookingError || !bookingData) {
+            throw new Error("Booking could not be found.");
           }
 
           booking = bookingData;
-
-          /*
-           * Cancelled / no-show bookings should
-           * never receive follow-up emails.
-           */
 
           if (
             booking.status === "cancelled" ||
             booking.status === "no_show"
           ) {
-            await supabaseServer
+            const { error: cancelError } = await supabaseServer
               .from("follow_up_tasks")
               .update({
                 status: "cancelled",
-                updated_at:
-                  new Date().toISOString(),
+                updated_at: new Date().toISOString(),
               })
-              .eq("id", task.id);
+              .eq("id", task.id)
+              .eq("status", "pending");
+
+            if (cancelError) {
+              throw cancelError;
+            }
 
             results.push({
               taskId: task.id,
-              status: "failed",
-              error:
-                "Booking is cancelled or marked as no-show.",
+              status: "cancelled",
             });
-
             continue;
           }
 
-          /*
-           * Load lesson slot.
-           */
+          const { data: slotData, error: slotError } =
+            await supabaseServer
+              .from("lesson_slots")
+              .select("id, starts_at, ends_at")
+              .eq("id", booking.slot_id)
+              .single();
 
-          const {
-            data: slotData,
-            error: slotError,
-          } = await supabaseServer
-            .from("lesson_slots")
-            .select(
-              `
-                id,
-                starts_at,
-                ends_at
-              `
-            )
-            .eq(
-              "id",
-              booking.slot_id
-            )
-            .single();
-
-          if (
-            slotError ||
-            !slotData
-          ) {
-            throw new Error(
-              "Lesson slot could not be found."
-            );
+          if (slotError || !slotData) {
+            throw new Error("Lesson slot could not be found.");
           }
 
           slot = slotData;
         }
 
-        /*
-         * ------------------------------------------------
-         * BUILD LESSON DETAILS
-         * ------------------------------------------------
-         */
+        const templateKey = templateKeyForTask(task.task_type);
 
-        const instrumentName =
-          booking
-            ? getInstrumentName(
-                booking.instrument
-              )
-            : "Trial Lesson";
+        const rendered = await renderSautiTamuEmail(
+          templateKey,
+          {
+            full_name: lead.full_name,
+            email: lead.email,
+            whatsapp_number: lead.whatsapp_number,
+            booking_id: booking?.id ?? task.booking_id,
+            lesson_details: slot
+              ? {
+                  instrument: booking?.instrument ?? null,
+                  starts_at: slot.starts_at,
+                  ends_at: slot.ends_at,
+                }
+              : null,
+          }
+        );
 
-        const dateText =
-          slot
-            ? formatDate(
-                slot.starts_at
-              )
-            : "";
-
-        const timeText =
-          slot
-            ? `${formatTime(
-                slot.starts_at
-              )} – ${formatTime(
-                slot.ends_at
-              )}`
-            : "";
-
-        const reminderTitle =
-          getReminderTitle(
-            task.task_type
+        const { data: sendData, error: emailError } =
+          await resend.emails.send(
+            {
+              from: RESEND_FROM_EMAIL,
+              to: [lead.email.trim().toLowerCase()],
+              subject: rendered.subject,
+              html: rendered.html,
+            },
+            {
+              idempotencyKey: `follow-up-${task.id}`,
+            }
           );
 
-        const reminderLabel =
-          getReminderLabel(
-            task.task_type
-          );
-
-        const isPostTrial =
-          task.task_type ===
-          "post_trial_follow_up";
-
-        /*
-         * ------------------------------------------------
-         * EMAIL CONTENT
-         * ------------------------------------------------
-         */
-
-        const introText = isPostTrial
-          ? `
-              We hope you enjoyed your free
-              ${instrumentName} trial lesson at
-              Sauti Tamu Piano Center.
-            `
-          : `
-              This is a friendly reminder about your
-              free ${instrumentName} trial lesson
-              at Sauti Tamu Piano Center.
-            `;
-
-        const actionText = isPostTrial
-          ? `
-              If you enjoyed the lesson and would like
-              to continue learning, we would be happy
-              to help you get started with your regular
-              lessons.
-            `
-          : `
-              We look forward to welcoming you and
-              helping you get started with your musical
-              journey.
-            `;
-
-        /*
-         * ------------------------------------------------
-         * SEND EMAIL THROUGH RESEND
-         * ------------------------------------------------
-         */
-
-        const emailResult =
-          await resend.emails.send({
-            from: RESEND_FROM_EMAIL,
-
-            to: [
-              lead.email.trim(),
-            ],
-
-            subject:
-              `🎹 ${reminderTitle}`,
-
-            html: `
-              <div style="margin:0;padding:40px 20px;background:#f5f5f5;font-family:Arial,Helvetica,sans-serif;">
-
-                <div style="max-width:620px;margin:0 auto;background:#ffffff;border-radius:18px;overflow:hidden;">
-
-                  <div style="background:#C62828;color:#ffffff;padding:28px 30px;">
-
-                    <div style="font-size:14px;font-weight:800;letter-spacing:2px;">
-                      SAUTI TAMU
-                    </div>
-
-                    <div style="font-size:10px;margin-top:5px;letter-spacing:2px;opacity:.8;">
-                      PIANO CENTER
-                    </div>
-
-                  </div>
-
-                  <div style="padding:32px;">
-
-                    <div style="font-size:10px;font-weight:700;letter-spacing:1.5px;color:#C62828;">
-                      ${reminderLabel}
-                    </div>
-
-                    <h1 style="font-size:28px;line-height:1.25;color:#1F2933;margin:12px 0 12px;">
-                      ${reminderTitle}
-                    </h1>
-
-                    <p style="font-size:14px;line-height:1.7;color:#5B6573;margin:0;">
-                      Hello ${lead.full_name},
-                    </p>
-
-                    <p style="font-size:14px;line-height:1.7;color:#5B6573;margin:12px 0 0;">
-                      ${introText}
-                    </p>
-
-                    ${
-                      !isPostTrial
-                        ? `
-                    <div style="margin-top:26px;background:#f7f7f7;border-radius:16px;padding:22px;">
-
-                      <div style="font-size:10px;font-weight:700;letter-spacing:1.2px;color:#888888;">
-                        YOUR TRIAL LESSON
-                      </div>
-
-                      <div style="font-size:23px;font-weight:800;color:#1F2933;margin-top:8px;">
-                        ${instrumentName}
-                      </div>
-
-                      <div style="font-size:14px;color:#333333;margin-top:18px;">
-                        📅 ${dateText}
-                      </div>
-
-                      <div style="font-size:23px;font-weight:800;color:#C62828;margin-top:8px;">
-                        ${timeText}
-                      </div>
-
-                      <div style="font-size:11px;color:#777777;margin-top:7px;">
-                        60-minute free trial lesson
-                      </div>
-
-                    </div>
-
-                    <div style="margin-top:22px;padding:20px;border:1px solid #eeeeee;border-radius:14px;">
-
-                      <div style="font-size:10px;font-weight:700;letter-spacing:1px;color:#C62828;">
-                        LOCATION
-                      </div>
-
-                      <div style="font-size:14px;font-weight:700;color:#1F2933;margin-top:7px;">
-                        Sauti Tamu Piano Center
-                      </div>
-
-                      <div style="font-size:13px;line-height:1.7;color:#5B6573;margin-top:5px;">
-                        Junction Trade Center<br/>
-                        4th Floor, Room F401<br/>
-                        Above Equity Bank Tearoom Branch<br/>
-                        Nairobi CBD
-                      </div>
-
-                    </div>
-
-                    <div style="margin-top:22px;background:#fff7f7;border-radius:14px;padding:18px;">
-
-                      <div style="font-size:12px;font-weight:700;color:#1F2933;">
-                        Please arrive 10 minutes early.
-                      </div>
-
-                      <div style="font-size:12px;line-height:1.6;color:#666666;margin-top:5px;">
-                        We look forward to welcoming you
-                        and helping you get started with your
-                        musical journey.
-                      </div>
-
-                    </div>
-                    `
-                        : `
-                    <div style="margin-top:26px;background:#f7f7f7;border-radius:16px;padding:22px;">
-
-                      <div style="font-size:10px;font-weight:700;letter-spacing:1.2px;color:#888888;">
-                        YOUR TRIAL LESSON
-                      </div>
-
-                      <div style="font-size:23px;font-weight:800;color:#1F2933;margin-top:8px;">
-                        ${instrumentName}
-                      </div>
-
-                      <div style="font-size:14px;color:#333333;margin-top:18px;">
-                        📅 ${dateText}
-                      </div>
-
-                      <div style="font-size:23px;font-weight:800;color:#C62828;margin-top:8px;">
-                        ${timeText}
-                      </div>
-
-                    </div>
-
-                    <div style="margin-top:22px;background:#fff7f7;border-radius:14px;padding:20px;">
-
-                      <div style="font-size:13px;line-height:1.7;color:#5B6573;">
-                        ${actionText}
-                      </div>
-
-                    </div>
-                    `
-                    }
-
-                    <div style="margin-top:30px;padding-top:20px;border-top:1px solid #eeeeee;font-size:11px;line-height:1.6;color:#999999;">
-                      Sauti Tamu Piano Center<br/>
-                      Junction Trade Center, Nairobi CBD<br/>
-                      Kenya
-                    </div>
-
-                  </div>
-
-                </div>
-
-              </div>
-            `,
-          });
-
-        /*
-         * ------------------------------------------------
-         * CHECK RESEND RESULT
-         * ------------------------------------------------
-         */
-
-        if (emailResult.error) {
+        if (emailError) {
           throw new Error(
-            emailResult.error.message ||
+            emailError.message ||
               "Resend failed to send the email."
           );
         }
 
-        /*
-         * ------------------------------------------------
-         * MARK TASK AS SENT
-         * ------------------------------------------------
-         */
+        const sentAt = new Date().toISOString();
 
-        const sentAt =
-          new Date().toISOString();
-
-        const {
-          error: updateError,
-        } = await supabaseServer
+        const { error: updateError } = await supabaseServer
           .from("follow_up_tasks")
           .update({
             status: "sent",
@@ -723,13 +276,8 @@ async function processFollowups(
           .eq("status", "pending");
 
         if (updateError) {
-          console.error(
-            "Task status update failed after email was sent:",
-            updateError
-          );
-
           throw new Error(
-            "Email was sent but the reminder status could not be updated."
+            "Email was sent but the follow-up status could not be updated."
           );
         }
 
@@ -740,27 +288,19 @@ async function processFollowups(
           status: "sent",
         });
 
-      } catch (error) {
-        const errorMessage =
-          error instanceof Error
-            ? error.message
+        void sendData;
+      } catch (taskError) {
+        const message =
+          taskError instanceof Error
+            ? taskError.message
             : "Unknown error";
 
-        console.error(
-          `Follow-up ${task.id} failed:`,
-          error
-        );
-
-        /*
-         * Keep the task pending so that a later
-         * processor run can retry it.
-         */
+        console.error(`Follow-up ${task.id} failed:`, taskError);
 
         await supabaseServer
           .from("follow_up_tasks")
           .update({
-            updated_at:
-              new Date().toISOString(),
+            updated_at: new Date().toISOString(),
           })
           .eq("id", task.id);
 
@@ -769,16 +309,10 @@ async function processFollowups(
         results.push({
           taskId: task.id,
           status: "failed",
-          error: errorMessage,
+          error: message,
         });
       }
     }
-
-    /*
-     * --------------------------------------------------
-     * RESPONSE
-     * --------------------------------------------------
-     */
 
     return NextResponse.json({
       success: true,
@@ -787,22 +321,14 @@ async function processFollowups(
       failed,
       results,
       sender: RESEND_FROM_EMAIL,
-      adminEmail: ADMIN_EMAIL,
+      adminEmail: RESEND_ADMIN_EMAIL,
     });
-
   } catch (error) {
-    console.error(
-      "Follow-up processor error:",
-      error
-    );
+    console.error("Follow-up processor error:", error);
 
-    return NextResponse.json(
-      {
-        success: false,
-        error:
-          "Follow-up processor failed.",
-      },
-      { status: 500 }
+    return errorResponse(
+      "Follow-up processor failed.",
+      500
     );
   }
 }
