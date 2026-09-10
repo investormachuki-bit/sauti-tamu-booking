@@ -502,8 +502,6 @@ export default function AdminFollowupsPage() {
       setCallNotesDraft(created.notes ?? "");
     }
 
-    // Keep the response modal open while the user completes the call.
-    // Refresh in the background, but do not navigate away from this page.
     await loadFollowups(true);
 
     if (record.lead?.whatsapp_number) {
@@ -519,48 +517,82 @@ export default function AdminFollowupsPage() {
 
   async function saveCallResponse() {
     if (!editingCall) return;
+
+    const callId = editingCall.id;
+    const notes = callNotesDraft.trim();
+    const outcome = callOutcomeDraft.trim() || "called";
+
     setSavingCall(true);
     setError("");
 
-    const { data, error: updateError } = await supabase.rpc("update_booking_call_log", {
-      p_call_id: editingCall.id,
-      p_notes: callNotesDraft,
-      p_outcome: callOutcomeDraft,
-    });
+    try {
+      console.log("Saving call response", { callId, outcome, notes });
 
-    if (updateError) {
-      console.error("Update call response error:", updateError);
-      setError("We couldn't save the call response.");
-      setSavingCall(false);
-      return;
-    }
+      const { data: rpcData, error: rpcError } = await supabase.rpc(
+        "update_booking_call_log",
+        {
+          p_call_id: callId,
+          p_notes: notes || null,
+          p_outcome: outcome,
+        }
+      );
 
-    // Use the database response immediately so the UI reflects the saved record
-    // before closing the response modal or refreshing the follow-up queue.
-    const savedCall = (data ?? [])[0] as BookingCallLog | undefined;
+      if (rpcError) {
+        console.error("Update call response RPC error:", rpcError);
+        setError(rpcError.message || "We couldn't save the call response.");
+        return;
+      }
 
-    if (savedCall) {
+      const savedFromRpc = (rpcData ?? [])[0] as BookingCallLog | undefined;
+
+      // Verify the row that is actually stored in production before closing the modal.
+      const { data: verifiedCall, error: verifyError } = await supabase
+        .from("booking_call_logs")
+        .select("id, booking_id, lead_id, called_at, notes, outcome, created_at")
+        .eq("id", callId)
+        .maybeSingle();
+
+      if (verifyError) {
+        console.error("Call response verification error:", verifyError);
+        setError("The response may have been saved, but we couldn't verify it. The form was kept open.");
+        return;
+      }
+
+      const savedCall = verifiedCall as BookingCallLog | null;
+      if (!savedCall || savedCall.id !== callId || savedCall.outcome !== outcome || (savedCall.notes ?? "") !== notes) {
+        console.error("Call response verification mismatch", { savedCall, savedFromRpc, callId, outcome, notes });
+        setError("The response was not confirmed as saved. Please try again.");
+        return;
+      }
+
       setSelectedRecord((current) => {
         if (!current) return current;
-
         return {
           ...current,
-          calls: current.calls.map((call) =>
-            call.id === savedCall.id
-              ? savedCall
-              : call
-          ),
+          calls: current.calls.map((call) => call.id === callId ? savedCall : call),
         };
       });
+
+      setRecords((current) => current.map((record) => {
+        if (!record.calls.some((call) => call.id === callId)) return record;
+        return {
+          ...record,
+          calls: record.calls.map((call) => call.id === callId ? savedCall : call),
+        };
+      }));
+
+      setEditingCall(null);
+      setCallNotesDraft("");
+      setCallOutcomeDraft("called");
+
+      // Refresh after the verified save, but do not let refresh control modal state.
+      void loadFollowups(true);
+    } catch (saveError) {
+      console.error("Unexpected call response save error:", saveError);
+      setError("We couldn't save the call response. Please try again.");
+    } finally {
+      setSavingCall(false);
     }
-
-    setEditingCall(null);
-    setCallNotesDraft("");
-    setCallOutcomeDraft("called");
-
-    // Refresh after the local UI has been updated.
-    await loadFollowups(true);
-    setSavingCall(false);
   }
 
   function openWhatsApp(record: FollowUpRecord) {
