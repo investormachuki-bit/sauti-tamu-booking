@@ -502,10 +502,12 @@ export default function AdminFollowupsPage() {
       setCallNotesDraft(created.notes ?? "");
     }
 
+    // Keep the response modal open while the user completes the call.
+    // Refresh in the background, but do not navigate away from this page.
     await loadFollowups(true);
 
     if (record.lead?.whatsapp_number) {
-      window.open(`tel:${record.lead.whatsapp_number}`, "_self");
+      window.open(`tel:${record.lead.whatsapp_number}`, "_blank");
     }
   }
 
@@ -520,7 +522,7 @@ export default function AdminFollowupsPage() {
     setSavingCall(true);
     setError("");
 
-    const { error: updateError } = await supabase.rpc("update_booking_call_log", {
+    const { data, error: updateError } = await supabase.rpc("update_booking_call_log", {
       p_call_id: editingCall.id,
       p_notes: callNotesDraft,
       p_outcome: callOutcomeDraft,
@@ -533,7 +535,30 @@ export default function AdminFollowupsPage() {
       return;
     }
 
+    // Use the database response immediately so the UI reflects the saved record
+    // before closing the response modal or refreshing the follow-up queue.
+    const savedCall = (data ?? [])[0] as BookingCallLog | undefined;
+
+    if (savedCall) {
+      setSelectedRecord((current) => {
+        if (!current) return current;
+
+        return {
+          ...current,
+          calls: current.calls.map((call) =>
+            call.id === savedCall.id
+              ? savedCall
+              : call
+          ),
+        };
+      });
+    }
+
     setEditingCall(null);
+    setCallNotesDraft("");
+    setCallOutcomeDraft("called");
+
+    // Refresh after the local UI has been updated.
     await loadFollowups(true);
     setSavingCall(false);
   }
