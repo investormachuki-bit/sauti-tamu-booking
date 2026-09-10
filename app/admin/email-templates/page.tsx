@@ -750,7 +750,7 @@ export default function EmailTemplatesPage() {
                     Body
                   </span>
                   <span className="text-[8px] text-[var(--st-gray)]">
-                    Plain text + {{"{{"}}variable{{"}}"}} placeholders
+                    Plain text + <code className="font-mono">{"{{variable}}"}</code> placeholders
                   </span>
                 </div>
 
