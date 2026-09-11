@@ -22,36 +22,75 @@ const AUTOMATED_EMAIL_TASK_TYPES = [
   "trial_reminder_1h",
   "trial_reminder_2h",
   "post_trial_follow_up",
+  "trial_reschedule_follow_up",
 ] as const;
 
-function templateKeyForTask(taskType: string) {
-  switch (taskType) {
-    case "trial_reminder_7d":
-      return "trial_reminder_7d";
-    case "trial_reminder_3d":
-      return "trial_reminder_3d";
-    case "trial_reminder_24h":
-      return "trial_reminder_24h";
-    case "trial_reminder_6h":
-      return "trial_reminder_6h";
-    case "trial_reminder_1h":
-      return "trial_reminder_1h";
-    case "trial_reminder_2h":
-      // Historical task type: use the closest current reminder template
-      // rather than failing solely because the old 2-hour template does not exist.
-      return "trial_reminder_1h";
-    case "post_trial_follow_up":
-      return "attended_not_registered";
-    default:
-      return taskType;
-  }
-}
+type FollowUpTask = {
+  id: string;
+  lead_id: string;
+  booking_id: string | null;
+  task_type: string;
+  due_at: string;
+  status: string;
+  channel: string | null;
+  message_template: string | null;
+};
 
 function errorResponse(message: string, status = 500) {
   return NextResponse.json(
     { success: false, error: message },
-    { status }
+    { status },
   );
+}
+
+function templateKeyForTask(task: FollowUpTask) {
+  switch (task.task_type) {
+    case "trial_reminder_7d":
+      return "trial_reminder_7d";
+
+    case "trial_reminder_3d":
+      return "trial_reminder_3d";
+
+    case "trial_reminder_24h":
+      return "trial_reminder_24h";
+
+    case "trial_reminder_6h":
+      return "trial_reminder_6h";
+
+    case "trial_reminder_1h":
+      return "trial_reminder_1h";
+
+    case "trial_reminder_2h":
+      // Historical task type. Keep it processable without creating
+      // or requiring a new production template.
+      return "trial_reminder_1h";
+
+    case "post_trial_follow_up":
+      // message_template is authoritative for the outcome generated
+      // by the attendance workflow.
+      if (
+        task.message_template ===
+        "attended_already_registered_start_lessons"
+      ) {
+        return "attended_already_registered_start_lessons";
+      }
+
+      if (task.message_template === "attended_not_registered") {
+        return "attended_not_registered";
+      }
+
+      throw new Error(
+        "Post-trial follow-up has no valid message template.",
+      );
+
+    case "trial_reschedule_follow_up":
+      return "trial_reschedule";
+
+    default:
+      throw new Error(
+        `Unsupported automated follow-up task type: ${task.task_type}`,
+      );
+  }
 }
 
 export async function GET(request: NextRequest) {
@@ -69,7 +108,7 @@ async function processFollowups(request: NextRequest) {
     if (!cronSecret) {
       return errorResponse(
         "Follow-up processor is not configured.",
-        500
+        500,
       );
     }
 
@@ -83,7 +122,10 @@ async function processFollowups(request: NextRequest) {
     }
 
     if (!process.env.RESEND_API_KEY) {
-      return errorResponse("Email service is not configured.", 500);
+      return errorResponse(
+        "Email service is not configured.",
+        500,
+      );
     }
 
     const now = new Date().toISOString();
@@ -100,7 +142,7 @@ async function processFollowups(request: NextRequest) {
           status,
           channel,
           message_template
-        `
+        `,
       )
       .eq("status", "pending")
       .eq("channel", "email")
@@ -111,9 +153,10 @@ async function processFollowups(request: NextRequest) {
 
     if (taskError) {
       console.error("Follow-up task query error:", taskError);
+
       return errorResponse(
         "Could not load due follow-ups.",
-        500
+        500,
       );
     }
 
@@ -123,24 +166,34 @@ async function processFollowups(request: NextRequest) {
         message: "No due follow-ups found.",
         processed: 0,
         sent: 0,
+        completed: 0,
+        cancelled: 0,
         failed: 0,
       });
     }
 
     let sent = 0;
+    let completed = 0;
+    let cancelled = 0;
     let failed = 0;
 
     const results: Array<{
       taskId: string;
-      status: "sent" | "failed" | "cancelled";
+      status: "completed" | "cancelled" | "failed";
       error?: string;
+      messageId?: string | null;
+      templateKey?: string;
     }> = [];
 
-    for (const task of tasks) {
+    for (const rawTask of tasks) {
+      const task = rawTask as FollowUpTask;
+
       try {
         const { data: lead, error: leadError } = await supabaseServer
           .from("leads")
-          .select("id, full_name, email, whatsapp_number")
+          .select(
+            "id, full_name, email, whatsapp_number",
+          )
           .eq("id", task.lead_id)
           .single();
 
@@ -171,14 +224,16 @@ async function processFollowups(request: NextRequest) {
           | null = null;
 
         if (task.booking_id) {
-          const { data: bookingData, error: bookingError } =
-            await supabaseServer
-              .from("bookings")
-              .select(
-                "id, lead_id, instrument, status, slot_id"
-              )
-              .eq("id", task.booking_id)
-              .single();
+          const {
+            data: bookingData,
+            error: bookingError,
+          } = await supabaseServer
+            .from("bookings")
+            .select(
+              "id, lead_id, instrument, status, slot_id",
+            )
+            .eq("id", task.booking_id)
+            .single();
 
           if (bookingError || !bookingData) {
             throw new Error("Booking could not be found.");
@@ -194,6 +249,7 @@ async function processFollowups(request: NextRequest) {
               .from("follow_up_tasks")
               .update({
                 status: "cancelled",
+                completed_at: null,
                 updated_at: new Date().toISOString(),
               })
               .eq("id", task.id)
@@ -203,19 +259,24 @@ async function processFollowups(request: NextRequest) {
               throw cancelError;
             }
 
+            cancelled++;
+
             results.push({
               taskId: task.id,
               status: "cancelled",
             });
+
             continue;
           }
 
-          const { data: slotData, error: slotError } =
-            await supabaseServer
-              .from("lesson_slots")
-              .select("id, starts_at, ends_at")
-              .eq("id", booking.slot_id)
-              .single();
+          const {
+            data: slotData,
+            error: slotError,
+          } = await supabaseServer
+            .from("lesson_slots")
+            .select("id, starts_at, ends_at")
+            .eq("id", booking.slot_id)
+            .single();
 
           if (slotError || !slotData) {
             throw new Error("Lesson slot could not be found.");
@@ -224,7 +285,7 @@ async function processFollowups(request: NextRequest) {
           slot = slotData;
         }
 
-        const templateKey = templateKeyForTask(task.task_type);
+        const templateKey = templateKeyForTask(task);
 
         const rendered = await renderSautiTamuEmail(
           templateKey,
@@ -232,70 +293,95 @@ async function processFollowups(request: NextRequest) {
             full_name: lead.full_name,
             email: lead.email,
             whatsapp_number: lead.whatsapp_number,
-            booking_id: booking?.id ?? task.booking_id,
+
+            booking_id:
+              booking?.id ??
+              task.booking_id,
+
             lesson_details: slot
               ? {
-                  instrument: booking?.instrument ?? null,
+                  instrument:
+                    booking?.instrument ?? null,
                   starts_at: slot.starts_at,
                   ends_at: slot.ends_at,
                 }
               : null,
-          }
+          },
         );
 
-        const { data: sendData, error: emailError } =
-          await resend.emails.send(
-            {
-              from: RESEND_FROM_EMAIL,
-              to: [lead.email.trim().toLowerCase()],
-              subject: rendered.subject,
-              html: rendered.html,
-            },
-            {
-              idempotencyKey: `follow-up-${task.id}`,
-            }
-          );
+        const {
+          data: sendData,
+          error: emailError,
+        } = await resend.emails.send(
+          {
+            from: RESEND_FROM_EMAIL,
+            to: [lead.email.trim().toLowerCase()],
+            subject: rendered.subject,
+            html: rendered.html,
+          },
+          {
+            idempotencyKey: `follow-up-${task.id}`,
+          },
+        );
 
         if (emailError) {
           throw new Error(
             emailError.message ||
-              "Resend failed to send the email."
-          );
-        }
-
-        const sentAt = new Date().toISOString();
-
-        const { error: updateError } = await supabaseServer
-          .from("follow_up_tasks")
-          .update({
-            status: "sent",
-            sent_at: sentAt,
-            updated_at: sentAt,
-          })
-          .eq("id", task.id)
-          .eq("status", "pending");
-
-        if (updateError) {
-          throw new Error(
-            "Email was sent but the follow-up status could not be updated."
+              "Resend failed to send the email.",
           );
         }
 
         sent++;
 
+        const completedAt =
+          new Date().toISOString();
+
+        const {
+          data: updatedTask,
+          error: updateError,
+        } = await supabaseServer
+          .from("follow_up_tasks")
+          .update({
+            status: "completed",
+            sent_at: completedAt,
+            completed_at: completedAt,
+            updated_at: completedAt,
+          })
+          .eq("id", task.id)
+          .eq("status", "pending")
+          .select("id, status, sent_at, completed_at")
+          .maybeSingle();
+
+        if (updateError) {
+          throw new Error(
+            "Email was sent but the follow-up task status could not be updated.",
+          );
+        }
+
+        if (!updatedTask || updatedTask.status !== "completed") {
+          throw new Error(
+            "Email was sent but the follow-up task could not be marked completed.",
+          );
+        }
+
+        completed++;
+
         results.push({
           taskId: task.id,
-          status: "sent",
+          status: "completed",
+          messageId: sendData?.id ?? null,
+          templateKey,
         });
-
-        void sendData;
       } catch (taskError) {
         const message =
           taskError instanceof Error
             ? taskError.message
             : "Unknown error";
 
-        console.error(`Follow-up ${task.id} failed:`, taskError);
+        console.error(
+          `Follow-up ${task.id} failed:`,
+          taskError,
+        );
 
         await supabaseServer
           .from("follow_up_tasks")
@@ -318,17 +404,22 @@ async function processFollowups(request: NextRequest) {
       success: true,
       processed: tasks.length,
       sent,
+      completed,
+      cancelled,
       failed,
       results,
       sender: RESEND_FROM_EMAIL,
       adminEmail: RESEND_ADMIN_EMAIL,
     });
   } catch (error) {
-    console.error("Follow-up processor error:", error);
+    console.error(
+      "Follow-up processor error:",
+      error,
+    );
 
     return errorResponse(
       "Follow-up processor failed.",
-      500
+      500,
     );
   }
 }
