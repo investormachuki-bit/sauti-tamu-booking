@@ -49,9 +49,10 @@ type Instrument =
   | "guitar";
 
 type BookingFilter =
+  | "yesterday"
   | "today"
   | "tomorrow"
-  | "all"
+  | "this_week"
   | "confirmed"
   | "completed"
   | "booked"
@@ -175,9 +176,10 @@ const FILTER_LABELS: Record<
   BookingFilter,
   string
 > = {
+  yesterday: "YESTERDAY",
   today: "TODAY",
   tomorrow: "TOMORROW",
-  all: "ALL",
+  this_week: "THIS WEEK",
   confirmed: "CONFIRMED",
   completed: "ATTENDED",
   booked: "BOOKED",
@@ -192,6 +194,11 @@ const FILTER_BUTTONS: Array<{
   color: string;
 }> = [
   {
+    key: "yesterday",
+    label: "Yesterday",
+    color: "bg-slate-600 text-white",
+  },
+  {
     key: "today",
     label: "Today",
     color: "bg-blue-600 text-white",
@@ -202,8 +209,8 @@ const FILTER_BUTTONS: Array<{
     color: "bg-violet-600 text-white",
   },
   {
-    key: "all",
-    label: "All",
+    key: "this_week",
+    label: "This week",
     color: "bg-slate-900 text-white",
   },
   {
@@ -267,6 +274,24 @@ function getNairobiDateKeyOffset(days: number) {
   );
 
   return getNairobiDateKey(base);
+}
+
+function getNairobiWeekRange() {
+  const todayKey = getNairobiDateKey(new Date());
+  const today = new Date(`${todayKey}T12:00:00+03:00`);
+  const day = today.getDay(); // Sunday = 0
+  const mondayOffset = day === 0 ? -6 : 1 - day;
+
+  const monday = new Date(today);
+  monday.setDate(monday.getDate() + mondayOffset);
+
+  const nextMonday = new Date(monday);
+  nextMonday.setDate(nextMonday.getDate() + 7);
+
+  return {
+    start: getNairobiDateKey(monday),
+    endExclusive: getNairobiDateKey(nextMonday),
+  };
 }
 
 function getNairobiStartOfToday() {
@@ -563,6 +588,12 @@ export default function AdminBookingsPage() {
 
   const [savingCallId, setSavingCallId] =
     useState<string | null>(null);
+
+  const [responseBooking, setResponseBooking] =
+    useState<BookingRecord | null>(null);
+
+  const [responseCall, setResponseCall] =
+    useState<BookingCallLog | null>(null);
 
   /*
    * =========================================================
@@ -1083,8 +1114,14 @@ export default function AdminBookingsPage() {
           new Date()
         );
 
+      const yesterdayKey =
+        getNairobiDateKeyOffset(-1);
+
       const tomorrowKey =
         getNairobiDateKeyOffset(1);
+
+      const weekRange =
+        getNairobiWeekRange();
 
       return records.filter(
         (record) => {
@@ -1113,6 +1150,15 @@ export default function AdminBookingsPage() {
            */
 
           switch (filter) {
+            case "yesterday":
+              if (
+                slotDateKey !==
+                yesterdayKey
+              ) {
+                return false;
+              }
+              break;
+
             case "today":
               if (
                 slotDateKey !==
@@ -1126,6 +1172,18 @@ export default function AdminBookingsPage() {
               if (
                 slotDateKey !==
                 tomorrowKey
+              ) {
+                return false;
+              }
+              break;
+
+            case "this_week":
+              if (
+                !slotDateKey ||
+                slotDateKey <
+                  weekRange.start ||
+                slotDateKey >=
+                  weekRange.endExclusive
               ) {
                 return false;
               }
@@ -1161,10 +1219,6 @@ export default function AdminBookingsPage() {
               ) {
                 return false;
               }
-              break;
-
-            case "all":
-            default:
               break;
           }
 
@@ -1804,6 +1858,115 @@ export default function AdminBookingsPage() {
     } catch (err) {
       console.error(
         "Call response save error:",
+        err
+      );
+
+      setError(
+        err &&
+          typeof err === "object" &&
+          "message" in err
+          ? String(
+              (
+                err as {
+                  message: string;
+                }
+              ).message
+            )
+          : "We couldn't save the call response."
+      );
+    } finally {
+      setSavingCallId(null);
+    }
+  }
+
+  function openResponseEditor(
+    record: BookingRecord
+  ) {
+    const calls =
+      callLogsByBooking[record.booking.id] ?? [];
+
+    const latestCall = calls[0] ?? null;
+
+    setResponseBooking(record);
+    setResponseCall(latestCall);
+
+    setCallNotesDraft(
+      latestCall?.notes ===
+        "Call initiated from Booking page."
+        ? ""
+        : latestCall?.notes ?? ""
+    );
+
+    setCallOutcomeDraft(
+      latestCall?.outcome ?? "called"
+    );
+
+    setError("");
+  }
+
+  function closeResponseEditor() {
+    setResponseBooking(null);
+    setResponseCall(null);
+    setCallNotesDraft("");
+    setCallOutcomeDraft("called");
+    setSavingCallId(null);
+  }
+
+  async function saveFrontResponse() {
+    if (!responseBooking) {
+      return;
+    }
+
+    const activeId =
+      responseCall?.id ??
+      responseBooking.booking.id;
+
+    setSavingCallId(activeId);
+    setError("");
+
+    try {
+      if (responseCall) {
+        const { error: rpcError } =
+          await supabase.rpc(
+            "update_booking_call_log",
+            {
+              p_call_id: responseCall.id,
+              p_notes:
+                callNotesDraft.trim() ||
+                null,
+              p_outcome:
+                callOutcomeDraft || null,
+            }
+          );
+
+        if (rpcError) {
+          throw rpcError;
+        }
+      } else {
+        const { error: rpcError } =
+          await supabase.rpc(
+            "record_booking_call",
+            {
+              p_booking_id:
+                responseBooking.booking.id,
+              p_notes:
+                callNotesDraft.trim() ||
+                null,
+              p_outcome:
+                callOutcomeDraft || null,
+            }
+          );
+
+        if (rpcError) {
+          throw rpcError;
+        }
+      }
+
+      await loadBookings(true);
+      closeResponseEditor();
+    } catch (err) {
+      console.error(
+        "Front response save error:",
         err
       );
 
@@ -2616,7 +2779,7 @@ export default function AdminBookingsPage() {
 
         </div>
 
-        <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
+        <div className="mt-4 flex flex-wrap items-center gap-1.5">
 
           {FILTER_BUTTONS.map(
             (item) => {
@@ -2634,10 +2797,10 @@ export default function AdminBookingsPage() {
                     )
                   }
                   className={[
-                    "min-h-[44px] rounded-xl px-3 py-3 text-[10px] font-bold transition",
+                    "inline-flex h-8 w-fit shrink-0 items-center justify-center rounded-md px-2 text-[9px] font-bold leading-none whitespace-nowrap transition",
                     item.color,
                     active
-                      ? "scale-[1.02] ring-2 ring-black ring-offset-2"
+                      ? "ring-2 ring-black ring-offset-1"
                       : "opacity-90 hover:opacity-100",
                   ].join(" ")}
                 >
@@ -2906,40 +3069,34 @@ export default function AdminBookingsPage() {
                           ACTIONS
                       ================================================= */}
 
-                      <div className="mt-5 border-t border-[var(--st-border)] pt-4">
+                      <div className="mt-5 border-t border-[var(--st-border)] pt-3">
 
-                        <p className="mb-3 text-[8px] font-bold uppercase tracking-[0.1em] text-[var(--st-gray)]">
+                        <p className="mb-2 text-[8px] font-bold uppercase tracking-[0.1em] text-[var(--st-gray)]">
                           {actions.isCompleted
                             ? "STUDENT ACTIONS"
                             : "TRIAL ACTIONS"}
                         </p>
 
-                        <div className="grid grid-cols-2 gap-2 lg:grid-cols-5">
+                        <div className="flex flex-wrap items-center gap-1.5">
 
                           {/* BOOKED */}
 
                           {actions.canBook && (
                             <button
                               type="button"
-                              disabled={
-                                isUpdating
-                              }
+                              disabled={isUpdating}
                               onClick={() =>
-                                openBooked(
-                                  record
-                                )
+                                openBooked(record)
                               }
-                              className="flex min-h-[46px] items-center justify-center gap-2 rounded-xl bg-[var(--st-red)] px-3 py-3 text-[9px] font-bold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+                              className="inline-flex h-8 w-fit shrink-0 items-center justify-center gap-1 rounded-md bg-[var(--st-red)] px-2 text-[8px] font-bold leading-none text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
                             >
                               {isUpdating ? (
                                 <RefreshCw
-                                  size={14}
+                                  size={11}
                                   className="animate-spin"
                                 />
                               ) : (
-                                <UserPlus
-                                  size={14}
-                                />
+                                <UserPlus size={11} />
                               )}
 
                               Booked
@@ -2951,20 +3108,13 @@ export default function AdminBookingsPage() {
                           {actions.canRegister && (
                             <button
                               type="button"
-                              disabled={
-                                isUpdating
-                              }
+                              disabled={isUpdating}
                               onClick={() =>
-                                openRegistration(
-                                  record
-                                )
+                                openRegistration(record)
                               }
-                              className="flex min-h-[46px] items-center justify-center gap-2 rounded-xl border border-amber-300 bg-amber-50 px-3 py-3 text-[9px] font-bold text-amber-700 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-40"
+                              className="inline-flex h-8 w-fit shrink-0 items-center justify-center gap-1 rounded-md border border-amber-300 bg-amber-50 px-2 text-[8px] font-bold leading-none text-amber-700 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-40"
                             >
-                              <UserPlus
-                                size={14}
-                              />
-
+                              <UserPlus size={11} />
                               Registered
                             </button>
                           )}
@@ -2974,20 +3124,13 @@ export default function AdminBookingsPage() {
                           {actions.canCall && (
                             <button
                               type="button"
-                              disabled={
-                                !lead?.whatsapp_number
-                              }
+                              disabled={!lead?.whatsapp_number}
                               onClick={() =>
-                                callLearner(
-                                  record
-                                )
+                                callLearner(record)
                               }
-                              className="flex min-h-[46px] items-center justify-center gap-2 rounded-xl border border-sky-200 bg-sky-50 px-3 py-3 text-[9px] font-bold text-sky-700 transition hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-40"
+                              className="inline-flex h-8 w-fit shrink-0 items-center justify-center gap-1 rounded-md border border-sky-200 bg-sky-50 px-2 text-[8px] font-bold leading-none text-sky-700 transition hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-40"
                             >
-                              <Phone
-                                size={14}
-                              />
-
+                              <Phone size={11} />
                               Call
                             </button>
                           )}
@@ -2997,25 +3140,19 @@ export default function AdminBookingsPage() {
                           {actions.canAttend && (
                             <button
                               type="button"
-                              disabled={
-                                isUpdating
-                              }
+                              disabled={isUpdating}
                               onClick={() =>
-                                markAttended(
-                                  record
-                                )
+                                markAttended(record)
                               }
-                              className="flex min-h-[46px] items-center justify-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-3 py-3 text-[9px] font-bold text-blue-700 transition hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-40"
+                              className="inline-flex h-8 w-fit shrink-0 items-center justify-center gap-1 rounded-md border border-blue-200 bg-blue-50 px-2 text-[8px] font-bold leading-none text-blue-700 transition hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-40"
                             >
                               {isUpdating ? (
                                 <RefreshCw
-                                  size={14}
+                                  size={11}
                                   className="animate-spin"
                                 />
                               ) : (
-                                <UserCheck
-                                  size={14}
-                                />
+                                <UserCheck size={11} />
                               )}
 
                               Attended
@@ -3027,25 +3164,19 @@ export default function AdminBookingsPage() {
                           {actions.canMiss && (
                             <button
                               type="button"
-                              disabled={
-                                isUpdating
-                              }
+                              disabled={isUpdating}
                               onClick={() =>
-                                markMissedTrial(
-                                  record
-                                )
+                                markMissedTrial(record)
                               }
-                              className="flex min-h-[46px] items-center justify-center gap-2 rounded-xl border border-fuchsia-200 bg-fuchsia-50 px-3 py-3 text-[9px] font-bold text-fuchsia-700 transition hover:bg-fuchsia-100 disabled:cursor-not-allowed disabled:opacity-40"
+                              className="inline-flex h-8 w-fit shrink-0 items-center justify-center gap-1 rounded-md border border-fuchsia-200 bg-fuchsia-50 px-2 text-[8px] font-bold leading-none text-fuchsia-700 transition hover:bg-fuchsia-100 disabled:cursor-not-allowed disabled:opacity-40"
                             >
                               {isUpdating ? (
                                 <RefreshCw
-                                  size={14}
+                                  size={11}
                                   className="animate-spin"
                                 />
                               ) : (
-                                <UserX
-                                  size={14}
-                                />
+                                <UserX size={11} />
                               )}
 
                               Missed
@@ -3057,30 +3188,37 @@ export default function AdminBookingsPage() {
                           {actions.canCancel && (
                             <button
                               type="button"
-                              disabled={
-                                isUpdating
-                              }
+                              disabled={isUpdating}
                               onClick={() =>
-                                markCancelled(
-                                  record
-                                )
+                                markCancelled(record)
                               }
-                              className="flex min-h-[46px] items-center justify-center gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-3 text-[9px] font-bold text-red-700 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-40"
+                              className="inline-flex h-8 w-fit shrink-0 items-center justify-center gap-1 rounded-md border border-red-200 bg-red-50 px-2 text-[8px] font-bold leading-none text-red-700 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-40"
                             >
                               {isUpdating ? (
                                 <RefreshCw
-                                  size={14}
+                                  size={11}
                                   className="animate-spin"
                                 />
                               ) : (
-                                <XCircle
-                                  size={14}
-                                />
+                                <XCircle size={11} />
                               )}
 
                               Cancelled
                             </button>
                           )}
+
+                          {/* RECORD RESPONSE */}
+
+                          <button
+                            type="button"
+                            onClick={() =>
+                              openResponseEditor(record)
+                            }
+                            className="inline-flex h-8 w-fit shrink-0 items-center justify-center gap-1 rounded-md border border-violet-200 bg-violet-50 px-2 text-[8px] font-bold leading-none text-violet-700 transition hover:bg-violet-100"
+                          >
+                            <MessageSquare size={11} />
+                            Record response
+                          </button>
 
                         </div>
 
@@ -3088,21 +3226,23 @@ export default function AdminBookingsPage() {
 
                       {/* VIEW */}
 
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setSelectedBooking(
-                            record
-                          )
-                        }
-                        className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-[var(--st-bg-soft)] px-3 py-3 text-[9px] font-bold text-[var(--st-gray)] transition hover:text-[var(--st-charcoal-dark)]"
-                      >
-                        View booking details
+                      <div className="mt-2">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setSelectedBooking(
+                              record
+                            )
+                          }
+                          className="inline-flex h-8 w-fit shrink-0 items-center justify-center gap-1 rounded-md bg-[var(--st-bg-soft)] px-2 text-[8px] font-bold leading-none text-[var(--st-gray)] transition hover:text-[var(--st-charcoal-dark)]"
+                        >
+                          View details
 
-                        <ArrowRight
-                          size={13}
-                        />
-                      </button>
+                          <ArrowRight
+                            size={11}
+                          />
+                        </button>
+                      </div>
 
                     </div>
 
@@ -3531,7 +3671,7 @@ export default function AdminBookingsPage() {
 
                                 {displayNotes
                                   ? "Edit response"
-                                  : "Record response"}
+                                  : "View response"}
                               </button>
                             )}
 
@@ -4020,6 +4160,106 @@ export default function AdminBookingsPage() {
 
           </div>
 
+        </div>
+      )}
+
+      {/* =====================================================
+          RECORD RESPONSE MODAL
+      ===================================================== */}
+
+      {responseBooking && (
+        <div className="fixed inset-0 z-[120] flex items-end justify-center bg-black/40 sm:items-center sm:p-4">
+          <div className="w-full max-w-[460px] rounded-t-2xl bg-white shadow-2xl sm:rounded-2xl">
+            <div className="flex items-center justify-between border-b border-[var(--st-border)] px-4 py-3">
+              <div className="min-w-0">
+                <p className="m-0 text-[11px] font-bold text-[var(--st-charcoal-dark)]">
+                  Record response
+                </p>
+                <p className="mt-1 mb-0 truncate text-[9px] text-[var(--st-gray)]">
+                  {responseBooking.lead?.full_name ?? "Unknown learner"}
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={closeResponseEditor}
+                className="inline-flex h-7 w-7 items-center justify-center rounded-md text-[var(--st-gray)] hover:bg-[var(--st-bg-soft)]"
+                aria-label="Close"
+              >
+                <X size={14} />
+              </button>
+            </div>
+
+            <div className="space-y-3 p-4">
+              <div>
+                <label className="mb-1.5 block text-[8px] font-bold uppercase tracking-[0.08em] text-[var(--st-gray)]">
+                  Call outcome
+                </label>
+
+                <select
+                  value={callOutcomeDraft}
+                  onChange={(event) =>
+                    setCallOutcomeDraft(event.target.value)
+                  }
+                  className="h-9 w-full rounded-md border border-[var(--st-border)] bg-white px-2.5 text-[9px] font-semibold text-[var(--st-charcoal-dark)] outline-none focus:border-[var(--st-red)] focus:ring-2 focus:ring-[var(--st-red)]/10"
+                >
+                  {CALL_OUTCOMES.map((option) => (
+                    <option
+                      key={option.value}
+                      value={option.value}
+                    >
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="mb-1.5 block text-[8px] font-bold uppercase tracking-[0.08em] text-[var(--st-gray)]">
+                  What did the lead say?
+                </label>
+
+                <textarea
+                  value={callNotesDraft}
+                  onChange={(event) =>
+                    setCallNotesDraft(event.target.value)
+                  }
+                  rows={5}
+                  placeholder="Record the lead's response..."
+                  className="w-full resize-y rounded-md border border-[var(--st-border)] bg-white px-2.5 py-2.5 text-[9px] leading-relaxed text-[var(--st-charcoal-dark)] outline-none placeholder:text-gray-400 focus:border-[var(--st-red)] focus:ring-2 focus:ring-[var(--st-red)]/10"
+                />
+              </div>
+
+              <div className="flex justify-end gap-1.5">
+                <button
+                  type="button"
+                  onClick={closeResponseEditor}
+                  disabled={savingCallId !== null}
+                  className="inline-flex h-8 items-center justify-center gap-1 rounded-md border border-[var(--st-border)] px-2.5 text-[8px] font-bold text-[var(--st-gray)] transition hover:bg-[var(--st-bg-soft)] disabled:opacity-50"
+                >
+                  <X size={11} />
+                  Cancel
+                </button>
+
+                <button
+                  type="button"
+                  onClick={saveFrontResponse}
+                  disabled={savingCallId !== null}
+                  className="inline-flex h-8 items-center justify-center gap-1 rounded-md bg-[var(--st-red)] px-2.5 text-[8px] font-bold text-white transition hover:opacity-90 disabled:opacity-50"
+                >
+                  {savingCallId !== null ? (
+                    <RefreshCw
+                      size={11}
+                      className="animate-spin"
+                    />
+                  ) : (
+                    <Save size={11} />
+                  )}
+                  Save response
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 
