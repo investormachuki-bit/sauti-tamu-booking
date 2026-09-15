@@ -566,7 +566,7 @@ export default function AdminBookingsPage() {
     useState("");
 
   const [filter, setFilter] =
-    useState<BookingFilter>("all");
+  useState<BookingFilter>("today");
 
   const [selectedBooking, setSelectedBooking] =
     useState<BookingRecord | null>(null);
