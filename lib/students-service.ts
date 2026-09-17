@@ -766,17 +766,25 @@ export async function completeStudent( studentId: string ): Promise<void> {
 
   /* * Find the current/latest enrollment. * loadStudents() uses the newest enrollment * as the current enrollment. */
   const {
+    data: currentStudent,
+    error: studentLookupError,
+  } = await supabase
+    .from("students")
+    .select("id, status")
+    .eq("id", studentId)
+    .single();
+
+  if (studentLookupError) {
+    throw studentLookupError;
+  }
+
+  const {
     data: enrollment,
     error: enrollmentLookupError,
   } = await supabase
     .from("student_enrollments")
-    .select(
-      "id, student_id, status"
-    )
-    .eq(
-      "student_id",
-      studentId
-    )
+    .select("id, status")
+    .eq("student_id", studentId)
     .order("created_at", {
       ascending: false,
     })
@@ -795,16 +803,13 @@ export async function completeStudent( studentId: string ): Promise<void> {
     .update({
       status: "completed",
     })
-    .eq(
-      "id",
-      studentId
-    );
+    .eq("id", studentId);
 
   if (studentUpdateError) {
     throw studentUpdateError;
   }
 
-  /* * Mark the current enrollment as completed too. */
+  /* * Mark the current/latest enrollment as completed too. */
   if (enrollment?.id) {
     const {
       error: enrollmentUpdateError,
@@ -813,22 +818,16 @@ export async function completeStudent( studentId: string ): Promise<void> {
       .update({
         status: "completed",
       })
-      .eq(
-        "id",
-        enrollment.id
-      );
+      .eq("id", enrollment.id);
 
     if (enrollmentUpdateError) {
-      /* * Roll the student status back if the * enrollment update fails, so the two * records don't become inconsistent. */
+      /* * Roll the student status back if the enrollment * update fails, so the records remain consistent. */
       await supabase
         .from("students")
         .update({
-          status: "active",
+          status: currentStudent.status,
         })
-        .eq(
-          "id",
-          studentId
-        );
+        .eq("id", studentId);
 
       throw enrollmentUpdateError;
     }
