@@ -7,14 +7,10 @@ import {
   CalendarDays,
   CheckCircle2,
   Clock3,
-  Cog,
-  FileText,
   GraduationCap,
-  LayoutDashboard,
   Loader2,
   Mail,
   MessageCircle,
-  MoreHorizontal,
   Phone,
   Plus,
   Settings,
@@ -72,6 +68,7 @@ type Student = {
   full_name: string;
   whatsapp_number: string;
   status: string;
+  photo_path: string | null;
 };
 
 type StudentEnrollment = {
@@ -150,7 +147,6 @@ function addCalendarDays(dateKey: string, days: number) {
   const [year, month, day] = dateKey.split("-").map(Number);
   const value = new Date(Date.UTC(year, month - 1, day));
   value.setUTCDate(value.getUTCDate() + days);
-
   return value.toISOString().slice(0, 10);
 }
 
@@ -185,24 +181,6 @@ function formatRelativeTime(dateString: string) {
   return `${days} days ago`;
 }
 
-function isFollowUpDue(dateString: string | null) {
-  if (!dateString) return false;
-  return new Date(dateString).getTime() <= Date.now();
-}
-
-function getFollowUpLabel(dateString: string | null) {
-  if (!dateString) return "";
-
-  const todayKey = getNairobiDateKey();
-  const tomorrowKey = addCalendarDays(todayKey, 1);
-  const dueKey = getNairobiDateKey(new Date(dateString));
-
-  if (dueKey === todayKey) return "Today";
-  if (dueKey === tomorrowKey) return "Tomorrow";
-
-  return formatDate(dateString);
-}
-
 function normalizeWhatsApp(number: string) {
   return number.replace(/[^\d+]/g, "");
 }
@@ -211,6 +189,18 @@ function capitalizeStatus(value: string) {
   return value
     .replace(/_/g, " ")
     .replace(/^./, (letter) => letter.toUpperCase());
+}
+
+function getStudentPhotoUrl(photoPath: string | null) {
+  if (!photoPath) return null;
+
+  if (/^https?:\/\//i.test(photoPath)) return photoPath;
+
+  const { data } = supabase.storage
+    .from("student-photos")
+    .getPublicUrl(photoPath);
+
+  return data.publicUrl || null;
 }
 
 function StatCard({
@@ -427,7 +417,8 @@ export default function AdminDashboard() {
               id,
               full_name,
               whatsapp_number,
-              status
+              status,
+              photo_path
             `
           )
           .order("created_at", { ascending: false }),
@@ -609,10 +600,13 @@ export default function AdminDashboard() {
       .filter((booking) => {
         if (!booking.slot?.starts_at) return false;
 
+        const startsAt = new Date(booking.slot.starts_at);
+        const dateKey = getNairobiDateKey(startsAt);
+
         return (
-          new Date(booking.slot.starts_at).getTime() > now.getTime() &&
+          startsAt.getTime() > now.getTime() &&
           booking.status === "confirmed" &&
-          getNairobiDateKey(new Date(booking.slot.starts_at)) > tomorrowKey
+          dateKey > tomorrowKey
         );
       })
       .sort((a, b) => {
@@ -624,34 +618,6 @@ export default function AdminDashboard() {
       .slice(0, 8);
   }, [bookings, tomorrowKey]);
 
-  const thisWeekBookings = useMemo(() => {
-    const current = new Date();
-    const day = current.getDay();
-    const mondayOffset = day === 0 ? -6 : 1 - day;
-
-    const monday = new Date(current);
-    monday.setDate(current.getDate() + mondayOffset);
-    monday.setHours(0, 0, 0, 0);
-
-    const sunday = new Date(monday);
-    sunday.setDate(monday.getDate() + 7);
-    sunday.setHours(0, 0, 0, 0);
-
-    return bookings.filter((booking) => {
-      if (!booking.slot?.starts_at) return false;
-
-      const startsAt = new Date(booking.slot.starts_at);
-
-      return (
-        startsAt >= monday &&
-        startsAt < sunday &&
-        booking.status !== "cancelled"
-      );
-    });
-  }, [bookings, todayKey]);
-
-  const recentLeads = useMemo(() => leads.slice(0, 5), [leads]);
-
   const newLeadsLast7Days = useMemo(() => {
     const sevenDaysAgo = new Date();
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
@@ -659,27 +625,7 @@ export default function AdminDashboard() {
     return leads.filter((lead) => new Date(lead.created_at) >= sevenDaysAgo);
   }, [leads]);
 
-  const followUpsDue = useMemo(() => {
-    return leads
-      .filter((lead) => {
-        return (
-          isFollowUpDue(lead.next_follow_up_at) &&
-          lead.status !== "closed" &&
-          lead.status !== "converted"
-        );
-      })
-      .sort((a, b) => {
-        const aDate = a.next_follow_up_at
-          ? new Date(a.next_follow_up_at).getTime()
-          : 0;
-        const bDate = b.next_follow_up_at
-          ? new Date(b.next_follow_up_at).getTime()
-          : 0;
-
-        return aDate - bDate;
-      })
-      .slice(0, 5);
-  }, [leads, todayKey]);
+  const recentLeads = useMemo(() => leads.slice(0, 5), [leads]);
 
   const greeting = useMemo(() => {
     const parts = new Intl.DateTimeFormat("en-KE", {
@@ -692,7 +638,6 @@ export default function AdminDashboard() {
 
     if (hour < 12) return "Good morning.";
     if (hour < 17) return "Good afternoon.";
-
     return "Good evening.";
   }, [todayKey]);
 
@@ -718,28 +663,32 @@ export default function AdminDashboard() {
   function renderCompletionStatus(daysRemaining: number) {
     if (daysRemaining < 0) {
       return (
-        <span className="st-badge st-badge-red">
-          Overdue by {Math.abs(daysRemaining)} day
-          {Math.abs(daysRemaining) === 1 ? "" : "s"}
+        <span className="text-[20px] font-bold leading-tight tracking-[-0.02em] text-[var(--st-red)]">
+          OVERDUE BY {Math.abs(daysRemaining)} DAY
+          {Math.abs(daysRemaining) === 1 ? "" : "S"}
         </span>
       );
     }
 
     if (daysRemaining === 0) {
-      return <span className="st-badge st-badge-red">Due today</span>;
+      return (
+        <span className="text-[20px] font-bold leading-tight tracking-[-0.02em] text-[var(--st-red)]">
+          DUE TODAY
+        </span>
+      );
     }
 
     if (daysRemaining <= 3) {
       return (
-        <span className="st-badge st-badge-red">
-          {daysRemaining} day{daysRemaining === 1 ? "" : "s"} remaining
+        <span className="text-[20px] font-bold leading-tight tracking-[-0.02em] text-[var(--st-red)]">
+          {daysRemaining} DAY{daysRemaining === 1 ? "" : "S"} REMAINING
         </span>
       );
     }
 
     return (
-      <span className="st-badge st-badge-green">
-        {daysRemaining} days remaining
+      <span className="text-[20px] font-bold leading-tight tracking-[-0.02em] text-[var(--st-green)]">
+        {daysRemaining} DAYS REMAINING
       </span>
     );
   }
@@ -783,11 +732,9 @@ export default function AdminDashboard() {
         </div>
       </div>
 
-      {/* ERROR */}
       {error && (
         <div className="mb-5 rounded-2xl border border-red-200 bg-red-50 px-5 py-4">
           <p className="m-0 text-[11px] font-semibold text-red-700">{error}</p>
-
           <button
             type="button"
             onClick={loadDashboard}
@@ -798,7 +745,7 @@ export default function AdminDashboard() {
         </div>
       )}
 
-      {/* STATISTICS */}
+      {/* START CARDS */}
       <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard
           label="ACTIVE STUDENTS"
@@ -819,23 +766,96 @@ export default function AdminDashboard() {
         <StatCard
           label="TOMORROW'S TRIALS"
           value={tomorrowBookings.length}
-          description={`${tomorrowBookings.length} confirmed booking${tomorrowBookings.length === 1 ? "" : "s"} scheduled tomorrow`}
+          description={`${tomorrowBookings.length} trial booking${tomorrowBookings.length === 1 ? "" : "s"} scheduled tomorrow`}
           icon={<Clock3 size={18} />}
           loading={loading}
         />
 
         <StatCard
-          label="FOLLOW-UPS DUE"
-          value={followUpsDue.length}
-          description="People who need attention"
-          icon={<MessageCircle size={18} />}
-          accent
+          label="NEW LEADS"
+          value={newLeadsLast7Days.length}
+          description="Leads received in the last 7 days"
+          icon={<UserPlus size={18} />}
           loading={loading}
         />
       </section>
 
+      {/* QUICK ACTIONS */}
+      <section className="mt-5">
+        <div className="st-card p-5">
+          <div>
+            <p className="st-eyebrow">QUICK ACTIONS</p>
+
+            <h2 className="mt-2 st-section-title">Everything in one place.</h2>
+
+            <p className="mt-2 mb-0 max-w-[700px] text-[10px] leading-relaxed text-[var(--st-gray)]">
+              Start the real public trial-booking journey or jump directly to any admin workspace page.
+            </p>
+          </div>
+
+          <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+            <QuickAction
+              label="New Trial Booking"
+              description="Open the real public booking flow from the admin workspace."
+              icon={<Plus size={17} />}
+              href="/book"
+              external
+            />
+
+            <QuickAction
+              label="Bookings"
+              description="Manage confirmed, completed and cancelled trial bookings."
+              icon={<BookOpen size={17} />}
+              href="/admin/bookings"
+            />
+
+            <QuickAction
+              label="Calendar"
+              description="Review lessons and available trial slots."
+              icon={<CalendarDays size={17} />}
+              href="/admin/calendar"
+            />
+
+            <QuickAction
+              label="Leads"
+              description="Manage enquiries, statuses and follow-ups."
+              icon={<UserPlus size={17} />}
+              href="/admin/leads"
+            />
+
+            <QuickAction
+              label="Students"
+              description="View and manage enrolled students."
+              icon={<Users size={17} />}
+              href="/admin/students"
+            />
+
+            <QuickAction
+              label="Follow-ups"
+              description="Work through leads that require contact."
+              icon={<MessageCircle size={17} />}
+              href="/admin/followups"
+            />
+
+            <QuickAction
+              label="Email Templates"
+              description="Manage system email templates used by the platform."
+              icon={<Mail size={17} />}
+              href="/admin/email-templates"
+            />
+
+            <QuickAction
+              label="Settings"
+              description="Manage Sauti Tamu booking and business settings."
+              icon={<Settings size={17} />}
+              href="/admin/settings"
+            />
+          </div>
+        </div>
+      </section>
+
       {/* STUDENTS NEARING COMPLETION */}
-      <section className="mt-6">
+      <section className="mt-5">
         <div className="st-card overflow-hidden">
           <div className="flex items-center justify-between gap-3 border-b border-[var(--st-border)] px-5 py-4">
             <div className="min-w-0">
@@ -860,70 +880,106 @@ export default function AdminDashboard() {
               icon={<GraduationCap size={19} />}
             />
           ) : (
-            <div className="divide-y divide-[var(--st-border)]">
-              {nearingCompletion.map(({ student, enrollment, daysRemaining }) => (
-                <div
-                  key={enrollment.id}
-                  className="flex flex-col gap-4 px-5 py-4 transition-colors hover:bg-[var(--st-bg-soft)] lg:flex-row lg:items-center"
-                >
-                  <div className="flex min-w-0 flex-1 items-center gap-3">
-                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[var(--st-bg-soft)] text-[10px] font-bold text-[var(--st-red)]">
-                      {getInitials(student.full_name)}
+            <div className="w-full divide-y divide-[var(--st-border)]">
+              {nearingCompletion.map(({ student, enrollment, daysRemaining }) => {
+                const photoUrl = getStudentPhotoUrl(student.photo_path);
+
+                return (
+                  <div
+                    key={enrollment.id}
+                    className="w-full px-5 py-5 transition-colors hover:bg-[var(--st-bg-soft)]"
+                  >
+                    <div className="flex w-full flex-col gap-5 xl:flex-row xl:items-center xl:justify-between">
+                      <div className="flex min-w-0 flex-1 items-center gap-4">
+                        <div className="relative flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[var(--st-bg-soft)] text-[13px] font-bold text-[var(--st-red)] ring-1 ring-[var(--st-border)]">
+                          {photoUrl ? (
+                            <img
+                              src={photoUrl}
+                              alt={student.full_name}
+                              className="h-full w-full object-cover"
+                              onError={(event) => {
+                                event.currentTarget.style.display = "none";
+                                const fallback = event.currentTarget.nextElementSibling as HTMLElement | null;
+                                if (fallback) fallback.style.display = "flex";
+                              }}
+                            />
+                          ) : null}
+
+                          <span
+                            className={`${photoUrl ? "hidden" : "flex"} h-full w-full items-center justify-center bg-[var(--st-bg-soft)]`}
+                          >
+                            {getInitials(student.full_name)}
+                          </span>
+                        </div>
+
+                        <div className="min-w-0 flex-1">
+                          <p className="m-0 truncate text-[18px] font-bold leading-tight tracking-[-0.02em] text-[var(--st-charcoal-dark)]">
+                            {student.full_name}
+                          </p>
+
+                          <p className="mt-1 mb-0 truncate text-[10px] capitalize text-[var(--st-gray)]">
+                            {enrollment.instrument}
+                            {enrollment.programme_name
+                              ? ` · ${enrollment.programme_name}`
+                              : ""}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="min-w-0 xl:w-[190px]">
+                        <p className="m-0 text-[9px] font-semibold uppercase tracking-[0.08em] text-[var(--st-gray)]">
+                          Enrollment ends
+                        </p>
+
+                        <p className="mt-1 mb-0 text-[12px] font-bold text-[var(--st-charcoal-dark)]">
+                          {formatDateOnly(enrollment.end_date!)}
+                        </p>
+                      </div>
+
+                      <div className="shrink-0 xl:min-w-[250px] xl:text-right">
+                        {renderCompletionStatus(daysRemaining)}
+                      </div>
+
+                      <div className="flex shrink-0 flex-wrap items-center gap-2 xl:justify-end">
+                        {student.whatsapp_number && (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                openWhatsApp(student.whatsapp_number, student.full_name)
+                              }
+                              className="st-icon-button"
+                              aria-label={`WhatsApp ${student.full_name}`}
+                            >
+                              <MessageCircle size={15} />
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => callPerson(student.whatsapp_number)}
+                              className="st-icon-button"
+                              aria-label={`Call ${student.full_name}`}
+                            >
+                              <Phone size={15} />
+                            </button>
+                          </>
+                        )}
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            window.location.href = `/admin/students/${student.id}`;
+                          }}
+                          className="st-button st-button-secondary"
+                        >
+                          View Student
+                          <ArrowRight size={14} />
+                        </button>
+                      </div>
                     </div>
-
-                    <div className="min-w-0">
-                      <p className="m-0 truncate text-[12px] font-bold text-[var(--st-charcoal-dark)]">
-                        {student.full_name}
-                      </p>
-
-                      <p className="mt-1 mb-0 text-[10px] capitalize text-[var(--st-gray)]">
-                        {enrollment.instrument}
-                        {enrollment.programme_name
-                          ? ` · ${enrollment.programme_name}`
-                          : ""}
-                      </p>
-                    </div>
                   </div>
-
-                  <div className="min-w-[190px]">
-                    <p className="m-0 text-[9px] font-semibold uppercase tracking-[0.08em] text-[var(--st-gray)]">
-                      Enrollment ends
-                    </p>
-
-                    <p className="mt-1 mb-0 text-[11px] font-bold text-[var(--st-charcoal-dark)]">
-                      {formatDateOnly(enrollment.end_date!)}
-                    </p>
-                  </div>
-
-                  <div className="shrink-0">{renderCompletionStatus(daysRemaining)}</div>
-
-                  <div className="flex items-center gap-1 lg:ml-auto">
-                    {student.whatsapp_number && (
-                      <button
-                        type="button"
-                        onClick={() =>
-                          openWhatsApp(student.whatsapp_number, student.full_name)
-                        }
-                        className="st-icon-button"
-                        aria-label={`WhatsApp ${student.full_name}`}
-                      >
-                        <MessageCircle size={15} />
-                      </button>
-                    )}
-
-                    {student.whatsapp_number && (
-                      <button
-                        type="button"
-                        onClick={() => callPerson(student.whatsapp_number)}
-                        className="st-icon-button"
-                        aria-label={`Call ${student.full_name}`}
-                      >
-                        <Phone size={15} />
-                      </button>
-                    )}
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
@@ -935,7 +991,6 @@ export default function AdminDashboard() {
           <div className="flex items-center justify-between gap-3 border-b border-[var(--st-border)] px-5 py-4">
             <div className="min-w-0">
               <h2 className="st-section-title">Today&apos;s trials</h2>
-
               <p className="mt-1 mb-0 text-[10px] text-[var(--st-gray)]">
                 Live trial lesson schedule for today
               </p>
@@ -1051,9 +1106,8 @@ export default function AdminDashboard() {
           <div className="flex items-center justify-between gap-3 border-b border-[var(--st-border)] px-5 py-4">
             <div>
               <h2 className="st-section-title">Tomorrow&apos;s trials</h2>
-
               <p className="mt-1 mb-0 text-[10px] text-[var(--st-gray)]">
-                Confirmed trial lesson schedule for tomorrow
+                Trial lesson schedule for tomorrow
               </p>
             </div>
 
@@ -1117,7 +1171,6 @@ export default function AdminDashboard() {
           <div className="flex items-center justify-between gap-3 border-b border-[var(--st-border)] px-5 py-4">
             <div>
               <h2 className="st-section-title">Upcoming trials</h2>
-
               <p className="mt-1 mb-0 text-[10px] text-[var(--st-gray)]">
                 Next confirmed trial lessons after tomorrow
               </p>
@@ -1184,102 +1237,12 @@ export default function AdminDashboard() {
         </div>
       </section>
 
-      {/* FOLLOW-UPS */}
-      <section className="mt-5 grid grid-cols-1 gap-5 lg:grid-cols-[1fr_0.8fr]">
-        <div className="st-card overflow-hidden">
-          <div className="flex items-center justify-between gap-3 border-b border-[var(--st-border)] px-5 py-4">
-            <div className="min-w-0">
-              <h2 className="st-section-title">Follow-ups due</h2>
-
-              <p className="mt-1 mb-0 text-[10px] text-[var(--st-gray)]">
-                Leads that need your attention
-              </p>
-            </div>
-
-            <span className="st-badge st-badge-red shrink-0">
-              {followUpsDue.length} due
-            </span>
-          </div>
-
-          {loading ? (
-            <SectionLoading label="Loading follow-ups..." />
-          ) : followUpsDue.length === 0 ? (
-            <EmptyState
-              title="You're all caught up"
-              description="No follow-ups are currently due."
-            />
-          ) : (
-            <>
-              <div className="divide-y divide-[var(--st-border)]">
-                {followUpsDue.map((lead) => (
-                  <div key={lead.id} className="px-5 py-4">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex min-w-0 gap-3">
-                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--st-bg-soft)] text-[10px] font-bold text-[var(--st-red)]">
-                          {getInitials(lead.full_name)}
-                        </div>
-
-                        <div className="min-w-0">
-                          <p className="m-0 truncate text-[12px] font-bold text-[var(--st-charcoal-dark)]">
-                            {lead.full_name}
-                          </p>
-
-                          <p className="mt-1 mb-0 text-[10px] text-[var(--st-gray)]">
-                            Lead · {lead.status}
-                          </p>
-                        </div>
-                      </div>
-
-                      <button
-                        type="button"
-                        className="st-icon-button"
-                        aria-label="More options"
-                      >
-                        <MoreHorizontal size={15} />
-                      </button>
-                    </div>
-
-                    <div className="mt-3 flex items-center justify-between gap-3">
-                      <span className="text-[9px] font-bold uppercase tracking-[0.08em] text-[var(--st-red)]">
-                        {getFollowUpLabel(lead.next_follow_up_at)}
-                      </span>
-
-                      {lead.whatsapp_number && (
-                        <button
-                          type="button"
-                          onClick={() =>
-                            openWhatsApp(lead.whatsapp_number, lead.full_name)
-                          }
-                          className="text-[10px] font-bold text-[var(--st-red)] hover:underline"
-                        >
-                          Follow up →
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              <div className="border-t border-[var(--st-border)] px-5 py-3">
-                <button
-                  type="button"
-                  onClick={() => {
-                    window.location.href = "/admin/followups";
-                  }}
-                  className="text-[10px] font-bold text-[var(--st-red)]"
-                >
-                  View all follow-ups →
-                </button>
-              </div>
-            </>
-          )}
-        </div>
-
+      {/* RECENT LEADS */}
+      <section className="mt-5">
         <div className="st-card overflow-hidden">
           <div className="flex items-center justify-between gap-3 border-b border-[var(--st-border)] px-5 py-4">
             <div>
               <h2 className="st-section-title">Recent leads</h2>
-
               <p className="mt-1 mb-0 text-[10px] text-[var(--st-gray)]">
                 Latest people entering your pipeline
               </p>
@@ -1333,86 +1296,11 @@ export default function AdminDashboard() {
         </div>
       </section>
 
-      {/* QUICK ACTIONS */}
-      <section className="mt-5">
-        <div className="st-card p-5">
-          <div>
-            <p className="st-eyebrow">QUICK ACTIONS</p>
-
-            <h2 className="mt-2 st-section-title">Everything in one place.</h2>
-
-            <p className="mt-2 mb-0 max-w-[700px] text-[10px] leading-relaxed text-[var(--st-gray)]">
-              Start the real public trial-booking journey or jump directly to any admin workspace page.
-            </p>
-          </div>
-
-          <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-            <QuickAction
-              label="New Trial Booking"
-              description="Open the real public booking flow from the admin workspace."
-              icon={<Plus size={17} />}
-              href="/book"
-              external
-            />
-
-            <QuickAction
-              label="Bookings"
-              description="Manage confirmed, completed and cancelled trial bookings."
-              icon={<BookOpen size={17} />}
-              href="/admin/bookings"
-            />
-
-            <QuickAction
-              label="Calendar"
-              description="Review lessons and available trial slots."
-              icon={<CalendarDays size={17} />}
-              href="/admin/calendar"
-            />
-
-            <QuickAction
-              label="Leads"
-              description="Manage enquiries, statuses and follow-ups."
-              icon={<UserPlus size={17} />}
-              href="/admin/leads"
-            />
-
-            <QuickAction
-              label="Students"
-              description="View and manage enrolled students."
-              icon={<Users size={17} />}
-              href="/admin/students"
-            />
-
-            <QuickAction
-              label="Follow-ups"
-              description="Work through leads that require contact."
-              icon={<MessageCircle size={17} />}
-              href="/admin/followups"
-            />
-
-            <QuickAction
-              label="Email Templates"
-              description="Manage the system email templates used by the platform."
-              icon={<Mail size={17} />}
-              href="/admin/email-templates"
-            />
-
-            <QuickAction
-              label="Settings"
-              description="Manage Sauti Tamu booking and business settings."
-              icon={<Settings size={17} />}
-              href="/admin/settings"
-            />
-          </div>
-        </div>
-      </section>
-
       {/* FOOTER */}
       <div className="mt-7 flex flex-col gap-2 border-t border-[var(--st-border)] pt-5 sm:flex-row sm:items-center sm:justify-between">
         <p className="m-0 text-[9px] text-[var(--st-gray)]">
           Sauti Tamu Piano Center · Booking &amp; Follow-up
         </p>
-
         <p className="m-0 text-[9px] text-[var(--st-gray)]">Live admin workspace</p>
       </div>
     </main>
