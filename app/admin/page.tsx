@@ -153,9 +153,7 @@ function addCalendarDays(dateKey: string, days: number) {
 function calendarDaysUntil(endDate: string, todayKey: string) {
   const endKey = endDate.slice(0, 10);
   const [endYear, endMonth, endDay] = endKey.split("-").map(Number);
-  const [todayYear, todayMonth, todayDay] = todayKey
-    .split("-")
-    .map(Number);
+  const [todayYear, todayMonth, todayDay] = todayKey.split("-").map(Number);
 
   const endUtc = Date.UTC(endYear, endMonth - 1, endDay);
   const todayUtc = Date.UTC(todayYear, todayMonth - 1, todayDay);
@@ -498,11 +496,15 @@ export default function AdminDashboard() {
     loadDashboard();
   }, []);
 
-  const tomorrowKey = useMemo(() => addCalendarDays(todayKey, 1), [todayKey]);
+  const tomorrowKey = useMemo(
+    () => addCalendarDays(todayKey, 1),
+    [todayKey]
+  );
 
   const activeEnrollments = useMemo(() => {
     return enrollments.filter((enrollment) => {
       const enrollmentStatus = enrollment.status.toLowerCase();
+
       return (
         !TERMINAL_STUDENT_STATUSES.has(enrollmentStatus) &&
         Boolean(enrollment.end_date)
@@ -517,6 +519,7 @@ export default function AdminDashboard() {
 
     return students.filter((student) => {
       const studentStatus = student.status.toLowerCase();
+
       return (
         activeStudentIds.has(student.id) &&
         !TERMINAL_STUDENT_STATUSES.has(studentStatus)
@@ -643,7 +646,9 @@ export default function AdminDashboard() {
     const sevenDaysAgo = new Date();
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
 
-    return leads.filter((lead) => new Date(lead.created_at) >= sevenDaysAgo);
+    return leads.filter(
+      (lead) => new Date(lead.created_at) >= sevenDaysAgo
+    );
   }, [leads]);
 
   const recentLeads = useMemo(() => leads.slice(0, 5), [leads]);
@@ -655,7 +660,9 @@ export default function AdminDashboard() {
       hour12: false,
     }).formatToParts(new Date());
 
-    const hour = Number(parts.find((part) => part.type === "hour")?.value ?? 0);
+    const hour = Number(
+      parts.find((part) => part.type === "hour")?.value ?? 0
+    );
 
     if (hour < 12) return "Good morning.";
     if (hour < 17) return "Good afternoon.";
@@ -678,13 +685,17 @@ export default function AdminDashboard() {
 
   function callPerson(phone: string) {
     if (!phone) return;
+
     window.location.href = `tel:${normalizeWhatsApp(phone)}`;
   }
 
   function renderCompletionStatus(daysRemaining: number) {
+    const className =
+      "text-[14px] font-bold leading-tight tracking-[-0.01em]";
+
     if (daysRemaining < 0) {
       return (
-        <span className="text-[20px] font-bold leading-tight tracking-[-0.02em] text-[var(--st-red)]">
+        <span className={`${className} text-[var(--st-red)]`}>
           OVERDUE BY {Math.abs(daysRemaining)} DAY
           {Math.abs(daysRemaining) === 1 ? "" : "S"}
         </span>
@@ -693,30 +704,124 @@ export default function AdminDashboard() {
 
     if (daysRemaining === 0) {
       return (
-        <span className="text-[20px] font-bold leading-tight tracking-[-0.02em] text-[var(--st-red)]">
+        <span className={`${className} text-[var(--st-red)]`}>
           DUE TODAY
         </span>
       );
     }
 
-    if (daysRemaining <= 3) {
-      return (
-        <span className="text-[20px] font-bold leading-tight tracking-[-0.02em] text-[var(--st-red)]">
-          {daysRemaining} DAY{daysRemaining === 1 ? "" : "S"} REMAINING
-        </span>
-      );
-    }
+    return (
+      <span
+        className={`${className} ${
+          daysRemaining <= 3
+            ? "text-[var(--st-red)]"
+            : "text-[var(--st-green)]"
+        }`}
+      >
+        {daysRemaining} DAY{daysRemaining === 1 ? "" : "S"} REMAINING
+      </span>
+    );
+  }
+
+  function TrialRow({
+    booking,
+    compact = false,
+  }: {
+    booking: Booking;
+    compact?: boolean;
+  }) {
+    const name = booking.lead?.full_name ?? "Unknown learner";
+    const phone = booking.lead?.whatsapp_number ?? "";
+    const instrument = booking.slot?.instrument ?? "";
 
     return (
-      <span className="text-[20px] font-bold leading-tight tracking-[-0.02em] text-[var(--st-green)]">
-        {daysRemaining} DAYS REMAINING
-      </span>
+      <div
+        className={`flex flex-col gap-4 px-5 py-4 transition-colors hover:bg-[var(--st-bg-soft)] ${
+          compact ? "sm:flex-row sm:items-center" : "sm:flex-row sm:items-center"
+        }`}
+      >
+        <div className="w-[100px] shrink-0">
+          <p className="m-0 text-[12px] font-bold text-[var(--st-charcoal-dark)]">
+            {formatTime(booking.slot!.starts_at)}
+          </p>
+
+          <p className="mt-1 mb-0 text-[9px] text-[var(--st-gray)]">
+            {formatTime(booking.slot!.ends_at)}
+          </p>
+        </div>
+
+        <div className="flex min-w-0 flex-1 items-center gap-3">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--st-bg-soft)] text-[10px] font-bold text-[var(--st-red)]">
+            {getInitials(name)}
+          </div>
+
+          <div className="min-w-0">
+            <p className="m-0 truncate text-[12px] font-bold text-[var(--st-charcoal-dark)]">
+              {name}
+            </p>
+
+            {phone ? (
+              <p className="mt-1 mb-0 text-[12px] font-semibold text-[var(--st-charcoal-dark)]">
+                {phone}
+              </p>
+            ) : (
+              <p className="mt-1 mb-0 text-[10px] text-[var(--st-gray)]">
+                No phone number
+              </p>
+            )}
+
+            <p className="mt-1 mb-0 text-[10px] capitalize text-[var(--st-gray)]">
+              {instrument} trial lesson
+            </p>
+          </div>
+        </div>
+
+        <div>
+          <span
+            className={`st-badge ${
+              booking.status === "confirmed" ||
+              booking.status === "completed"
+                ? "st-badge-green"
+                : "st-badge-red"
+            }`}
+          >
+            {(booking.status === "confirmed" ||
+              booking.status === "completed") && (
+              <CheckCircle2 size={11} />
+            )}
+            {capitalizeStatus(booking.status)}
+          </span>
+        </div>
+
+        <div className="flex items-center gap-1">
+          {phone && (
+            <>
+              <button
+                type="button"
+                onClick={() => openWhatsApp(phone, name)}
+                className="st-icon-button"
+                aria-label={`WhatsApp ${name}`}
+              >
+                <MessageCircle size={15} />
+              </button>
+
+              <button
+                type="button"
+                onClick={() => callPerson(phone)}
+                className="st-icon-button"
+                aria-label={`Call ${name}`}
+              >
+                <Phone size={15} />
+              </button>
+            </>
+          )}
+        </div>
+      </div>
     );
   }
 
   return (
     <main className="st-content overflow-x-hidden">
-      {/* PAGE HEADER */}
       <div className="mb-7 flex flex-col justify-between gap-5 md:flex-row md:items-end">
         <div>
           <p className="st-eyebrow">OVERVIEW</p>
@@ -755,7 +860,10 @@ export default function AdminDashboard() {
 
       {error && (
         <div className="mb-5 rounded-2xl border border-red-200 bg-red-50 px-5 py-4">
-          <p className="m-0 text-[11px] font-semibold text-red-700">{error}</p>
+          <p className="m-0 text-[11px] font-semibold text-red-700">
+            {error}
+          </p>
+
           <button
             type="button"
             onClick={loadDashboard}
@@ -779,7 +887,9 @@ export default function AdminDashboard() {
         <StatCard
           label="TODAY'S TRIALS"
           value={todayBookings.length}
-          description={`${todayBookings.length} trial booking${todayBookings.length === 1 ? "" : "s"} scheduled today`}
+          description={`${todayBookings.length} trial booking${
+            todayBookings.length === 1 ? "" : "s"
+          } scheduled today`}
           icon={<CalendarDays size={18} />}
           loading={loading}
         />
@@ -787,7 +897,9 @@ export default function AdminDashboard() {
         <StatCard
           label="TOMORROW'S TRIALS"
           value={tomorrowBookings.length}
-          description={`${tomorrowBookings.length} trial booking${tomorrowBookings.length === 1 ? "" : "s"} scheduled tomorrow`}
+          description={`${tomorrowBookings.length} trial booking${
+            tomorrowBookings.length === 1 ? "" : "s"
+          } scheduled tomorrow`}
           icon={<Clock3 size={18} />}
           loading={loading}
         />
@@ -807,10 +919,13 @@ export default function AdminDashboard() {
           <div>
             <p className="st-eyebrow">QUICK ACTIONS</p>
 
-            <h2 className="mt-2 st-section-title">Everything in one place.</h2>
+            <h2 className="mt-2 st-section-title">
+              Everything in one place.
+            </h2>
 
             <p className="mt-2 mb-0 max-w-[700px] text-[10px] leading-relaxed text-[var(--st-gray)]">
-              Start the real public trial-booking journey or jump directly to any admin workspace page.
+              Start the real public trial-booking journey or jump directly to
+              any admin workspace page.
             </p>
           </div>
 
@@ -875,145 +990,13 @@ export default function AdminDashboard() {
         </div>
       </section>
 
-      {/* STUDENTS NEARING COMPLETION */}
-      <section className="mt-5">
-        <div className="st-card overflow-hidden">
-          <div className="flex items-center justify-between gap-3 border-b border-[var(--st-border)] px-5 py-4">
-            <div className="min-w-0">
-              <h2 className="st-section-title">Students nearing completion</h2>
-
-              <p className="mt-1 mb-0 text-[10px] text-[var(--st-gray)]">
-                Active students with 14 calendar days or less remaining in their enrollment
-              </p>
-            </div>
-
-            <span className="st-badge st-badge-red shrink-0">
-              {nearingCompletion.length} need attention
-            </span>
-          </div>
-
-          {loading ? (
-            <SectionLoading label="Loading students..." />
-          ) : nearingCompletion.length === 0 ? (
-            <EmptyState
-              title="No students are nearing completion"
-              description="No active student is within 14 calendar days of their enrollment end date."
-              icon={<GraduationCap size={19} />}
-            />
-          ) : (
-            <div className="w-full divide-y divide-[var(--st-border)]">
-              {nearingCompletion.map(({ student, enrollment, daysRemaining }) => {
-                const photoUrl = getStudentPhotoUrl(student.photo_path);
-
-                return (
-                  <div
-                    key={enrollment.id}
-                    className="w-full px-5 py-5 transition-colors hover:bg-[var(--st-bg-soft)]"
-                  >
-                    <div className="grid w-full grid-cols-1 gap-5 md:grid-cols-[minmax(0,2fr)_180px_minmax(220px,1fr)_auto] md:items-center">
-                      <div className="flex min-w-0 items-center gap-4">
-                        <div className="relative flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[var(--st-bg-soft)] text-[13px] font-bold text-[var(--st-red)] ring-1 ring-[var(--st-border)]">
-                          {photoUrl ? (
-                            <img
-                              src={photoUrl}
-                              alt={student.full_name}
-                              className="h-full w-full object-cover"
-                              onError={(event) => {
-                                event.currentTarget.style.display = "none";
-                                const fallback = event.currentTarget.nextElementSibling as HTMLElement | null;
-                                if (fallback) fallback.style.display = "flex";
-                              }}
-                            />
-                          ) : null}
-
-                          <span
-                            className={`${photoUrl ? "hidden" : "flex"} h-full w-full items-center justify-center bg-[var(--st-bg-soft)]`}
-                          >
-                            {getInitials(student.full_name)}
-                          </span>
-                        </div>
-
-                        <div className="min-w-0 flex-1">
-                          <p className="m-0 truncate text-[18px] font-bold leading-tight tracking-[-0.02em] text-[var(--st-charcoal-dark)]">
-                            {student.full_name}
-                          </p>
-
-                          <p className="mt-1 mb-0 truncate text-[10px] capitalize text-[var(--st-gray)]">
-                            {enrollment.instrument}
-                            {enrollment.programme_name
-                              ? ` · ${enrollment.programme_name}`
-                              : ""}
-                          </p>
-                        </div>
-                      </div>
-
-                      <div className="min-w-0 xl:w-[190px]">
-                        <p className="m-0 text-[9px] font-semibold uppercase tracking-[0.08em] text-[var(--st-gray)]">
-                          Enrollment ends
-                        </p>
-
-                        <p className="mt-1 mb-0 text-[12px] font-bold text-[var(--st-charcoal-dark)]">
-                          {formatDateOnly(enrollment.end_date!)}
-                        </p>
-                      </div>
-
-                      <div className="min-w-0 md:text-right">
-                        {renderCompletionStatus(daysRemaining)}
-                      </div>
-
-                      <div className="flex flex-wrap items-center gap-2 md:justify-end">
-                        {student.whatsapp_number && (
-                          <>
-                            <button
-                              type="button"
-                              onClick={() =>
-                                openWhatsApp(student.whatsapp_number, student.full_name)
-                              }
-                              className="st-icon-button"
-                              aria-label={`WhatsApp ${student.full_name}`}
-                            >
-                              <MessageCircle size={15} />
-                            </button>
-
-                            <button
-                              type="button"
-                              onClick={() => callPerson(student.whatsapp_number)}
-                              className="st-icon-button"
-                              aria-label={`Call ${student.full_name}`}
-                            >
-                              <Phone size={15} />
-                            </button>
-                          </>
-                        )}
-
-                        <button
-                          type="button"
-                          onClick={() => {
-                            window.location.href = `/admin/students?student=${encodeURIComponent(
-                              student.id
-                            )}`;
-                          }}
-                          className="st-button st-button-secondary"
-                        >
-                          View Student
-                          <ArrowRight size={14} />
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      </section>
-
       {/* TODAY */}
       <section className="mt-5">
         <div className="st-card overflow-hidden">
           <div className="flex items-center justify-between gap-3 border-b border-[var(--st-border)] px-5 py-4">
             <div className="min-w-0">
               <h2 className="st-section-title">Today&apos;s trials</h2>
+
               <p className="mt-1 mb-0 text-[10px] text-[var(--st-gray)]">
                 Live trial lesson schedule for today
               </p>
@@ -1041,83 +1024,9 @@ export default function AdminDashboard() {
             />
           ) : (
             <div className="divide-y divide-[var(--st-border)]">
-              {todayBookings.map((booking) => {
-                const name = booking.lead?.full_name ?? "Unknown learner";
-                const phone = booking.lead?.whatsapp_number ?? "";
-                const instrument = booking.slot?.instrument ?? "";
-
-                return (
-                  <div
-                    key={booking.id}
-                    className="flex flex-col gap-4 px-5 py-4 transition-colors hover:bg-[var(--st-bg-soft)] sm:flex-row sm:items-center"
-                  >
-                    <div className="w-[100px] shrink-0">
-                      <p className="m-0 text-[12px] font-bold text-[var(--st-charcoal-dark)]">
-                        {formatTime(booking.slot!.starts_at)}
-                      </p>
-
-                      <p className="mt-1 mb-0 text-[9px] text-[var(--st-gray)]">
-                        {formatTime(booking.slot!.ends_at)}
-                      </p>
-                    </div>
-
-                    <div className="flex min-w-0 flex-1 items-center gap-3">
-                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--st-bg-soft)] text-[10px] font-bold text-[var(--st-red)]">
-                        {getInitials(name)}
-                      </div>
-
-                      <div className="min-w-0">
-                        <p className="m-0 truncate text-[12px] font-bold text-[var(--st-charcoal-dark)]">
-                          {name}
-                        </p>
-
-                        <p className="mt-1 mb-0 text-[10px] capitalize text-[var(--st-gray)]">
-                          {instrument} trial lesson
-                        </p>
-                      </div>
-                    </div>
-
-                    <div>
-                      <span
-                        className={`st-badge ${
-                          booking.status === "confirmed" ||
-                          booking.status === "completed"
-                            ? "st-badge-green"
-                            : "st-badge-red"
-                        }`}
-                      >
-                        {(booking.status === "confirmed" ||
-                          booking.status === "completed") && <CheckCircle2 size={11} />}
-                        {capitalizeStatus(booking.status)}
-                      </span>
-                    </div>
-
-                    <div className="flex items-center gap-1">
-                      {phone && (
-                        <>
-                          <button
-                            type="button"
-                            onClick={() => openWhatsApp(phone, name)}
-                            className="st-icon-button"
-                            aria-label={`WhatsApp ${name}`}
-                          >
-                            <MessageCircle size={15} />
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() => callPerson(phone)}
-                            className="st-icon-button"
-                            aria-label={`Call ${name}`}
-                          >
-                            <Phone size={15} />
-                          </button>
-                        </>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
+              {todayBookings.map((booking) => (
+                <TrialRow key={booking.id} booking={booking} />
+              ))}
             </div>
           )}
         </div>
@@ -1129,6 +1038,7 @@ export default function AdminDashboard() {
           <div className="flex items-center justify-between gap-3 border-b border-[var(--st-border)] px-5 py-4">
             <div>
               <h2 className="st-section-title">Tomorrow&apos;s trials</h2>
+
               <p className="mt-1 mb-0 text-[10px] text-[var(--st-gray)]">
                 Trial lesson schedule for tomorrow
               </p>
@@ -1149,40 +1059,166 @@ export default function AdminDashboard() {
             />
           ) : (
             <div className="divide-y divide-[var(--st-border)]">
-              {tomorrowBookings.map((booking) => {
-                const name = booking.lead?.full_name ?? "Unknown learner";
+              {tomorrowBookings.map((booking) => (
+                <TrialRow
+                  key={booking.id}
+                  booking={booking}
+                  compact
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      </section>
 
-                return (
-                  <div
-                    key={booking.id}
-                    className="flex items-center gap-3 px-5 py-4 transition-colors hover:bg-[var(--st-bg-soft)]"
-                  >
-                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--st-bg-soft)] text-[10px] font-bold text-[var(--st-red)]">
-                      {getInitials(name)}
-                    </div>
+      {/* STUDENTS NEARING COMPLETION */}
+      <section className="mt-5">
+        <div className="st-card overflow-hidden">
+          <div className="flex items-center justify-between gap-3 border-b border-[var(--st-border)] px-5 py-4">
+            <div className="min-w-0">
+              <h2 className="st-section-title">
+                Students nearing completion
+              </h2>
 
-                    <div className="min-w-0 flex-1">
-                      <p className="m-0 truncate text-[11px] font-bold text-[var(--st-charcoal-dark)]">
-                        {name}
-                      </p>
+              <p className="mt-1 mb-0 text-[10px] text-[var(--st-gray)]">
+                Active students with 14 calendar days or less remaining in
+                their enrollment
+              </p>
+            </div>
 
-                      <p className="mt-1 mb-0 text-[9px] capitalize text-[var(--st-gray)]">
-                        {booking.slot?.instrument} · {formatTime(booking.slot!.starts_at)}
-                      </p>
-                    </div>
+            <span className="st-badge st-badge-red shrink-0">
+              {nearingCompletion.length} need attention
+            </span>
+          </div>
 
-                    <span
-                      className={`st-badge shrink-0 ${
-                        booking.status === "confirmed"
-                          ? "st-badge-green"
-                          : "st-badge-red"
-                      }`}
+          {loading ? (
+            <SectionLoading label="Loading students..." />
+          ) : nearingCompletion.length === 0 ? (
+            <EmptyState
+              title="No students are nearing completion"
+              description="No active student is within 14 calendar days of their enrollment end date."
+              icon={<GraduationCap size={19} />}
+            />
+          ) : (
+            <div className="w-full divide-y divide-[var(--st-border)]">
+              {nearingCompletion.map(
+                ({ student, enrollment, daysRemaining }) => {
+                  const photoUrl = getStudentPhotoUrl(
+                    student.photo_path
+                  );
+
+                  return (
+                    <div
+                      key={student.id}
+                      className="w-full px-5 py-5 transition-colors hover:bg-[var(--st-bg-soft)]"
                     >
-                      {capitalizeStatus(booking.status)}
-                    </span>
-                  </div>
-                );
-              })}
+                      <div className="grid w-full grid-cols-1 gap-5 md:grid-cols-[minmax(320px,2.4fr)_170px_minmax(220px,1.4fr)_auto] md:items-center md:gap-6">
+                        <div className="flex min-w-0 items-center gap-4">
+                          <div className="relative flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[var(--st-bg-soft)] text-[13px] font-bold text-[var(--st-red)] ring-1 ring-[var(--st-border)]">
+                            {photoUrl ? (
+                              <img
+                                src={photoUrl}
+                                alt={student.full_name}
+                                className="h-full w-full object-cover"
+                                onError={(event) => {
+                                  event.currentTarget.style.display =
+                                    "none";
+                                  const fallback =
+                                    event.currentTarget
+                                      .nextElementSibling as HTMLElement | null;
+
+                                  if (fallback) {
+                                    fallback.style.display = "flex";
+                                  }
+                                }}
+                              />
+                            ) : null}
+
+                            <span
+                              className={`${
+                                photoUrl ? "hidden" : "flex"
+                              } h-full w-full items-center justify-center bg-[var(--st-bg-soft)]`}
+                            >
+                              {getInitials(student.full_name)}
+                            </span>
+                          </div>
+
+                          <div className="min-w-0 flex-1">
+                            <p className="m-0 whitespace-normal break-words text-[18px] font-bold leading-tight tracking-[-0.02em] text-[var(--st-charcoal-dark)]">
+                              {student.full_name}
+                            </p>
+
+                            <p className="mt-1 mb-0 text-[10px] capitalize text-[var(--st-gray)]">
+                              {enrollment.instrument}
+                              {enrollment.programme_name
+                                ? ` · ${enrollment.programme_name}`
+                                : ""}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="min-w-0">
+                          <p className="m-0 text-[9px] font-semibold uppercase tracking-[0.08em] text-[var(--st-gray)]">
+                            Enrollment ends
+                          </p>
+
+                          <p className="mt-1 mb-0 text-[12px] font-bold text-[var(--st-charcoal-dark)]">
+                            {formatDateOnly(enrollment.end_date!)}
+                          </p>
+                        </div>
+
+                        <div className="min-w-0 md:text-right">
+                          {renderCompletionStatus(daysRemaining)}
+                        </div>
+
+                        <div className="flex flex-wrap items-center gap-2 md:justify-end">
+                          {student.whatsapp_number && (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  openWhatsApp(
+                                    student.whatsapp_number,
+                                    student.full_name
+                                  )
+                                }
+                                className="st-icon-button"
+                                aria-label={`WhatsApp ${student.full_name}`}
+                              >
+                                <MessageCircle size={15} />
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  callPerson(student.whatsapp_number)
+                                }
+                                className="st-icon-button"
+                                aria-label={`Call ${student.full_name}`}
+                              >
+                                <Phone size={15} />
+                              </button>
+                            </>
+                          )}
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              window.location.href = `/admin/students?student=${encodeURIComponent(
+                                student.id
+                              )}`;
+                            }}
+                            className="st-button st-button-secondary"
+                          >
+                            View Student
+                            <ArrowRight size={14} />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                }
+              )}
             </div>
           )}
         </div>
@@ -1194,6 +1230,7 @@ export default function AdminDashboard() {
           <div className="flex items-center justify-between gap-3 border-b border-[var(--st-border)] px-5 py-4">
             <div>
               <h2 className="st-section-title">Upcoming trials</h2>
+
               <p className="mt-1 mb-0 text-[10px] text-[var(--st-gray)]">
                 Next confirmed trial lessons after tomorrow
               </p>
@@ -1222,12 +1259,15 @@ export default function AdminDashboard() {
           ) : (
             <div className="divide-y divide-[var(--st-border)]">
               {upcomingBookings.map((booking) => {
-                const name = booking.lead?.full_name ?? "Unknown learner";
+                const name =
+                  booking.lead?.full_name ?? "Unknown learner";
+                const phone =
+                  booking.lead?.whatsapp_number ?? "";
 
                 return (
                   <div
                     key={booking.id}
-                    className="flex items-center gap-3 px-5 py-4 transition-colors hover:bg-[var(--st-bg-soft)]"
+                    className="flex flex-col gap-4 px-5 py-4 transition-colors hover:bg-[var(--st-bg-soft)] sm:flex-row sm:items-center"
                   >
                     <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--st-bg-soft)] text-[10px] font-bold text-[var(--st-red)]">
                       {getInitials(name)}
@@ -1238,8 +1278,19 @@ export default function AdminDashboard() {
                         {name}
                       </p>
 
+                      {phone ? (
+                        <p className="mt-1 mb-0 text-[12px] font-semibold text-[var(--st-charcoal-dark)]">
+                          {phone}
+                        </p>
+                      ) : (
+                        <p className="mt-1 mb-0 text-[10px] text-[var(--st-gray)]">
+                          No phone number
+                        </p>
+                      )}
+
                       <p className="mt-1 mb-0 text-[9px] capitalize text-[var(--st-gray)]">
-                        {booking.slot?.instrument} · {formatDate(booking.slot!.starts_at)}
+                        {booking.slot?.instrument} ·{" "}
+                        {formatDate(booking.slot!.starts_at)}
                       </p>
                     </div>
 
@@ -1266,6 +1317,7 @@ export default function AdminDashboard() {
           <div className="flex items-center justify-between gap-3 border-b border-[var(--st-border)] px-5 py-4">
             <div>
               <h2 className="st-section-title">Recent leads</h2>
+
               <p className="mt-1 mb-0 text-[10px] text-[var(--st-gray)]">
                 Latest people entering your pipeline
               </p>
@@ -1294,7 +1346,10 @@ export default function AdminDashboard() {
           ) : (
             <div className="divide-y divide-[var(--st-border)]">
               {recentLeads.map((lead) => (
-                <div key={lead.id} className="flex items-center gap-3 px-5 py-4">
+                <div
+                  key={lead.id}
+                  className="flex items-center gap-3 px-5 py-4"
+                >
                   <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--st-bg-soft)] text-[10px] font-bold text-[var(--st-red)]">
                     {getInitials(lead.full_name)}
                   </div>
@@ -1319,12 +1374,14 @@ export default function AdminDashboard() {
         </div>
       </section>
 
-      {/* FOOTER */}
       <div className="mt-7 flex flex-col gap-2 border-t border-[var(--st-border)] pt-5 sm:flex-row sm:items-center sm:justify-between">
         <p className="m-0 text-[9px] text-[var(--st-gray)]">
           Sauti Tamu Piano Center · Booking &amp; Follow-up
         </p>
-        <p className="m-0 text-[9px] text-[var(--st-gray)]">Live admin workspace</p>
+
+        <p className="m-0 text-[9px] text-[var(--st-gray)]">
+          Live admin workspace
+        </p>
       </div>
     </main>
   );
