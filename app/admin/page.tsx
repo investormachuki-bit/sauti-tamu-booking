@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 
 import { supabase } from "@/lib/supabase";
+import { completeStudent } from "@/lib/students-service";
 
 type BookingStatus =
   | "confirmed"
@@ -340,6 +341,7 @@ export default function AdminDashboard() {
   const [leads, setLeads] = useState<Lead[]>([]);
   const [students, setStudents] = useState<Student[]>([]);
   const [enrollments, setEnrollments] = useState<StudentEnrollment[]>([]);
+  const [completingStudentId, setCompletingStudentId] = useState<string | null>(null);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -668,6 +670,32 @@ export default function AdminDashboard() {
     if (hour < 17) return "Good afternoon.";
     return "Good evening.";
   }, [todayKey]);
+
+  async function handleCompleteStudent(student: Student) {
+    if (completingStudentId) return;
+
+    const confirmed = window.confirm(
+      `Mark ${student.full_name} as completed? This will complete the student and their current enrollment.`
+    );
+
+    if (!confirmed) return;
+
+    try {
+      setCompletingStudentId(student.id);
+      setError("");
+      await completeStudent(student.id);
+      await loadDashboard();
+    } catch (err) {
+      console.error("Complete student error:", err);
+      setError(
+        err instanceof Error
+          ? err.message
+          : "We couldn't complete this student."
+      );
+    } finally {
+      setCompletingStudentId(null);
+    }
+  }
 
   function openWhatsApp(phone: string, name: string) {
     const number = normalizeWhatsApp(phone);
@@ -1212,6 +1240,25 @@ export default function AdminDashboard() {
                           >
                             View Student
                             <ArrowRight size={14} />
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => handleCompleteStudent(student)}
+                            disabled={completingStudentId === student.id}
+                            className="st-button st-button-primary disabled:opacity-50"
+                          >
+                            {completingStudentId === student.id ? (
+                              <>
+                                <Loader2 size={14} className="animate-spin" />
+                                Completing...
+                              </>
+                            ) : (
+                              <>
+                                <CheckCircle2 size={14} />
+                                Complete
+                              </>
+                            )}
                           </button>
                         </div>
                       </div>
