@@ -4,7 +4,6 @@ import { supabaseServer } from "@/lib/supabase-server";
 import { renderSautiTamuEmail } from "@/lib/email-template-renderer";
 
 const resend = new Resend(process.env.RESEND_API_KEY);
-
 const NAIROBI_TIME_ZONE = "Africa/Nairobi";
 
 function escapeHtml(value: unknown) {
@@ -84,7 +83,9 @@ function buildAdminBookingEmail({
   const safeWhatsapp = escapeHtml(whatsappNumber);
   const safeBookingId = escapeHtml(bookingId);
   const safeInstrument = escapeHtml(instrumentLabel(instrument));
-  const safeStatus = escapeHtml(String(status || "confirmed").toUpperCase());
+  const safeStatus = escapeHtml(
+    String(status || "confirmed").toUpperCase(),
+  );
 
   const lessonDate = startsAt ? escapeHtml(formatDate(startsAt)) : "";
   const lessonStartTime = startsAt ? formatTime(startsAt) : "";
@@ -110,20 +111,19 @@ function buildAdminBookingEmail({
   />
   <title>New Trial Booking</title>
 </head>
+
 <body
   style="
     margin:0;
     padding:0;
-    background:#202020;
     font-family:Arial,Helvetica,sans-serif;
-    color:#d9e0ea;
+    color:#202020;
   "
 >
   <div
     style="
       width:100%;
-      background:#202020;
-      padding:28px 12px;
+      padding:20px 12px;
       box-sizing:border-box;
     "
   >
@@ -131,10 +131,10 @@ function buildAdminBookingEmail({
       style="
         max-width:640px;
         margin:0 auto;
-        background:#111111;
+        background:#ffffff;
+        border:1px solid #ececec;
         border-radius:18px;
         overflow:hidden;
-        box-shadow:0 12px 32px rgba(0,0,0,.25);
       "
     >
 
@@ -175,17 +175,15 @@ function buildAdminBookingEmail({
       <div
         style="
           padding:40px 34px 34px;
-          background:#111111;
         "
       >
-
         <div
           style="
             font-size:12px;
             line-height:1.4;
             font-weight:800;
             letter-spacing:3px;
-            color:#ff5b52;
+            color:#cf2428;
           "
         >
           NEW BOOKING
@@ -197,7 +195,7 @@ function buildAdminBookingEmail({
             font-size:42px;
             line-height:1.08;
             font-weight:800;
-            color:#e2ebf7;
+            color:#202020;
             word-break:break-word;
           "
         >
@@ -208,7 +206,8 @@ function buildAdminBookingEmail({
         <div
           style="
             margin-top:36px;
-            background:#222222;
+            background:#f7f7f7;
+            border:1px solid #e8e8e8;
             border-radius:18px;
             padding:28px 28px 30px;
           "
@@ -219,7 +218,7 @@ function buildAdminBookingEmail({
               line-height:1.4;
               font-weight:800;
               letter-spacing:2px;
-              color:#8b8b8b;
+              color:#777777;
             "
           >
             TRIAL LESSON
@@ -231,7 +230,7 @@ function buildAdminBookingEmail({
               font-size:31px;
               line-height:1.2;
               font-weight:800;
-              color:#e5edf8;
+              color:#202020;
             "
           >
             ${instrumentIcon} ${safeInstrument}
@@ -245,7 +244,7 @@ function buildAdminBookingEmail({
               margin-top:24px;
               font-size:18px;
               line-height:1.5;
-              color:#dddddd;
+              color:#444444;
             "
           >
             📅 ${lessonDate}
@@ -263,7 +262,7 @@ function buildAdminBookingEmail({
               font-size:34px;
               line-height:1.15;
               font-weight:800;
-              color:#ff685c;
+              color:#cf2428;
               letter-spacing:.5px;
             "
           >
@@ -278,7 +277,7 @@ function buildAdminBookingEmail({
               margin-top:10px;
               font-size:12px;
               line-height:1.5;
-              color:#8f8f8f;
+              color:#777777;
             "
           >
             60-minute trial lesson
@@ -297,7 +296,7 @@ function buildAdminBookingEmail({
               line-height:1.4;
               font-weight:800;
               letter-spacing:2px;
-              color:#ff5b52;
+              color:#cf2428;
             "
           >
             CUSTOMER DETAILS
@@ -308,26 +307,28 @@ function buildAdminBookingEmail({
               margin-top:24px;
               font-size:17px;
               line-height:1.65;
-              color:#aeb9c8;
+              color:#555555;
             "
           >
             <div style="margin-bottom:10px;">
-              <strong style="color:#dce4ef;">Name:</strong>
+              <strong style="color:#202020;">Name:</strong>
               ${safeName}
             </div>
 
             <div style="margin-bottom:10px;">
-              <strong style="color:#dce4ef;">Email:</strong>
-              <span style="color:#aecbff;">${safeEmail}</span>
+              <strong style="color:#202020;">Email:</strong>
+              <span style="color:#365f91;">
+                ${safeEmail}
+              </span>
             </div>
 
             <div style="margin-bottom:10px;">
-              <strong style="color:#dce4ef;">WhatsApp:</strong>
+              <strong style="color:#202020;">WhatsApp:</strong>
               ${safeWhatsapp}
             </div>
 
             <div>
-              <strong style="color:#dce4ef;">Instrument:</strong>
+              <strong style="color:#202020;">Instrument:</strong>
               ${safeInstrument}
             </div>
           </div>
@@ -337,7 +338,8 @@ function buildAdminBookingEmail({
         <div
           style="
             margin-top:38px;
-            background:#241d1f;
+            background:#fff5f5;
+            border:1px solid #f1d8d8;
             border-radius:17px;
             padding:24px 26px;
           "
@@ -347,7 +349,7 @@ function buildAdminBookingEmail({
               font-size:19px;
               line-height:1.4;
               font-weight:800;
-              color:#dce4ef;
+              color:#202020;
             "
           >
             Booking status: ${safeStatus}
@@ -358,7 +360,7 @@ function buildAdminBookingEmail({
               margin-top:9px;
               font-size:15px;
               line-height:1.5;
-              color:#8f8f8f;
+              color:#777777;
               word-break:break-word;
             "
           >
@@ -371,14 +373,14 @@ function buildAdminBookingEmail({
           style="
             margin-top:34px;
             padding-top:28px;
-            border-top:1px solid #444444;
+            border-top:1px solid #e5e5e5;
           "
         >
           <div
             style="
               font-size:15px;
               line-height:1.5;
-              color:#9b9b9b;
+              color:#777777;
             "
           >
             Sauti Tamu Piano Center — Admin Notification
