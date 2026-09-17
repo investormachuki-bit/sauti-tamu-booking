@@ -525,29 +525,50 @@ export default function AdminDashboard() {
   }, [students, activeEnrollments]);
 
   const nearingCompletion = useMemo<CompletionStudent[]>(() => {
-    const studentMap = new Map(students.map((student) => [student.id, student]));
+    const studentMap = new Map(
+      students.map((student) => [student.id, student])
+    );
 
-    return activeEnrollments
-      .map((enrollment) => {
-        if (!enrollment.end_date) return null;
+    const nearestEnrollmentByStudent = new Map<
+      string,
+      { enrollment: StudentEnrollment; daysRemaining: number }
+    >();
 
-        const student = studentMap.get(enrollment.student_id);
+    for (const enrollment of activeEnrollments) {
+      if (!enrollment.end_date) continue;
+
+      const student = studentMap.get(enrollment.student_id);
+      if (!student) continue;
+
+      const studentStatus = student.status.toLowerCase();
+      if (TERMINAL_STUDENT_STATUSES.has(studentStatus)) continue;
+
+      const daysRemaining = calendarDaysUntil(
+        enrollment.end_date,
+        todayKey
+      );
+
+      if (daysRemaining > 14) continue;
+
+      const existing = nearestEnrollmentByStudent.get(student.id);
+
+      if (!existing || daysRemaining < existing.daysRemaining) {
+        nearestEnrollmentByStudent.set(student.id, {
+          enrollment,
+          daysRemaining,
+        });
+      }
+    }
+
+    return Array.from(nearestEnrollmentByStudent.entries())
+      .map(([studentId, value]) => {
+        const student = studentMap.get(studentId);
         if (!student) return null;
-
-        const studentStatus = student.status.toLowerCase();
-        if (TERMINAL_STUDENT_STATUSES.has(studentStatus)) return null;
-
-        const daysRemaining = calendarDaysUntil(
-          enrollment.end_date,
-          todayKey
-        );
-
-        if (daysRemaining > 14) return null;
 
         return {
           student,
-          enrollment,
-          daysRemaining,
+          enrollment: value.enrollment,
+          daysRemaining: value.daysRemaining,
         };
       })
       .filter(Boolean)
@@ -889,8 +910,8 @@ export default function AdminDashboard() {
                     key={enrollment.id}
                     className="w-full px-5 py-5 transition-colors hover:bg-[var(--st-bg-soft)]"
                   >
-                    <div className="flex w-full flex-col gap-5 xl:flex-row xl:items-center xl:justify-between">
-                      <div className="flex min-w-0 flex-1 items-center gap-4">
+                    <div className="grid w-full grid-cols-1 gap-5 md:grid-cols-[minmax(0,2fr)_180px_minmax(220px,1fr)_auto] md:items-center">
+                      <div className="flex min-w-0 items-center gap-4">
                         <div className="relative flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[var(--st-bg-soft)] text-[13px] font-bold text-[var(--st-red)] ring-1 ring-[var(--st-border)]">
                           {photoUrl ? (
                             <img
@@ -936,11 +957,11 @@ export default function AdminDashboard() {
                         </p>
                       </div>
 
-                      <div className="shrink-0 xl:min-w-[250px] xl:text-right">
+                      <div className="min-w-0 md:text-right">
                         {renderCompletionStatus(daysRemaining)}
                       </div>
 
-                      <div className="flex shrink-0 flex-wrap items-center gap-2 xl:justify-end">
+                      <div className="flex flex-wrap items-center gap-2 md:justify-end">
                         {student.whatsapp_number && (
                           <>
                             <button
@@ -968,7 +989,9 @@ export default function AdminDashboard() {
                         <button
                           type="button"
                           onClick={() => {
-                            window.location.href = `/admin/students/${student.id}`;
+                            window.location.href = `/admin/students?student=${encodeURIComponent(
+                              student.id
+                            )}`;
                           }}
                           className="st-button st-button-secondary"
                         >
