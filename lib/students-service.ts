@@ -435,6 +435,9 @@ export interface UpdateStudentInput {
   totalFee: number;
   enrollmentStatus: StudentStatus;
 
+  /** * Exact enrollment being edited. When null, a new enrollment is created * for a student who currently has no enrollment record. */
+  enrollmentId: string | null;
+
   photoFile?: File | null;
 }
 
@@ -454,6 +457,7 @@ export async function updateStudent( input: UpdateStudentInput ): Promise<void> 
     endDate,
     totalFee,
     enrollmentStatus,
+    enrollmentId,
 
     photoFile,
   } = input;
@@ -505,7 +509,7 @@ export async function updateStudent( input: UpdateStudentInput ): Promise<void> 
     );
   }
 
-  /* * First retrieve the current photo path * and current enrollment. */
+  /* * Retrieve the exact student record being edited. */
   const {
     data: currentStudent,
     error:
@@ -525,37 +529,27 @@ export async function updateStudent( input: UpdateStudentInput ): Promise<void> 
     throw currentStudentError;
   }
 
-  const {
-    data: currentEnrollment,
-    error:
-      currentEnrollmentError,
-  } = await supabase
-    .from(
-      "student_enrollments"
-    )
-    .select(
-      "id, photo_path"
-    )
-    .eq(
-      "student_id",
-      studentId
-    )
-    .order(
-      "created_at",
-      {
-        ascending: false,
-      }
-    )
-    .limit(1)
-    .maybeSingle();
+  /* * When an enrollment ID was supplied, verify that it belongs to * this exact student. We deliberately do not search for the * "latest" enrollment here because edits must affect the record * the administrator actually opened. */
+  if (enrollmentId) {
+    const {
+      data: currentEnrollment,
+      error: currentEnrollmentError,
+    } = await supabase
+      .from("student_enrollments")
+      .select("id, student_id")
+      .eq("id", enrollmentId)
+      .eq("student_id", studentId)
+      .maybeSingle();
 
-  /* * Some databases may not have a photo_path * column on enrollment. We don't actually * need it, so don't fail the entire edit * because of that lookup. */
-  if (
-    currentEnrollmentError &&
-    currentEnrollmentError.code !==
-      "PGRST116"
-  ) {
-    /* * Ignore enrollment lookup errors here. * The actual enrollment update below will * provide the authoritative error. */
+    if (currentEnrollmentError) {
+      throw currentEnrollmentError;
+    }
+
+    if (!currentEnrollment) {
+      throw new Error(
+        "The selected enrollment could not be found for this student."
+      );
+    }
   }
 
   let newPhotoPath:
@@ -629,9 +623,6 @@ export async function updateStudent( input: UpdateStudentInput ): Promise<void> 
 
   /* =================================================== UPDATE ENROLLMENT =================================================== */
 
-  const enrollmentId =
-    currentEnrollment?.id;
-
   if (enrollmentId) {
     const {
       error:
@@ -656,6 +647,10 @@ export async function updateStudent( input: UpdateStudentInput ): Promise<void> 
       .eq(
         "id",
         enrollmentId
+      )
+      .eq(
+        "student_id",
+        studentId
       );
 
     if (
@@ -752,6 +747,173 @@ export async function updateStudent( input: UpdateStudentInput ): Promise<void> 
         );
       }
     );
+  }
+}
+
+/* ===================================================== UPDATE PAYMENT ===================================================== */
+
+export interface UpdatePaymentInput {
+  paymentId: string;
+  studentId: string;
+  enrollmentId: string;
+
+  amount: number;
+  paymentDate: string;
+  paymentMethod: Payment["payment_method"];
+  reference: string | null;
+  notes: string | null;
+}
+
+export async function updatePayment( input: UpdatePaymentInput ): Promise<void> {
+  const {
+    paymentId,
+    studentId,
+    enrollmentId,
+    amount,
+    paymentDate,
+    paymentMethod,
+    reference,
+    notes,
+  } = input;
+
+  if (!paymentId) {
+    throw new Error(
+      "Payment ID is required."
+    );
+  }
+
+  if (!studentId) {
+    throw new Error(
+      "Student ID is required."
+    );
+  }
+
+  if (!enrollmentId) {
+    throw new Error(
+      "Enrollment ID is required."
+    );
+  }
+
+  const numericAmount =
+    Number(amount);
+
+  if (
+    Number.isNaN(numericAmount) ||
+    numericAmount <= 0
+  ) {
+    throw new Error(
+      "Payment amount must be greater than zero."
+    );
+  }
+
+  if (!paymentDate) {
+    throw new Error(
+      "Payment date is required."
+    );
+  }
+
+  /* * Verify the exact payment belongs to the exact * student and enrollment being edited. */
+  const {
+    data: payment,
+    error: paymentLookupError,
+  } = await supabase
+    .from("payments")
+    .select(
+      "id, student_id, enrollment_id"
+    )
+    .eq("id", paymentId)
+    .eq("student_id", studentId)
+    .eq("enrollment_id", enrollmentId)
+    .maybeSingle();
+
+  if (paymentLookupError) {
+    throw paymentLookupError;
+  }
+
+  if (!payment) {
+    throw new Error(
+      "The selected payment could not be found for this student and enrollment."
+    );
+  }
+
+  const {
+    error: paymentUpdateError,
+  } = await supabase
+    .from("payments")
+    .update({
+      amount: numericAmount,
+      payment_date: paymentDate,
+      payment_method: paymentMethod,
+      reference:
+        reference?.trim() || null,
+      notes:
+        notes?.trim() || null,
+    })
+    .eq("id", paymentId)
+    .eq("student_id", studentId)
+    .eq("enrollment_id", enrollmentId);
+
+  if (paymentUpdateError) {
+    throw paymentUpdateError;
+  }
+}
+
+/* ===================================================== DELETE PAYMENT ===================================================== */
+
+export async function deletePayment( paymentId: string, studentId: string, enrollmentId: string ): Promise<void> {
+  if (!paymentId) {
+    throw new Error(
+      "Payment ID is required."
+    );
+  }
+
+  if (!studentId) {
+    throw new Error(
+      "Student ID is required."
+    );
+  }
+
+  if (!enrollmentId) {
+    throw new Error(
+      "Enrollment ID is required."
+    );
+  }
+
+  /* * Verify the exact payment before deleting it. */
+  const {
+    data: payment,
+    error: paymentLookupError,
+  } = await supabase
+    .from("payments")
+    .select(
+      "id, student_id, enrollment_id"
+    )
+    .eq("id", paymentId)
+    .eq("student_id", studentId)
+    .eq("enrollment_id", enrollmentId)
+    .maybeSingle();
+
+  if (paymentLookupError) {
+    throw paymentLookupError;
+  }
+
+  if (!payment) {
+    throw new Error(
+      "The selected payment could not be found for this student and enrollment."
+    );
+  }
+
+  const {
+    error: paymentDeleteError,
+  } = await supabase
+    .from("payments")
+    .delete()
+    .eq("id", paymentId)
+    .eq("student_id", studentId)
+    .eq("enrollment_id", enrollmentId);
+
+  if (paymentDeleteError) {
+    throw paymentDeleteError;
   }
 }
 
