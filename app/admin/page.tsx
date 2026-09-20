@@ -6,7 +6,6 @@ import {
   BookOpen,
   CalendarDays,
   CheckCircle2,
-  Clock3,
   GraduationCap,
   Loader2,
   Mail,
@@ -200,56 +199,6 @@ function getStudentPhotoUrl(photoPath: string | null) {
     .getPublicUrl(photoPath);
 
   return data.publicUrl || null;
-}
-
-function StatCard({
-  label,
-  value,
-  description,
-  icon,
-  accent = false,
-  loading = false,
-}: {
-  label: string;
-  value: number;
-  description: string;
-  icon: React.ReactNode;
-  accent?: boolean;
-  loading?: boolean;
-}) {
-  return (
-    <div className="st-card st-card-hover p-5">
-      <div className="flex items-start justify-between gap-4">
-        <div className="min-w-0">
-          <p className="m-0 text-[11px] font-semibold text-[var(--st-gray)]">
-            {label}
-          </p>
-
-          {loading ? (
-            <div className="mt-4 h-8 w-12 animate-pulse rounded-lg bg-[var(--st-bg-soft)]" />
-          ) : (
-            <p
-              className={`mt-3 mb-0 text-[32px] font-bold leading-none tracking-[-0.04em] ${
-                accent
-                  ? "text-[var(--st-red)]"
-                  : "text-[var(--st-charcoal-dark)]"
-              }`}
-            >
-              {value}
-            </p>
-          )}
-
-          <p className="mt-3 mb-0 text-[10px] leading-relaxed text-[var(--st-gray)]">
-            {description}
-          </p>
-        </div>
-
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[var(--st-bg-soft)] text-[var(--st-red)]">
-          {icon}
-        </div>
-      </div>
-    </div>
-  );
 }
 
 function SectionLoading({ label }: { label: string }) {
@@ -514,21 +463,6 @@ export default function AdminDashboard() {
     });
   }, [enrollments]);
 
-  const activeStudents = useMemo(() => {
-    const activeStudentIds = new Set(
-      activeEnrollments.map((enrollment) => enrollment.student_id)
-    );
-
-    return students.filter((student) => {
-      const studentStatus = student.status.toLowerCase();
-
-      return (
-        activeStudentIds.has(student.id) &&
-        !TERMINAL_STUDENT_STATUSES.has(studentStatus)
-      );
-    });
-  }, [students, activeEnrollments]);
-
   const nearingCompletion = useMemo<CompletionStudent[]>(() => {
     const studentMap = new Map(
       students.map((student) => [student.id, student])
@@ -644,49 +578,57 @@ export default function AdminDashboard() {
       .slice(0, 8);
   }, [bookings, tomorrowKey]);
 
-  const newLeadsLast7Days = useMemo(() => {
-    const sevenDaysAgo = new Date();
-    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-
-    return leads.filter(
-      (lead) => new Date(lead.created_at) >= sevenDaysAgo
-    );
-  }, [leads]);
-
   const recentLeads = useMemo(() => leads.slice(0, 5), [leads]);
 
-  const greeting = useMemo(() => {
-    const parts = new Intl.DateTimeFormat("en-KE", {
-      timeZone: "Africa/Nairobi",
-      hour: "numeric",
-      hour12: false,
-    }).formatToParts(new Date());
-
-    const hour = Number(
-      parts.find((part) => part.type === "hour")?.value ?? 0
-    );
-
-    if (hour < 12) return "Good morning.";
-    if (hour < 17) return "Good afternoon.";
-    return "Good evening.";
-  }, [todayKey]);
-
-  async function handleCompleteStudent(student: Student) {
-    if (completingStudentId) return;
+  async function handleCompleteStudent(
+    student: Student,
+    enrollment: StudentEnrollment
+  ) {
+    if (completingStudentId) {
+      return;
+    }
 
     const confirmed = window.confirm(
-      `Mark ${student.full_name} as completed? This will complete the student and their current enrollment.`
+      `Mark ${student.full_name} as completed? This will complete the student and the enrollment shown on this card.`
     );
 
-    if (!confirmed) return;
+    if (!confirmed) {
+      return;
+    }
 
     try {
       setCompletingStudentId(student.id);
       setError("");
-      await completeStudent(student.id);
+
+      await completeStudent(
+        student.id,
+        enrollment.id
+      );
+
+      // Remove the completed student immediately from the dashboard.
+      setStudents((current) =>
+        current.filter(
+          (item) => item.id !== student.id
+        )
+      );
+
+      // Also update the enrollment locally so any derived UI is immediately consistent.
+      setEnrollments((current) =>
+        current.map((item) =>
+          item.id === enrollment.id
+            ? { ...item, status: "completed" }
+            : item
+        )
+      );
+
+      // Confirm the final database state.
       await loadDashboard();
     } catch (err) {
-      console.error("Complete student error:", err);
+      console.error(
+        "Complete student error:",
+        err
+      );
+
       setError(
         err instanceof Error
           ? err.message
@@ -850,42 +792,6 @@ export default function AdminDashboard() {
 
   return (
     <main className="st-content overflow-x-hidden">
-      <div className="mb-7 flex flex-col justify-between gap-5 md:flex-row md:items-end">
-        <div>
-          <p className="st-eyebrow">OVERVIEW</p>
-
-          <h1 className="st-page-title mt-2">{greeting}</h1>
-
-          <p className="st-page-description">
-            Here&apos;s what is happening at Sauti Tamu today.
-          </p>
-        </div>
-
-        <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={() => {
-              window.location.href = "/admin/calendar";
-            }}
-            className="st-button st-button-secondary"
-          >
-            <CalendarDays size={15} />
-            Calendar
-          </button>
-
-          <button
-            type="button"
-            onClick={() => {
-              window.location.href = "/book";
-            }}
-            className="st-button st-button-primary"
-          >
-            <Plus size={15} />
-            New Trial Booking
-          </button>
-        </div>
-      </div>
-
       {error && (
         <div className="mb-5 rounded-2xl border border-red-200 bg-red-50 px-5 py-4">
           <p className="m-0 text-[11px] font-semibold text-red-700">
@@ -902,47 +808,8 @@ export default function AdminDashboard() {
         </div>
       )}
 
-      {/* START CARDS */}
-      <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard
-          label="ACTIVE STUDENTS"
-          value={activeStudents.length}
-          description="Students with an active enrollment"
-          icon={<GraduationCap size={18} />}
-          loading={loading}
-        />
-
-        <StatCard
-          label="TODAY'S TRIALS"
-          value={todayBookings.length}
-          description={`${todayBookings.length} trial booking${
-            todayBookings.length === 1 ? "" : "s"
-          } scheduled today`}
-          icon={<CalendarDays size={18} />}
-          loading={loading}
-        />
-
-        <StatCard
-          label="TOMORROW'S TRIALS"
-          value={tomorrowBookings.length}
-          description={`${tomorrowBookings.length} trial booking${
-            tomorrowBookings.length === 1 ? "" : "s"
-          } scheduled tomorrow`}
-          icon={<Clock3 size={18} />}
-          loading={loading}
-        />
-
-        <StatCard
-          label="NEW LEADS"
-          value={newLeadsLast7Days.length}
-          description="Leads received in the last 7 days"
-          icon={<UserPlus size={18} />}
-          loading={loading}
-        />
-      </section>
-
       {/* QUICK ACTIONS */}
-      <section className="mt-5">
+      <section>
         <div className="st-card p-5">
           <div>
             <p className="st-eyebrow">QUICK ACTIONS</p>
@@ -1100,17 +967,17 @@ export default function AdminDashboard() {
       </section>
 
       {/* STUDENTS NEARING COMPLETION */}
+
       <section className="mt-5">
         <div className="st-card overflow-hidden">
-          <div className="flex items-center justify-between gap-3 border-b border-[var(--st-border)] px-5 py-4">
+          <div className="flex flex-col gap-3 border-b border-[var(--st-border)] px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="min-w-0">
               <h2 className="st-section-title">
                 Students nearing completion
               </h2>
 
               <p className="mt-1 mb-0 text-[10px] text-[var(--st-gray)]">
-                Active students with 14 calendar days or less remaining in
-                their enrollment
+                Active students with 14 calendar days or less remaining in their enrollment
               </p>
             </div>
 
@@ -1128,61 +995,96 @@ export default function AdminDashboard() {
               icon={<GraduationCap size={19} />}
             />
           ) : (
-            <div className="w-full divide-y divide-[var(--st-border)]">
-              {nearingCompletion.map(
-                ({ student, enrollment, daysRemaining }) => {
-                  const photoUrl = getStudentPhotoUrl(
-                    student.photo_path
-                  );
+            <div className="divide-y divide-[var(--st-border)]">
+              {nearingCompletion.map(({
+                student,
+                enrollment,
+                daysRemaining,
+              }) => {
+                const photoUrl = getStudentPhotoUrl(
+                  student.photo_path
+                );
 
-                  return (
-                    <div
-                      key={student.id}
-                      className="w-full px-5 py-5 transition-colors hover:bg-[var(--st-bg-soft)]"
-                    >
-                      <div className="grid w-full grid-cols-1 gap-5 md:grid-cols-[minmax(320px,2.4fr)_170px_minmax(220px,1.4fr)_auto] md:items-center md:gap-6">
-                        <div className="flex min-w-0 items-center gap-4">
-                          <div className="relative flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[var(--st-bg-soft)] text-[13px] font-bold text-[var(--st-red)] ring-1 ring-[var(--st-border)]">
-                            {photoUrl ? (
-                              <img
-                                src={photoUrl}
-                                alt={student.full_name}
-                                className="h-full w-full object-cover"
-                                onError={(event) => {
-                                  event.currentTarget.style.display =
-                                    "none";
-                                  const fallback =
-                                    event.currentTarget
-                                      .nextElementSibling as HTMLElement | null;
+                const isCompleting =
+                  completingStudentId === student.id;
 
-                                  if (fallback) {
-                                    fallback.style.display = "flex";
-                                  }
-                                }}
-                              />
-                            ) : null}
+                return (
+                  <div
+                    key={student.id}
+                    className="px-5 py-6 transition-colors hover:bg-[var(--st-bg-soft)]"
+                  >
+                    <div className="grid gap-6 lg:grid-cols-[minmax(320px,2fr)_minmax(300px,1.2fr)_minmax(190px,0.9fr)_auto] lg:items-center">
+                      {/* STUDENT IDENTITY */}
 
-                            <span
-                              className={`${
-                                photoUrl ? "hidden" : "flex"
-                              } h-full w-full items-center justify-center bg-[var(--st-bg-soft)]`}
-                            >
-                              {getInitials(student.full_name)}
+                      <div className="flex min-w-0 items-start gap-4">
+                        <div className="relative flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[var(--st-bg-soft)] text-[13px] font-bold text-[var(--st-red)] ring-1 ring-[var(--st-border)]">
+                          {photoUrl ? (
+                            <img
+                              src={photoUrl}
+                              alt={student.full_name}
+                              className="h-full w-full object-cover"
+                              onError={(event) => {
+                                event.currentTarget.style.display = "none";
+
+                                const fallback =
+                                  event.currentTarget.nextElementSibling as HTMLElement | null;
+
+                                if (fallback) {
+                                  fallback.style.display = "flex";
+                                }
+                              }}
+                            />
+                          ) : null}
+
+                          <span
+                            className={`${
+                              photoUrl ? "hidden" : "flex"
+                            } h-full w-full items-center justify-center bg-[var(--st-bg-soft)]`}
+                          >
+                            {getInitials(student.full_name)}
+                          </span>
+                        </div>
+
+                        <div className="min-w-0 flex-1">
+                          <p className="m-0 whitespace-normal break-words text-[18px] font-bold leading-tight tracking-[-0.02em] text-[var(--st-charcoal-dark)]">
+                            {student.full_name}
+                          </p>
+
+                          <p className="mt-1 mb-0 text-[12px] font-semibold text-[var(--st-charcoal-dark)]">
+                            {student.whatsapp_number || "No phone number"}
+                          </p>
+
+                          <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1">
+                            <span className="text-[10px] font-semibold capitalize text-[var(--st-gray)]">
+                              {student.status}
                             </span>
-                          </div>
 
-                          <div className="min-w-0 flex-1">
-                            <p className="m-0 whitespace-normal break-words text-[18px] font-bold leading-tight tracking-[-0.02em] text-[var(--st-charcoal-dark)]">
-                              {student.full_name}
-                            </p>
-
-                            <p className="mt-1 mb-0 text-[10px] capitalize text-[var(--st-gray)]">
+                            <span className="text-[10px] font-semibold capitalize text-[var(--st-gray)]">
                               {enrollment.instrument}
-                              {enrollment.programme_name
-                                ? ` · ${enrollment.programme_name}`
-                                : ""}
-                            </p>
+                            </span>
+
+                            {enrollment.programme_name && (
+                              <span className="whitespace-normal break-words text-[10px] text-[var(--st-gray)]">
+                                {enrollment.programme_name}
+                              </span>
+                            )}
                           </div>
+                        </div>
+                      </div>
+
+                      {/* PROGRAMME DATES */}
+
+                      <div className="grid grid-cols-2 gap-4 rounded-xl border border-[var(--st-border)] bg-white p-4">
+                        <div className="min-w-0">
+                          <p className="m-0 text-[9px] font-semibold uppercase tracking-[0.08em] text-[var(--st-gray)]">
+                            Start date
+                          </p>
+
+                          <p className="mt-1 mb-0 text-[12px] font-bold text-[var(--st-charcoal-dark)]">
+                            {enrollment.start_date
+                              ? formatDateOnly(enrollment.start_date)
+                              : "—"}
+                          </p>
                         </div>
 
                         <div className="min-w-0">
@@ -1191,81 +1093,104 @@ export default function AdminDashboard() {
                           </p>
 
                           <p className="mt-1 mb-0 text-[12px] font-bold text-[var(--st-charcoal-dark)]">
-                            {formatDateOnly(enrollment.end_date!)}
+                            {enrollment.end_date
+                              ? formatDateOnly(enrollment.end_date)
+                              : "—"}
                           </p>
                         </div>
+                      </div>
 
-                        <div className="min-w-0 md:text-right">
+                      {/* COMPLETION STATUS */}
+
+                      <div className="rounded-xl bg-[var(--st-bg-soft)] px-4 py-4 lg:text-right">
+                        <p className="m-0 text-[9px] font-semibold uppercase tracking-[0.08em] text-[var(--st-gray)]">
+                          Completion status
+                        </p>
+
+                        <div className="mt-2">
                           {renderCompletionStatus(daysRemaining)}
                         </div>
+                      </div>
 
-                        <div className="flex flex-wrap items-center gap-2 md:justify-end">
-                          {student.whatsapp_number && (
-                            <>
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  openWhatsApp(
-                                    student.whatsapp_number,
-                                    student.full_name
-                                  )
-                                }
-                                className="st-icon-button"
-                                aria-label={`WhatsApp ${student.full_name}`}
-                              >
-                                <MessageCircle size={15} />
-                              </button>
+                      {/* ACTIONS */}
 
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  callPerson(student.whatsapp_number)
-                                }
-                                className="st-icon-button"
-                                aria-label={`Call ${student.full_name}`}
-                              >
-                                <Phone size={15} />
-                              </button>
-                            </>
-                          )}
+                      <div className="flex flex-wrap items-center gap-2 lg:justify-end">
+                        {student.whatsapp_number && (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                openWhatsApp(
+                                  student.whatsapp_number,
+                                  student.full_name
+                                )
+                              }
+                              className="st-icon-button"
+                              aria-label={`WhatsApp ${student.full_name}`}
+                              title="WhatsApp"
+                            >
+                              <MessageCircle size={15} />
+                            </button>
 
-                          <button
-                            type="button"
-                            onClick={() => {
-                              window.location.href = `/admin/students?student=${encodeURIComponent(
+                            <button
+                              type="button"
+                              onClick={() =>
+                                callPerson(student.whatsapp_number)
+                              }
+                              className="st-icon-button"
+                              aria-label={`Call ${student.full_name}`}
+                              title="Call"
+                            >
+                              <Phone size={15} />
+                            </button>
+                          </>
+                        )}
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            window.location.href =
+                              `/admin/students?student=${encodeURIComponent(
                                 student.id
                               )}`;
-                            }}
-                            className="st-button st-button-secondary"
-                          >
-                            View Student
-                            <ArrowRight size={14} />
-                          </button>
+                          }}
+                          className="st-button st-button-secondary"
+                        >
+                          View Student
+                          <ArrowRight size={14} />
+                        </button>
 
-                          <button
-                            type="button"
-                            onClick={() => handleCompleteStudent(student)}
-                            disabled={completingStudentId === student.id}
-                            className="st-button st-button-primary disabled:opacity-50"
-                          >
-                            {completingStudentId === student.id ? (
-                              <>
-                                <Loader2 size={14} className="animate-spin" />
-                                Completing...
-                              </>
-                            ) : (
-                              <>
-                                <CheckCircle2 size={14} />
-                                Complete
-                              </>
-                            )}
-                          </button>
-                        </div>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            handleCompleteStudent(
+                              student,
+                              enrollment
+                            )
+                          }
+                          disabled={Boolean(completingStudentId)}
+                          className="st-button st-button-primary disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          {isCompleting ? (
+                            <>
+                              <Loader2
+                                size={14}
+                                className="animate-spin"
+                              />
+                              Completing...
+                            </>
+                          ) : (
+                            <>
+                              <CheckCircle2 size={14} />
+                              Complete
+                            </>
+                          )}
+                        </button>
                       </div>
                     </div>
-                  );
-                }
-              )}
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>
