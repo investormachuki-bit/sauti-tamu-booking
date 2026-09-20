@@ -757,14 +757,41 @@ export async function updateStudent( input: UpdateStudentInput ): Promise<void> 
 
 /* ===================================================== COMPLETE STUDENT ===================================================== */
 
-export async function completeStudent( studentId: string ): Promise<void> {
+export async function completeStudent( studentId: string, enrollmentId: string ): Promise<void> {
   if (!studentId) {
     throw new Error(
       "Student ID is required."
     );
   }
 
-  /* * Find the current/latest enrollment. * loadStudents() uses the newest enrollment * as the current enrollment. */
+  if (!enrollmentId) {
+    throw new Error(
+      "Enrollment ID is required."
+    );
+  }
+
+  /* * Verify that the enrollment belongs to the student. * The dashboard passes the exact enrollment displayed * on the student's completion card. */
+  const {
+    data: enrollment,
+    error: enrollmentLookupError,
+  } = await supabase
+    .from("student_enrollments")
+    .select("id, student_id, status")
+    .eq("id", enrollmentId)
+    .eq("student_id", studentId)
+    .maybeSingle();
+
+  if (enrollmentLookupError) {
+    throw enrollmentLookupError;
+  }
+
+  if (!enrollment) {
+    throw new Error(
+      "The selected enrollment could not be found for this student."
+    );
+  }
+
+  /* * Read the current student status so we can restore it * if the enrollment update fails. */
   const {
     data: currentStudent,
     error: studentLookupError,
@@ -778,24 +805,7 @@ export async function completeStudent( studentId: string ): Promise<void> {
     throw studentLookupError;
   }
 
-  const {
-    data: enrollment,
-    error: enrollmentLookupError,
-  } = await supabase
-    .from("student_enrollments")
-    .select("id, status")
-    .eq("student_id", studentId)
-    .order("created_at", {
-      ascending: false,
-    })
-    .limit(1)
-    .maybeSingle();
-
-  if (enrollmentLookupError) {
-    throw enrollmentLookupError;
-  }
-
-  /* * Mark the student itself as completed. */
+  /* * Complete the exact student record. */
   const {
     error: studentUpdateError,
   } = await supabase
@@ -809,27 +819,26 @@ export async function completeStudent( studentId: string ): Promise<void> {
     throw studentUpdateError;
   }
 
-  /* * Mark the current/latest enrollment as completed too. */
-  if (enrollment?.id) {
-    const {
-      error: enrollmentUpdateError,
-    } = await supabase
-      .from("student_enrollments")
+  /* * Complete the exact enrollment shown on the card. */
+  const {
+    error: enrollmentUpdateError,
+  } = await supabase
+    .from("student_enrollments")
+    .update({
+      status: "completed",
+    })
+    .eq("id", enrollmentId)
+    .eq("student_id", studentId);
+
+  if (enrollmentUpdateError) {
+    /* * Roll the student status back if the enrollment update fails, * preventing the two records from becoming inconsistent. */
+    await supabase
+      .from("students")
       .update({
-        status: "completed",
+        status: currentStudent.status,
       })
-      .eq("id", enrollment.id);
+      .eq("id", studentId);
 
-    if (enrollmentUpdateError) {
-      /* * Roll the student status back if the enrollment * update fails, so the records remain consistent. */
-      await supabase
-        .from("students")
-        .update({
-          status: currentStudent.status,
-        })
-        .eq("id", studentId);
-
-      throw enrollmentUpdateError;
-    }
+    throw enrollmentUpdateError;
   }
 }
