@@ -23,10 +23,6 @@ import {
 
 import { supabase } from "@/lib/supabase";
 
-/* =====================================================
-   TYPES
-===================================================== */
-
 type PaymentMethod =
   | "mpesa"
   | "cash"
@@ -59,10 +55,6 @@ type ExpenseForm = {
   notes: string;
 };
 
-/* =====================================================
-   CONSTANTS
-===================================================== */
-
 const NAIROBI_TIME_ZONE = "Africa/Nairobi";
 
 const EXPENSE_CATEGORIES = [
@@ -81,17 +73,19 @@ const EXPENSE_CATEGORIES = [
   "Other",
 ];
 
-/* =====================================================
-   HELPERS
-===================================================== */
-
 function getTodayKey() {
-  return new Intl.DateTimeFormat("en-CA", {
+  const parts = new Intl.DateTimeFormat("en-CA", {
     timeZone: NAIROBI_TIME_ZONE,
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
-  }).format(new Date());
+  }).formatToParts(new Date());
+
+  const year = parts.find((p) => p.type === "year")?.value;
+  const month = parts.find((p) => p.type === "month")?.value;
+  const day = parts.find((p) => p.type === "day")?.value;
+
+  return `${year}-${month}-${day}`;
 }
 
 function getMonthStart(value = getTodayKey()) {
@@ -99,15 +93,15 @@ function getMonthStart(value = getTodayKey()) {
 }
 
 function getNextMonthStart(monthStart: string) {
-  const date = new Date(`${monthStart}T00:00:00+03:00`);
+  const [year, month] = monthStart
+    .split("-")
+    .map(Number);
 
-  date.setMonth(date.getMonth() + 1);
+  const next = new Date(
+    Date.UTC(year, month, 1)
+  );
 
-  const year = date.getFullYear();
-
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-
-  return `${year}-${month}-01`;
+  return next.toISOString().slice(0, 10);
 }
 
 function formatCurrency(
@@ -121,9 +115,7 @@ function formatCurrency(
 }
 
 function formatDate(value: string) {
-  if (!value) {
-    return "—";
-  }
+  if (!value) return "—";
 
   const date = new Date(
     `${value}T00:00:00+03:00`
@@ -172,13 +164,14 @@ function emptyForm(): ExpenseForm {
 
 function normalizeExpense(row: any): Expense {
   return {
-    id: row.id,
-    expense_date: row.expense_date,
+    id: String(row.id),
+    expense_date: String(row.expense_date),
     category: row.category ?? "",
     description: row.description ?? "",
     amount: Number(row.amount ?? 0),
     payment_method:
-      (row.payment_method as PaymentMethod) ?? "other",
+      (row.payment_method as PaymentMethod) ??
+      "other",
     reference: row.reference ?? null,
     vendor: row.vendor ?? null,
     notes: row.notes ?? null,
@@ -186,10 +179,6 @@ function normalizeExpense(row: any): Expense {
     updated_at: row.updated_at,
   };
 }
-
-/* =====================================================
-   FORM MODAL
-===================================================== */
 
 function ExpenseModal({
   open,
@@ -213,9 +202,7 @@ function ExpenseModal({
   onClose: () => void;
   onSave: () => void;
 }) {
-  if (!open) {
-    return null;
-  }
+  if (!open) return null;
 
   return (
     <div className="fixed inset-0 z-[150] flex items-center justify-center bg-black/40 px-4 py-6">
@@ -227,8 +214,10 @@ function ExpenseModal({
               Financial Management
             </p>
 
-            <h2 className="mt-1 mb-0 text-[18px] font-bold tracking-[-0.02em] text-[var(--st-charcoal-dark)]">
-              {editing ? "Edit Expense" : "Add Expense"}
+            <h2 className="mt-1 mb-0 text-[18px] font-bold text-[var(--st-charcoal-dark)]">
+              {editing
+                ? "Edit Expense"
+                : "Add Expense"}
             </h2>
           </div>
 
@@ -236,8 +225,7 @@ function ExpenseModal({
             type="button"
             onClick={onClose}
             disabled={saving}
-            className="flex h-8 w-8 items-center justify-center rounded-lg text-[var(--st-gray)] hover:bg-[var(--st-bg-soft)] disabled:opacity-50"
-            aria-label="Close"
+            className="flex h-8 w-8 items-center justify-center rounded-lg text-[var(--st-gray)] hover:bg-[var(--st-bg-soft)]"
           >
             <X size={16} />
           </button>
@@ -246,10 +234,10 @@ function ExpenseModal({
         <div className="max-h-[78vh] overflow-y-auto px-5 py-5">
 
           {error && (
-            <div className="mb-4 flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-3 text-[9px] text-red-700">
+            <div className="mb-4 flex gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-3 text-[9px] text-red-700">
               <AlertTriangle
                 size={14}
-                className="mt-[1px] shrink-0"
+                className="shrink-0"
               />
               <span>{error}</span>
             </div>
@@ -257,7 +245,6 @@ function ExpenseModal({
 
           <div className="grid gap-4 md:grid-cols-2">
 
-            {/* DATE */}
             <label>
               <span className="block text-[9px] font-bold uppercase tracking-[0.08em] text-[var(--st-gray)]">
                 Expense Date
@@ -266,17 +253,16 @@ function ExpenseModal({
               <input
                 type="date"
                 value={form.expense_date}
-                onChange={(event) =>
+                onChange={(e) =>
                   onChange(
                     "expense_date",
-                    event.target.value
+                    e.target.value
                   )
                 }
                 className="mt-2 h-10 w-full rounded-xl border border-[var(--st-border)] px-3 text-[11px] outline-none focus:border-[var(--st-red)]"
               />
             </label>
 
-            {/* CATEGORY */}
             <label>
               <span className="block text-[9px] font-bold uppercase tracking-[0.08em] text-[var(--st-gray)]">
                 Category
@@ -286,10 +272,10 @@ function ExpenseModal({
                 type="text"
                 list="expense-category-options"
                 value={form.category}
-                onChange={(event) =>
+                onChange={(e) =>
                   onChange(
                     "category",
-                    event.target.value
+                    e.target.value
                   )
                 }
                 placeholder="Enter or select category"
@@ -308,7 +294,6 @@ function ExpenseModal({
               </datalist>
             </label>
 
-            {/* DESCRIPTION */}
             <label className="md:col-span-2">
               <span className="block text-[9px] font-bold uppercase tracking-[0.08em] text-[var(--st-gray)]">
                 Description
@@ -317,10 +302,10 @@ function ExpenseModal({
               <input
                 type="text"
                 value={form.description}
-                onChange={(event) =>
+                onChange={(e) =>
                   onChange(
                     "description",
-                    event.target.value
+                    e.target.value
                   )
                 }
                 placeholder="What was the expense for?"
@@ -328,7 +313,6 @@ function ExpenseModal({
               />
             </label>
 
-            {/* AMOUNT */}
             <label>
               <span className="block text-[9px] font-bold uppercase tracking-[0.08em] text-[var(--st-gray)]">
                 Amount (KES)
@@ -339,18 +323,16 @@ function ExpenseModal({
                 min="0"
                 step="0.01"
                 value={form.amount}
-                onChange={(event) =>
+                onChange={(e) =>
                   onChange(
                     "amount",
-                    event.target.value
+                    e.target.value
                   )
                 }
-                placeholder="0"
                 className="mt-2 h-10 w-full rounded-xl border border-[var(--st-border)] px-3 text-[11px] outline-none focus:border-[var(--st-red)]"
               />
             </label>
 
-            {/* PAYMENT METHOD */}
             <label>
               <span className="block text-[9px] font-bold uppercase tracking-[0.08em] text-[var(--st-gray)]">
                 Payment Method
@@ -358,10 +340,10 @@ function ExpenseModal({
 
               <select
                 value={form.payment_method}
-                onChange={(event) =>
+                onChange={(e) =>
                   onChange(
                     "payment_method",
-                    event.target.value
+                    e.target.value
                   )
                 }
                 className="mt-2 h-10 w-full rounded-xl border border-[var(--st-border)] bg-white px-3 text-[11px] outline-none focus:border-[var(--st-red)]"
@@ -369,26 +351,21 @@ function ExpenseModal({
                 <option value="mpesa">
                   M-Pesa
                 </option>
-
                 <option value="cash">
                   Cash
                 </option>
-
                 <option value="bank">
                   Bank
                 </option>
-
                 <option value="card">
                   Card
                 </option>
-
                 <option value="other">
                   Other
                 </option>
               </select>
             </label>
 
-            {/* REFERENCE */}
             <label>
               <span className="block text-[9px] font-bold uppercase tracking-[0.08em] text-[var(--st-gray)]">
                 Reference
@@ -397,10 +374,10 @@ function ExpenseModal({
               <input
                 type="text"
                 value={form.reference}
-                onChange={(event) =>
+                onChange={(e) =>
                   onChange(
                     "reference",
-                    event.target.value
+                    e.target.value
                   )
                 }
                 placeholder="Receipt / transaction reference"
@@ -408,7 +385,6 @@ function ExpenseModal({
               />
             </label>
 
-            {/* VENDOR */}
             <label>
               <span className="block text-[9px] font-bold uppercase tracking-[0.08em] text-[var(--st-gray)]">
                 Vendor / Payee
@@ -417,10 +393,10 @@ function ExpenseModal({
               <input
                 type="text"
                 value={form.vendor}
-                onChange={(event) =>
+                onChange={(e) =>
                   onChange(
                     "vendor",
-                    event.target.value
+                    e.target.value
                   )
                 }
                 placeholder="Who was paid?"
@@ -428,22 +404,20 @@ function ExpenseModal({
               />
             </label>
 
-            {/* NOTES */}
             <label className="md:col-span-2">
               <span className="block text-[9px] font-bold uppercase tracking-[0.08em] text-[var(--st-gray)]">
                 Notes
               </span>
 
               <textarea
+                rows={3}
                 value={form.notes}
-                onChange={(event) =>
+                onChange={(e) =>
                   onChange(
                     "notes",
-                    event.target.value
+                    e.target.value
                   )
                 }
-                rows={3}
-                placeholder="Optional notes"
                 className="mt-2 w-full resize-none rounded-xl border border-[var(--st-border)] px-3 py-2 text-[11px] outline-none focus:border-[var(--st-red)]"
               />
             </label>
@@ -451,7 +425,7 @@ function ExpenseModal({
           </div>
         </div>
 
-        <div className="flex items-center justify-end gap-2 border-t border-[var(--st-border)] px-5 py-4">
+        <div className="flex justify-end gap-2 border-t border-[var(--st-border)] px-5 py-4">
 
           <button
             type="button"
@@ -487,10 +461,6 @@ function ExpenseModal({
     </div>
   );
 }
-
-/* =====================================================
-   PAGE
-===================================================== */
 
 export default function ExpensesPage() {
   const [expenses, setExpenses] =
@@ -531,10 +501,12 @@ export default function ExpensesPage() {
   const [searchTerm, setSearchTerm] =
     useState("");
 
-  /* ===================================================
-     LOAD ALL EXPENSES
-  =================================================== */
-
+  /*
+   * IMPORTANT:
+   * We query the selected month directly from Supabase.
+   * Supabase supports chaining .gte() and .lt()
+   * filters after select().
+   */
   const loadExpenses = useCallback(
     async (silent = false) => {
       try {
@@ -545,29 +517,27 @@ export default function ExpensesPage() {
         }
 
         setError("");
-        setActionError("");
 
-        /*
-         * IMPORTANT:
-         *
-         * Do NOT filter expenses by month in Supabase.
-         *
-         * The financial dashboard and Expenses page both
-         * depend on the same live expense records.
-         *
-         * We load the records first and filter the selected
-         * month in the frontend.
-         *
-         * This prevents the Expenses page from getting out
-         * of sync with the financial dashboard.
-         */
+        const nextMonth =
+          getNextMonthStart(monthStart);
 
         const {
           data,
           error: queryError,
+          count,
         } = await supabase
           .from("expenses")
-          .select("*")
+          .select("*", {
+            count: "exact",
+          })
+          .gte(
+            "expense_date",
+            monthStart
+          )
+          .lt(
+            "expense_date",
+            nextMonth
+          )
           .order("expense_date", {
             ascending: false,
           })
@@ -576,7 +546,23 @@ export default function ExpensesPage() {
           });
 
         if (queryError) {
-          throw queryError;
+          throw new Error(
+            `Unable to read expenses from Supabase: ${queryError.message}`
+          );
+        }
+
+        /*
+         * If Supabase returns zero rows, this can be a
+         * genuine empty month OR RLS can be hiding rows.
+         * We expose that state rather than silently failing.
+         */
+        if (
+          count === null &&
+          data === null
+        ) {
+          throw new Error(
+            "Supabase did not return expense records. Please check the SELECT permission/RLS policy on public.expenses."
+          );
         }
 
         setExpenses(
@@ -590,6 +576,8 @@ export default function ExpensesPage() {
           err
         );
 
+        setExpenses([]);
+
         setError(
           err instanceof Error
             ? err.message
@@ -600,46 +588,12 @@ export default function ExpensesPage() {
         setRefreshing(false);
       }
     },
-    []
+    [monthStart]
   );
 
   useEffect(() => {
     loadExpenses();
   }, [loadExpenses]);
-
-  /* ===================================================
-     SELECTED MONTH EXPENSES
-  =================================================== */
-
-  const nextMonthStart = useMemo(
-    () => getNextMonthStart(monthStart),
-    [monthStart]
-  );
-
-  const monthExpenses = useMemo(
-    () => {
-      return expenses.filter(
-        (expense) => {
-          const date =
-            expense.expense_date;
-
-          return (
-            date >= monthStart &&
-            date < nextMonthStart
-          );
-        }
-      );
-    },
-    [
-      expenses,
-      monthStart,
-      nextMonthStart,
-    ]
-  );
-
-  /* ===================================================
-     SEARCH
-  =================================================== */
 
   const filteredExpenses =
     useMemo(() => {
@@ -649,10 +603,10 @@ export default function ExpensesPage() {
           .toLowerCase();
 
       if (!query) {
-        return monthExpenses;
+        return expenses;
       }
 
-      return monthExpenses.filter(
+      return expenses.filter(
         (expense) =>
           [
             expense.category,
@@ -667,35 +621,27 @@ export default function ExpensesPage() {
             .includes(query)
       );
     }, [
-      monthExpenses,
+      expenses,
       searchTerm,
     ]);
-
-  /* ===================================================
-     TOTAL
-  =================================================== */
 
   const totalSpent =
     useMemo(
       () =>
-        monthExpenses.reduce(
+        expenses.reduce(
           (sum, expense) =>
             sum + expense.amount,
           0
         ),
-      [monthExpenses]
+      [expenses]
     );
-
-  /* ===================================================
-     CATEGORY BREAKDOWN
-  =================================================== */
 
   const categoryTotals =
     useMemo(() => {
       const map =
         new Map<string, number>();
 
-      monthExpenses.forEach(
+      expenses.forEach(
         (expense) => {
           map.set(
             expense.category,
@@ -728,13 +674,9 @@ export default function ExpensesPage() {
             a.amount
         );
     }, [
-      monthExpenses,
+      expenses,
       totalSpent,
     ]);
-
-  /* ===================================================
-     ADD
-  =================================================== */
 
   function openAddExpense() {
     setActionError("");
@@ -742,10 +684,6 @@ export default function ExpensesPage() {
     setForm(emptyForm());
     setShowModal(true);
   }
-
-  /* ===================================================
-     EDIT
-  =================================================== */
 
   function openEditExpense(
     expense: Expense
@@ -782,39 +720,23 @@ export default function ExpensesPage() {
     setShowModal(true);
   }
 
-  /* ===================================================
-     CLOSE MODAL
-  =================================================== */
-
   function closeModal() {
-    if (saving) {
-      return;
-    }
+    if (saving) return;
 
     setShowModal(false);
     setEditingExpense(null);
     setActionError("");
   }
 
-  /* ===================================================
-     UPDATE FORM
-  =================================================== */
-
   function updateForm(
     field: keyof ExpenseForm,
     value: string
   ) {
-    setForm(
-      (current) => ({
-        ...current,
-        [field]: value,
-      })
-    );
+    setForm((current) => ({
+      ...current,
+      [field]: value,
+    }));
   }
-
-  /* ===================================================
-     SAVE
-  =================================================== */
 
   async function saveExpense() {
     try {
@@ -882,10 +804,6 @@ export default function ExpensesPage() {
           new Date().toISOString(),
       };
 
-      /* ===============================================
-         UPDATE EXISTING EXPENSE
-      =============================================== */
-
       if (editingExpense) {
         const {
           error: updateError,
@@ -900,13 +818,7 @@ export default function ExpensesPage() {
         if (updateError) {
           throw updateError;
         }
-      }
-
-      /* ===============================================
-         CREATE NEW EXPENSE
-      =============================================== */
-
-      else {
+      } else {
         const {
           error: insertError,
         } = await supabase
@@ -926,14 +838,6 @@ export default function ExpensesPage() {
       setEditingExpense(null);
       setForm(emptyForm());
 
-      /*
-       * Reload the same live Supabase source.
-       *
-       * Since all records are loaded and month filtering
-       * happens locally, a newly-created expense will now
-       * immediately appear if its date belongs to the
-       * selected month.
-       */
       await loadExpenses(true);
     } catch (err) {
       console.error(
@@ -951,10 +855,6 @@ export default function ExpensesPage() {
     }
   }
 
-  /* ===================================================
-     DELETE
-  =================================================== */
-
   async function deleteExpense(
     expense: Expense
   ) {
@@ -962,18 +862,13 @@ export default function ExpensesPage() {
       window.confirm(
         `Delete this expense of ${formatCurrency(
           expense.amount
-        )}? This will reduce recorded business expenses.`
+        )}?`
       );
 
-    if (!confirmed) {
-      return;
-    }
+    if (!confirmed) return;
 
     try {
-      setDeletingId(
-        expense.id
-      );
-
+      setDeletingId(expense.id);
       setActionError("");
 
       const {
@@ -1007,16 +902,10 @@ export default function ExpensesPage() {
     }
   }
 
-  /* ===================================================
-     RENDER
-  =================================================== */
-
   return (
     <main className="st-page">
 
-      {/* ===============================================
-          HEADER
-      =============================================== */}
+      {/* HEADER */}
 
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
 
@@ -1029,7 +918,7 @@ export default function ExpensesPage() {
             Expenses
           </h1>
 
-          <p className="mt-2 mb-0 max-w-[720px] text-[10px] leading-relaxed text-[var(--st-gray)]">
+          <p className="mt-2 mb-0 max-w-[720px] text-[10px] text-[var(--st-gray)]">
             Record and manage business expenses.
             These transactions feed the financial
             dashboard and expense reporting.
@@ -1048,12 +937,12 @@ export default function ExpensesPage() {
             <input
               type="month"
               value={monthStart.slice(0, 7)}
-              onChange={(event) =>
+              onChange={(e) =>
                 setMonthStart(
-                  `${event.target.value}-01`
+                  `${e.target.value}-01`
                 )
               }
-              className="border-0 bg-transparent text-[10px] font-semibold text-[var(--st-charcoal-dark)] outline-none"
+              className="border-0 bg-transparent text-[10px] font-semibold outline-none"
             />
 
           </label>
@@ -1089,19 +978,25 @@ export default function ExpensesPage() {
         </div>
       </div>
 
-      {/* ===============================================
-          ERRORS
-      =============================================== */}
+      {/* ERRORS */}
 
       {error && (
         <div className="mt-5 flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-[10px] text-red-700">
 
           <AlertTriangle
             size={15}
-            className="mt-[1px] shrink-0"
+            className="shrink-0"
           />
 
-          <span>{error}</span>
+          <div>
+            <p className="m-0 font-bold">
+              Expense records could not be read
+            </p>
+
+            <p className="mt-1 mb-0">
+              {error}
+            </p>
+          </div>
 
         </div>
       )}
@@ -1111,7 +1006,7 @@ export default function ExpensesPage() {
 
           <AlertTriangle
             size={15}
-            className="mt-[1px] shrink-0"
+            className="shrink-0"
           />
 
           <span>{actionError}</span>
@@ -1119,17 +1014,13 @@ export default function ExpensesPage() {
         </div>
       )}
 
-      {/* ===============================================
-          SUMMARY CARDS
-      =============================================== */}
+      {/* SUMMARY */}
 
       <section className="mt-6 grid gap-4 md:grid-cols-3">
 
-        {/* TOTAL SPENT */}
-
         <div className="rounded-2xl border border-[var(--st-border)] bg-white p-5">
 
-          <div className="flex items-start justify-between gap-3">
+          <div className="flex items-start justify-between">
 
             <div>
 
@@ -1137,7 +1028,7 @@ export default function ExpensesPage() {
                 Total Spent
               </p>
 
-              <p className="mt-3 mb-0 text-[24px] font-bold tracking-[-0.03em] text-[var(--st-charcoal-dark)]">
+              <p className="mt-3 mb-0 text-[24px] font-bold text-[var(--st-charcoal-dark)]">
                 {formatCurrency(
                   totalSpent
                 )}
@@ -1159,11 +1050,9 @@ export default function ExpensesPage() {
 
         </div>
 
-        {/* TRANSACTIONS */}
-
         <div className="rounded-2xl border border-[var(--st-border)] bg-white p-5">
 
-          <div className="flex items-start justify-between gap-3">
+          <div className="flex items-start justify-between">
 
             <div>
 
@@ -1171,8 +1060,8 @@ export default function ExpensesPage() {
                 Expense Transactions
               </p>
 
-              <p className="mt-3 mb-0 text-[24px] font-bold tracking-[-0.03em] text-[var(--st-charcoal-dark)]">
-                {monthExpenses.length}
+              <p className="mt-3 mb-0 text-[24px] font-bold text-[var(--st-charcoal-dark)]">
+                {expenses.length}
               </p>
 
               <p className="mt-2 mb-0 text-[9px] text-[var(--st-gray)]">
@@ -1189,11 +1078,9 @@ export default function ExpensesPage() {
 
         </div>
 
-        {/* CATEGORIES */}
-
         <div className="rounded-2xl border border-[var(--st-border)] bg-white p-5">
 
-          <div className="flex items-start justify-between gap-3">
+          <div className="flex items-start justify-between">
 
             <div>
 
@@ -1201,7 +1088,7 @@ export default function ExpensesPage() {
                 Categories Used
               </p>
 
-              <p className="mt-3 mb-0 text-[24px] font-bold tracking-[-0.03em] text-[var(--st-charcoal-dark)]">
+              <p className="mt-3 mb-0 text-[24px] font-bold text-[var(--st-charcoal-dark)]">
                 {categoryTotals.length}
               </p>
 
@@ -1221,25 +1108,21 @@ export default function ExpensesPage() {
 
       </section>
 
-      {/* ===============================================
-          EXPENSE BREAKDOWN
-      =============================================== */}
+      {/* CONTENT */}
 
       <section className="mt-6 grid gap-5 lg:grid-cols-[0.85fr_1.15fr]">
 
+        {/* BREAKDOWN */}
+
         <div className="rounded-2xl border border-[var(--st-border)] bg-white p-5">
 
-          <div>
+          <h2 className="st-section-title">
+            Expense Breakdown
+          </h2>
 
-            <h2 className="st-section-title">
-              Expense Breakdown
-            </h2>
-
-            <p className="mt-1 mb-0 text-[10px] text-[var(--st-gray)]">
-              {formatMonth(monthStart)}
-            </p>
-
-          </div>
+          <p className="mt-1 mb-0 text-[10px] text-[var(--st-gray)]">
+            {formatMonth(monthStart)}
+          </p>
 
           <div className="mt-5 space-y-4">
 
@@ -1248,7 +1131,9 @@ export default function ExpensesPage() {
               <div className="rounded-xl border border-dashed border-[var(--st-border)] bg-[var(--st-bg-soft)] px-4 py-8 text-center">
 
                 <p className="m-0 text-[10px] text-[var(--st-gray)]">
-                  No expenses recorded for this month.
+                  {loading
+                    ? "Loading expenses..."
+                    : "No expenses recorded for this month."}
                 </p>
 
               </div>
@@ -1261,13 +1146,13 @@ export default function ExpensesPage() {
                     key={item.category}
                   >
 
-                    <div className="flex items-center justify-between gap-3">
+                    <div className="flex justify-between gap-3">
 
-                      <span className="text-[10px] font-semibold text-[var(--st-charcoal-dark)]">
+                      <span className="text-[10px] font-semibold">
                         {item.category}
                       </span>
 
-                      <span className="text-[10px] font-bold text-[var(--st-charcoal-dark)]">
+                      <span className="text-[10px] font-bold">
                         {formatCurrency(
                           item.amount
                         )}
@@ -1290,7 +1175,9 @@ export default function ExpensesPage() {
                     </div>
 
                     <p className="mt-1 mb-0 text-[8px] text-[var(--st-gray)]">
-                      {item.percentage.toFixed(1)}
+                      {item.percentage.toFixed(
+                        1
+                      )}
                       % of monthly expenses
                     </p>
 
@@ -1304,9 +1191,7 @@ export default function ExpensesPage() {
 
         </div>
 
-        {/* =============================================
-            TRANSACTIONS
-        ============================================= */}
+        {/* TRANSACTIONS */}
 
         <div className="rounded-2xl border border-[var(--st-border)] bg-white p-5">
 
@@ -1327,13 +1212,13 @@ export default function ExpensesPage() {
             <input
               type="search"
               value={searchTerm}
-              onChange={(event) =>
+              onChange={(e) =>
                 setSearchTerm(
-                  event.target.value
+                  e.target.value
                 )
               }
               placeholder="Search expenses..."
-              className="h-9 w-full rounded-xl border border-[var(--st-border)] px-3 text-[10px] outline-none focus:border-[var(--st-red)] sm:w-[220px]"
+              className="h-9 w-full rounded-xl border border-[var(--st-border)] px-3 text-[10px] outline-none sm:w-[220px]"
             />
 
           </div>
@@ -1362,11 +1247,9 @@ export default function ExpensesPage() {
               <div className="rounded-xl border border-dashed border-[var(--st-border)] bg-[var(--st-bg-soft)] px-4 py-10 text-center">
 
                 <p className="m-0 text-[10px] text-[var(--st-gray)]">
-
                   {searchTerm
                     ? "No expenses match your search."
                     : "No expenses recorded for this month."}
-
                 </p>
 
               </div>
@@ -1429,7 +1312,7 @@ export default function ExpensesPage() {
 
                         <td className="px-3 py-4">
 
-                          <span className="rounded-full bg-[var(--st-bg-soft)] px-2 py-1 text-[8px] font-semibold text-[var(--st-charcoal-dark)]">
+                          <span className="rounded-full bg-[var(--st-bg-soft)] px-2 py-1 text-[8px] font-semibold">
                             {expense.category}
                           </span>
 
@@ -1437,46 +1320,41 @@ export default function ExpensesPage() {
 
                         <td className="px-3 py-4">
 
-                          <p className="m-0 text-[10px] font-semibold text-[var(--st-charcoal-dark)]">
+                          <p className="m-0 text-[10px] font-semibold">
                             {expense.description}
                           </p>
 
                           {(expense.reference ||
                             expense.notes) && (
-
                             <p className="mt-1 mb-0 max-w-[280px] truncate text-[8px] text-[var(--st-gray)]">
                               {expense.reference ||
                                 expense.notes}
                             </p>
-
                           )}
 
                         </td>
 
                         <td className="px-3 py-4 text-[9px] text-[var(--st-gray)]">
-                          {expense.vendor || "—"}
+                          {expense.vendor ||
+                            "—"}
                         </td>
 
-                        <td className="px-3 py-4 text-[9px] font-semibold capitalize text-[var(--st-charcoal-dark)]">
-
+                        <td className="px-3 py-4 text-[9px] font-semibold capitalize">
                           {expense.payment_method ===
                           "mpesa"
                             ? "M-Pesa"
                             : expense.payment_method}
-
                         </td>
 
-                        <td className="px-3 py-4 text-right text-[10px] font-bold text-[var(--st-charcoal-dark)]">
-
+                        <td className="px-3 py-4 text-right text-[10px] font-bold">
                           {formatCurrency(
                             expense.amount
                           )}
-
                         </td>
 
                         <td className="px-3 py-4">
 
-                          <div className="flex items-center justify-end gap-1">
+                          <div className="flex justify-end gap-1">
 
                             <button
                               type="button"
@@ -1485,7 +1363,7 @@ export default function ExpensesPage() {
                                   expense
                                 )
                               }
-                              className="flex h-8 w-8 items-center justify-center rounded-lg text-[var(--st-gray)] hover:bg-[var(--st-bg-soft)] hover:text-[var(--st-charcoal-dark)]"
+                              className="flex h-8 w-8 items-center justify-center rounded-lg text-[var(--st-gray)] hover:bg-[var(--st-bg-soft)]"
                               aria-label="Edit expense"
                             >
                               <Edit3 size={13} />
@@ -1505,7 +1383,6 @@ export default function ExpensesPage() {
                               className="flex h-8 w-8 items-center justify-center rounded-lg text-red-500 hover:bg-red-50 disabled:opacity-50"
                               aria-label="Delete expense"
                             >
-
                               {deletingId ===
                               expense.id ? (
                                 <Loader2
@@ -1517,7 +1394,6 @@ export default function ExpensesPage() {
                                   size={13}
                                 />
                               )}
-
                             </button>
 
                           </div>
@@ -1540,10 +1416,6 @@ export default function ExpensesPage() {
         </div>
 
       </section>
-
-      {/* ===============================================
-          MODAL
-      =============================================== */}
 
       <ExpenseModal
         open={showModal}
