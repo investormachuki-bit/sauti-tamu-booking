@@ -9,6 +9,9 @@ import {
   Clock3,
   Settings,
   X,
+  WalletCards,
+  Receipt,
+  Landmark,
 } from "lucide-react";
 
 interface SidebarProps {
@@ -54,6 +57,26 @@ const navigation = [
         label: "Follow-ups",
         href: "/admin/followups",
         icon: Clock3,
+      },
+    ],
+  },
+  {
+    section: "FINANCIAL MANAGEMENT",
+    items: [
+      {
+        label: "Financial Dashboard",
+        href: "/admin/financials",
+        icon: WalletCards,
+      },
+      {
+        label: "Expenses",
+        href: "/admin/expenses",
+        icon: Receipt,
+      },
+      {
+        label: "Financial Obligations",
+        href: "/admin/financial-obligations",
+        icon: Landmark,
       },
     ],
   },
@@ -152,7 +175,9 @@ export default function Sidebar({
                       />
                     </span>
 
-                    <span>{item.label}</span>
+                    <span>
+                      {item.label}
+                    </span>
                   </Link>
                 );
               })}
@@ -193,7 +218,7 @@ export default function Sidebar({
                 text-[var(--st-gray)]
               "
             >
-              Booking &amp; Follow-up
+              Booking &amp; Financial Management
             </p>
           </div>
         </div>
