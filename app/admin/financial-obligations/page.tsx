@@ -59,8 +59,7 @@ type ObligationForm = {
    CONSTANTS
 ===================================================== */
 
-const NAIROBI_TIME_ZONE =
-  "Africa/Nairobi";
+const NAIROBI_TIME_ZONE = "Africa/Nairobi";
 
 const OBLIGATION_CATEGORIES = [
   "Insurance",
@@ -133,14 +132,11 @@ function getTodayKey() {
 function formatCurrency(
   value: number | null | undefined
 ) {
-  return new Intl.NumberFormat(
-    "en-KE",
-    {
-      style: "currency",
-      currency: "KES",
-      maximumFractionDigits: 0,
-    }
-  ).format(Number(value) || 0);
+  return new Intl.NumberFormat("en-KE", {
+    style: "currency",
+    currency: "KES",
+    maximumFractionDigits: 0,
+  }).format(Number(value) || 0);
 }
 
 function formatDate(
@@ -154,62 +150,84 @@ function formatDate(
     `${value}T00:00:00+03:00`
   );
 
-  if (
-    Number.isNaN(
-      date.getTime()
-    )
-  ) {
+  if (Number.isNaN(date.getTime())) {
     return value;
   }
 
-  return new Intl.DateTimeFormat(
-    "en-KE",
-    {
-      timeZone: NAIROBI_TIME_ZONE,
-      day: "numeric",
-      month: "short",
-      year: "numeric",
-    }
-  ).format(date);
+  return new Intl.DateTimeFormat("en-KE", {
+    timeZone: NAIROBI_TIME_ZONE,
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  }).format(date);
 }
 
 function emptyForm(): ObligationForm {
   return {
     name: "",
-    category:
-      OBLIGATION_CATEGORIES[0],
+    category: OBLIGATION_CATEGORIES[0],
     amount: "",
     frequency: "one_time",
-    start_date:
-      getTodayKey(),
+    start_date: getTodayKey(),
     end_date: "",
     outstanding_balance: "",
-    next_due_date:
-      getTodayKey(),
+    next_due_date: getTodayKey(),
     status: "active",
     notes: "",
   };
 }
 
-function toNumber(
-  value: unknown
-) {
-  return Number(value ?? 0);
+function toNumber(value: unknown) {
+  const number = Number(value ?? 0);
+
+  return Number.isFinite(number)
+    ? number
+    : 0;
 }
 
-function frequencyLabel(
-  value: string
-) {
+function frequencyLabel(value: string) {
   return (
     OBLIGATION_FREQUENCIES.find(
-      (item) =>
-        item.value === value
+      (item) => item.value === value
     )?.label ??
-    value.replace(
-      /_/g,
-      " "
-    )
+    value.replace(/_/g, " ")
   );
+}
+
+function statusLabel(value: string) {
+  return (
+    OBLIGATION_STATUSES.find(
+      (item) => item.value === value
+    )?.label ??
+    value
+  );
+}
+
+function mapObligation(row: any): Obligation {
+  return {
+    id: row.id,
+    name: row.name ?? "",
+    category: row.category ?? "",
+    amount: toNumber(row.amount),
+    frequency:
+      row.frequency ?? "one_time",
+    start_date:
+      row.start_date ?? null,
+    end_date:
+      row.end_date ?? null,
+    outstanding_balance:
+      toNumber(row.outstanding_balance),
+    next_due_date:
+      row.next_due_date ?? null,
+    status:
+      row.status ?? "active",
+    notes:
+      row.notes ?? null,
+    created_at:
+      row.created_at ?? "",
+    updated_at:
+      row.updated_at ?? "",
+  };
 }
 
 /* =====================================================
@@ -242,9 +260,27 @@ function ObligationModal({
     return null;
   }
 
+  /*
+   * Preserve an existing database category even if it
+   * is an older/custom value that is not currently in
+   * the standard category list.
+   *
+   * It is STILL a dropdown.
+   */
+  const categoryOptions = Array.from(
+    new Set([
+      ...OBLIGATION_CATEGORIES,
+      ...(form.category
+        ? [form.category]
+        : []),
+    ])
+  );
+
   return (
     <div className="fixed inset-0 z-[150] flex items-center justify-center bg-black/40 px-4 py-6">
       <div className="w-full max-w-2xl overflow-hidden rounded-2xl border border-[var(--st-border)] bg-white shadow-2xl">
+        {/* HEADER */}
+
         <div className="flex items-center justify-between border-b border-[var(--st-border)] px-5 py-4">
           <div>
             <p className="m-0 text-[9px] font-bold uppercase tracking-[0.12em] text-[var(--st-gray)]">
@@ -269,6 +305,8 @@ function ObligationModal({
           </button>
         </div>
 
+        {/* FORM */}
+
         <div className="max-h-[78vh] overflow-y-auto px-5 py-5">
           {error && (
             <div className="mb-4 flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-3 text-[9px] text-red-700">
@@ -276,11 +314,14 @@ function ObligationModal({
                 size={14}
                 className="mt-[1px] shrink-0"
               />
+
               <span>{error}</span>
             </div>
           )}
 
           <div className="grid gap-4 md:grid-cols-2">
+            {/* NAME */}
+
             <label className="md:col-span-2">
               <span className="block text-[9px] font-bold uppercase tracking-[0.08em] text-[var(--st-gray)]">
                 Obligation Name
@@ -300,6 +341,8 @@ function ObligationModal({
               />
             </label>
 
+            {/* CATEGORY */}
+
             <label>
               <span className="block text-[9px] font-bold uppercase tracking-[0.08em] text-[var(--st-gray)]">
                 Category
@@ -315,7 +358,7 @@ function ObligationModal({
                 }
                 className="mt-2 h-10 w-full rounded-xl border border-[var(--st-border)] bg-white px-3 text-[11px] outline-none focus:border-[var(--st-red)]"
               >
-                {OBLIGATION_CATEGORIES.map(
+                {categoryOptions.map(
                   (category) => (
                     <option
                       key={category}
@@ -327,6 +370,8 @@ function ObligationModal({
                 )}
               </select>
             </label>
+
+            {/* FREQUENCY */}
 
             <label>
               <span className="block text-[9px] font-bold uppercase tracking-[0.08em] text-[var(--st-gray)]">
@@ -356,6 +401,8 @@ function ObligationModal({
               </select>
             </label>
 
+            {/* AMOUNT */}
+
             <label>
               <span className="block text-[9px] font-bold uppercase tracking-[0.08em] text-[var(--st-gray)]">
                 Amount (KES)
@@ -376,6 +423,8 @@ function ObligationModal({
                 className="mt-2 h-10 w-full rounded-xl border border-[var(--st-border)] px-3 text-[11px] outline-none focus:border-[var(--st-red)]"
               />
             </label>
+
+            {/* OUTSTANDING */}
 
             <label>
               <span className="block text-[9px] font-bold uppercase tracking-[0.08em] text-[var(--st-gray)]">
@@ -400,6 +449,8 @@ function ObligationModal({
               />
             </label>
 
+            {/* START DATE */}
+
             <label>
               <span className="block text-[9px] font-bold uppercase tracking-[0.08em] text-[var(--st-gray)]">
                 Start Date
@@ -407,9 +458,7 @@ function ObligationModal({
 
               <input
                 type="date"
-                value={
-                  form.start_date
-                }
+                value={form.start_date}
                 onChange={(event) =>
                   onChange(
                     "start_date",
@@ -419,6 +468,8 @@ function ObligationModal({
                 className="mt-2 h-10 w-full rounded-xl border border-[var(--st-border)] px-3 text-[11px] outline-none focus:border-[var(--st-red)]"
               />
             </label>
+
+            {/* NEXT DUE */}
 
             <label>
               <span className="block text-[9px] font-bold uppercase tracking-[0.08em] text-[var(--st-gray)]">
@@ -440,6 +491,8 @@ function ObligationModal({
               />
             </label>
 
+            {/* END DATE */}
+
             <label>
               <span className="block text-[9px] font-bold uppercase tracking-[0.08em] text-[var(--st-gray)]">
                 End Date
@@ -447,9 +500,7 @@ function ObligationModal({
 
               <input
                 type="date"
-                value={
-                  form.end_date
-                }
+                value={form.end_date}
                 onChange={(event) =>
                   onChange(
                     "end_date",
@@ -459,6 +510,8 @@ function ObligationModal({
                 className="mt-2 h-10 w-full rounded-xl border border-[var(--st-border)] px-3 text-[11px] outline-none focus:border-[var(--st-red)]"
               />
             </label>
+
+            {/* STATUS */}
 
             <label>
               <span className="block text-[9px] font-bold uppercase tracking-[0.08em] text-[var(--st-gray)]">
@@ -488,6 +541,8 @@ function ObligationModal({
               </select>
             </label>
 
+            {/* NOTES */}
+
             <label className="md:col-span-2">
               <span className="block text-[9px] font-bold uppercase tracking-[0.08em] text-[var(--st-gray)]">
                 Notes
@@ -508,6 +563,8 @@ function ObligationModal({
             </label>
           </div>
         </div>
+
+        {/* FOOTER */}
 
         <div className="flex items-center justify-end gap-2 border-t border-[var(--st-border)] px-5 py-4">
           <button
@@ -632,7 +689,6 @@ export default function FinancialObligationsPage() {
           }
 
           setError("");
-          setActionError("");
 
           let query =
             supabase
@@ -676,36 +732,7 @@ export default function FinancialObligationsPage() {
 
           setObligations(
             (data ?? []).map(
-              (row) => ({
-                id: row.id,
-                name: row.name,
-                category:
-                  row.category,
-                amount:
-                  toNumber(
-                    row.amount
-                  ),
-                frequency:
-                  row.frequency,
-                start_date:
-                  row.start_date,
-                end_date:
-                  row.end_date,
-                outstanding_balance:
-                  toNumber(
-                    row.outstanding_balance
-                  ),
-                next_due_date:
-                  row.next_due_date,
-                status:
-                  row.status,
-                notes:
-                  row.notes,
-                created_at:
-                  row.created_at,
-                updated_at:
-                  row.updated_at,
-              })
+              mapObligation
             )
           );
         } catch (err) {
@@ -752,8 +779,7 @@ export default function FinancialObligationsPage() {
             obligation.name,
             obligation.category,
             obligation.frequency,
-            obligation.notes ??
-              "",
+            obligation.notes ?? "",
           ]
             .join(" ")
             .toLowerCase()
@@ -790,22 +816,19 @@ export default function FinancialObligationsPage() {
 
   const dueSoonCount =
     useMemo(() => {
-      const today =
-        new Date();
+      const todayKey =
+        getTodayKey();
 
-      today.setHours(
-        0,
-        0,
-        0,
-        0
-      );
+      const today =
+        new Date(
+          `${todayKey}T00:00:00+03:00`
+        );
 
       const horizon =
         new Date(today);
 
       horizon.setDate(
-        horizon.getDate() +
-          30
+        horizon.getDate() + 30
       );
 
       return obligations.filter(
@@ -822,10 +845,8 @@ export default function FinancialObligationsPage() {
             );
 
           return (
-            dueDate >=
-              today &&
-            dueDate <=
-              horizon
+            dueDate >= today &&
+            dueDate <= horizon
           );
         }
       ).length;
@@ -885,6 +906,7 @@ export default function FinancialObligationsPage() {
     obligation: Obligation
   ) {
     setActionError("");
+
     setEditingObligation(
       obligation
     );
@@ -945,6 +967,10 @@ export default function FinancialObligationsPage() {
     );
   }
 
+  /* ===================================================
+     SAVE
+  =================================================== */
+
   async function saveObligation() {
     try {
       setSaving(true);
@@ -957,6 +983,8 @@ export default function FinancialObligationsPage() {
         Number(
           form.outstanding_balance
         );
+
+      /* VALIDATION */
 
       if (!form.name.trim()) {
         throw new Error(
@@ -973,7 +1001,9 @@ export default function FinancialObligationsPage() {
       }
 
       if (
-        !Number.isFinite(amount) ||
+        !Number.isFinite(
+          amount
+        ) ||
         amount < 0
       ) {
         throw new Error(
@@ -1014,36 +1044,54 @@ export default function FinancialObligationsPage() {
         );
       }
 
+      const now =
+        new Date().toISOString();
+
       const payload = {
         name:
           form.name.trim(),
+
         category:
           form.category.trim(),
+
         amount,
+
         frequency:
           form.frequency,
+
         start_date:
           form.start_date ||
           null,
+
         end_date:
           form.end_date ||
           null,
+
         outstanding_balance:
           outstanding,
+
         next_due_date:
           form.next_due_date ||
           null,
+
         status:
           form.status,
+
         notes:
           form.notes.trim() ||
           null,
+
         updated_at:
-          new Date().toISOString(),
+          now,
       };
+
+      /* =================================================
+         EDIT EXISTING OBLIGATION
+      ================================================= */
 
       if (editingObligation) {
         const {
+          data,
           error:
             updateError,
         } = await supabase
@@ -1054,13 +1102,55 @@ export default function FinancialObligationsPage() {
           .eq(
             "id",
             editingObligation.id
-          );
+          )
+          .select("*");
 
         if (updateError) {
           throw updateError;
         }
-      } else {
+
+        /*
+         * If Supabase returns no updated row, the request
+         * did not actually update a visible record.
+         *
+         * This prevents the UI from saying "saved" when
+         * RLS or another database rule silently prevented
+         * the update.
+         */
+
+        if (
+          !data ||
+          data.length === 0
+        ) {
+          throw new Error(
+            "The obligation could not be updated. Please check the database permissions for financial_obligations."
+          );
+        }
+
+        const updated =
+          mapObligation(
+            data[0]
+          );
+
+        setObligations(
+          (current) =>
+            current.map(
+              (item) =>
+                item.id ===
+                updated.id
+                  ? updated
+                  : item
+            )
+        );
+      }
+
+      /* =================================================
+         ADD NEW OBLIGATION
+      ================================================= */
+
+      else {
         const {
+          data,
           error:
             insertError,
         } = await supabase
@@ -1069,24 +1159,53 @@ export default function FinancialObligationsPage() {
           )
           .insert({
             ...payload,
-            created_at:
-              new Date().toISOString(),
-          });
+            created_at: now,
+          })
+          .select("*");
 
         if (insertError) {
           throw insertError;
         }
+
+        if (
+          !data ||
+          data.length === 0
+        ) {
+          throw new Error(
+            "The obligation could not be created. Please check the database permissions for financial_obligations."
+          );
+        }
+
+        const created =
+          mapObligation(
+            data[0]
+          );
+
+        setObligations(
+          (current) => [
+            created,
+            ...current,
+          ]
+        );
       }
 
+      /* =================================================
+         CLOSE AFTER SUCCESS
+      ================================================= */
+
       setShowModal(false);
+
       setEditingObligation(
         null
       );
+
       setForm(emptyForm());
 
-      await loadObligations(
-        true
-      );
+      /*
+       * Re-read from Supabase so the screen always reflects
+       * the actual database state.
+       */
+      await loadObligations(true);
     } catch (err) {
       console.error(
         "Save obligation error:",
@@ -1102,6 +1221,10 @@ export default function FinancialObligationsPage() {
       setSaving(false);
     }
   }
+
+  /* ===================================================
+     DELETE
+  =================================================== */
 
   async function deleteObligation(
     obligation: Obligation
@@ -1119,9 +1242,11 @@ export default function FinancialObligationsPage() {
       setDeletingId(
         obligation.id
       );
+
       setActionError("");
 
       const {
+        data,
         error:
           deleteError,
       } = await supabase
@@ -1132,11 +1257,30 @@ export default function FinancialObligationsPage() {
         .eq(
           "id",
           obligation.id
-        );
+        )
+        .select("id");
 
       if (deleteError) {
         throw deleteError;
       }
+
+      if (
+        !data ||
+        data.length === 0
+      ) {
+        throw new Error(
+          "The obligation could not be deleted. Please check the database permissions."
+        );
+      }
+
+      setObligations(
+        (current) =>
+          current.filter(
+            (item) =>
+              item.id !==
+              obligation.id
+          )
+      );
 
       await loadObligations(
         true
@@ -1163,6 +1307,8 @@ export default function FinancialObligationsPage() {
 
   return (
     <main className="st-page">
+      {/* PAGE HEADER */}
+
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <p className="m-0 text-[9px] font-bold uppercase tracking-[0.14em] text-[var(--st-gray)]">
@@ -1181,6 +1327,8 @@ export default function FinancialObligationsPage() {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          {/* STATUS FILTER */}
+
           <select
             value={statusFilter}
             onChange={(event) =>
@@ -1206,6 +1354,8 @@ export default function FinancialObligationsPage() {
             )}
           </select>
 
+          {/* REFRESH */}
+
           <button
             type="button"
             onClick={() =>
@@ -1222,8 +1372,11 @@ export default function FinancialObligationsPage() {
                   : ""
               }
             />
+
             Refresh
           </button>
+
+          {/* ADD */}
 
           <button
             type="button"
@@ -1238,15 +1391,20 @@ export default function FinancialObligationsPage() {
         </div>
       </div>
 
+      {/* LOAD ERROR */}
+
       {error && (
         <div className="mt-5 flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-[10px] text-red-700">
           <AlertTriangle
             size={15}
             className="mt-[1px] shrink-0"
           />
+
           <span>{error}</span>
         </div>
       )}
+
+      {/* ACTION ERROR */}
 
       {actionError && (
         <div className="mt-5 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-[10px] text-amber-800">
@@ -1254,9 +1412,12 @@ export default function FinancialObligationsPage() {
             size={15}
             className="mt-[1px] shrink-0"
           />
+
           <span>{actionError}</span>
         </div>
       )}
+
+      {/* SUMMARY CARDS */}
 
       <section className="mt-6 grid gap-4 md:grid-cols-3">
         <div className="rounded-2xl border border-[var(--st-border)] bg-white p-5">
@@ -1330,7 +1491,11 @@ export default function FinancialObligationsPage() {
         </div>
       </section>
 
+      {/* MAIN CONTENT */}
+
       <section className="mt-6 grid gap-5 lg:grid-cols-[0.75fr_1.25fr]">
+        {/* CATEGORY BREAKDOWN */}
+
         <div className="rounded-2xl border border-[var(--st-border)] bg-white p-5">
           <h2 className="st-section-title">
             Outstanding by Category
@@ -1367,7 +1532,9 @@ export default function FinancialObligationsPage() {
                     >
                       <div className="flex items-center justify-between gap-3">
                         <span className="text-[10px] font-semibold text-[var(--st-charcoal-dark)]">
-                          {item.category}
+                          {
+                            item.category
+                          }
                         </span>
 
                         <span className="text-[10px] font-bold text-[var(--st-charcoal-dark)]">
@@ -1403,6 +1570,8 @@ export default function FinancialObligationsPage() {
           </div>
         </div>
 
+        {/* REGISTER */}
+
         <div className="rounded-2xl border border-[var(--st-border)] bg-white p-5">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
             <div>
@@ -1436,6 +1605,7 @@ export default function FinancialObligationsPage() {
                     size={16}
                     className="animate-spin"
                   />
+
                   Loading obligations...
                 </div>
               </div>
@@ -1490,24 +1660,32 @@ export default function FinancialObligationsPage() {
                   {filteredObligations.map(
                     (obligation) => (
                       <tr
-                        key={obligation.id}
+                        key={
+                          obligation.id
+                        }
                         className="border-b border-[var(--st-border)] last:border-b-0"
                       >
                         <td className="px-3 py-4">
                           <p className="m-0 text-[10px] font-semibold text-[var(--st-charcoal-dark)]">
-                            {obligation.name}
+                            {
+                              obligation.name
+                            }
                           </p>
 
                           {obligation.notes && (
                             <p className="mt-1 mb-0 max-w-[210px] truncate text-[8px] text-[var(--st-gray)]">
-                              {obligation.notes}
+                              {
+                                obligation.notes
+                              }
                             </p>
                           )}
                         </td>
 
                         <td className="px-3 py-4">
                           <span className="rounded-full bg-[var(--st-bg-soft)] px-2 py-1 text-[8px] font-semibold text-[var(--st-charcoal-dark)]">
-                            {obligation.category}
+                            {
+                              obligation.category
+                            }
                           </span>
                         </td>
 
@@ -1550,12 +1728,16 @@ export default function FinancialObligationsPage() {
                                 : "rounded-full bg-amber-50 px-2 py-1 text-[8px] font-semibold text-amber-700"
                             }
                           >
-                            {obligation.status}
+                            {statusLabel(
+                              obligation.status
+                            )}
                           </span>
                         </td>
 
                         <td className="px-3 py-4">
                           <div className="flex items-center justify-end gap-1">
+                            {/* EDIT */}
+
                             <button
                               type="button"
                               onClick={() =>
@@ -1566,8 +1748,12 @@ export default function FinancialObligationsPage() {
                               className="flex h-8 w-8 items-center justify-center rounded-lg text-[var(--st-gray)] hover:bg-[var(--st-bg-soft)] hover:text-[var(--st-charcoal-dark)]"
                               aria-label="Edit financial obligation"
                             >
-                              <Edit3 size={13} />
+                              <Edit3
+                                size={13}
+                              />
                             </button>
+
+                            {/* DELETE */}
 
                             <button
                               type="button"
@@ -1590,7 +1776,9 @@ export default function FinancialObligationsPage() {
                                   className="animate-spin"
                                 />
                               ) : (
-                                <Trash2 size={13} />
+                                <Trash2
+                                  size={13}
+                                />
                               )}
                             </button>
                           </div>
@@ -1605,15 +1793,21 @@ export default function FinancialObligationsPage() {
         </div>
       </section>
 
+      {/* MODAL */}
+
       <ObligationModal
         open={showModal}
-        editing={editingObligation}
+        editing={
+          editingObligation
+        }
         form={form}
         saving={saving}
         error={actionError}
         onChange={updateForm}
         onClose={closeModal}
-        onSave={saveObligation}
+        onSave={
+          saveObligation
+        }
       />
     </main>
   );
