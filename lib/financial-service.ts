@@ -145,6 +145,30 @@ export type FinancialDashboardData = {
 };
 
 /* =====================================================
+   AGREED BUSINESS DEFAULTS
+
+   These are fallback values only.
+   Once the corresponding Supabase settings
+   are populated, the database values take priority.
+===================================================== */
+
+const DEFAULT_BOOKING_VALUE = 21850;
+
+const DEFAULT_MONTHLY_BOOKING_TARGET = 24;
+
+const DEFAULT_CAC_STATUS =
+  "Placeholder";
+
+const DEFAULT_CPL_STATUS =
+  "Placeholder";
+
+const DEFAULT_CONVERSION_RATE_STATUS =
+  "Placeholder";
+
+const DEFAULT_ROI_STATUS =
+  "Placeholder";
+
+/* =====================================================
    HELPERS
 ===================================================== */
 
@@ -164,9 +188,11 @@ function throwIfError(
 function toNumber(
   value: unknown
 ): number {
-  return Number(
-    value ?? 0
-  );
+  const number = Number(value);
+
+  return Number.isFinite(number)
+    ? number
+    : 0;
 }
 
 function toNullableNumber(
@@ -174,12 +200,17 @@ function toNullableNumber(
 ): number | null {
   if (
     value === null ||
-    value === undefined
+    value === undefined ||
+    value === ""
   ) {
     return null;
   }
 
-  return Number(value);
+  const number = Number(value);
+
+  return Number.isFinite(number)
+    ? number
+    : null;
 }
 
 /* =====================================================
@@ -191,44 +222,67 @@ export async function loadFinancialSettings(): Promise<FinancialSettings> {
     data,
     error,
   } = await supabase
-    .from(
-      "financial_settings"
-    )
+    .from("financial_settings")
     .select("*")
     .eq("id", true)
-    .single();
+    .maybeSingle();
+
+  /*
+   * Do NOT use .single() here.
+   *
+   * The financial dashboard is an administrative
+   * add-on and the settings row may not have been
+   * created yet.
+   *
+   * If it does not exist, use the agreed business
+   * defaults instead of breaking the dashboard.
+   */
 
   throwIfError(error);
 
+  const bookingValue =
+    toNumber(
+      data?.booking_value
+    ) ||
+    DEFAULT_BOOKING_VALUE;
+
+  const monthlyBookingTarget =
+    toNumber(
+      data?.monthly_booking_target
+    ) ||
+    DEFAULT_MONTHLY_BOOKING_TARGET;
+
   return {
-    id: data.id,
+    id:
+      data?.id ??
+      true,
 
     booking_value:
-      toNumber(
-        data.booking_value
-      ),
+      bookingValue,
 
     monthly_booking_target:
-      toNumber(
-        data.monthly_booking_target
-      ),
+      monthlyBookingTarget,
 
     lifetime_booking_target:
       toNullableNumber(
-        data.lifetime_booking_target
+        data?.lifetime_booking_target
       ),
 
     cac_status:
-      data.cac_status,
+      data?.cac_status ||
+      DEFAULT_CAC_STATUS,
 
     cpl_status:
-      data.cpl_status,
+      data?.cpl_status ||
+      DEFAULT_CPL_STATUS,
 
     conversion_rate_status:
-      data.conversion_rate_status,
+      data?.conversion_rate_status ||
+      DEFAULT_CONVERSION_RATE_STATUS,
 
     roi_status:
-      data.roi_status,
+      data?.roi_status ||
+      DEFAULT_ROI_STATUS,
   };
 }
 
@@ -321,7 +375,9 @@ export async function loadFinancialMonthlySummary(
 
 export async function loadFinancialExpenseBreakdown(
   monthStart: string
-): Promise<FinancialExpenseBreakdown[]> {
+): Promise<
+  FinancialExpenseBreakdown[]
+> {
   const {
     data,
     error,
@@ -334,36 +390,31 @@ export async function loadFinancialExpenseBreakdown(
       "month_start",
       monthStart
     )
-    .order(
-      "amount",
-      {
-        ascending: false,
-      }
-    );
+    .order("amount", {
+      ascending: false,
+    });
 
   throwIfError(error);
 
   return (
     data ?? []
-  ).map(
-    (row) => ({
-      month_start:
-        row.month_start,
+  ).map((row) => ({
+    month_start:
+      row.month_start,
 
-      category:
-        row.category,
+    category:
+      row.category,
 
-      amount:
-        toNumber(
-          row.amount
-        ),
+    amount:
+      toNumber(
+        row.amount
+      ),
 
-      percentage:
-        toNumber(
-          row.percentage
-        ),
-    })
-  );
+    percentage:
+      toNumber(
+        row.percentage
+      ),
+  }));
 }
 
 /* =====================================================
@@ -372,7 +423,9 @@ export async function loadFinancialExpenseBreakdown(
 
 export async function loadFinancialStudentActivity(
   monthStart: string
-): Promise<FinancialStudentActivity | null> {
+): Promise<
+  FinancialStudentActivity | null
+> {
   const {
     data,
     error,
@@ -430,7 +483,9 @@ export async function loadFinancialStudentActivity(
 
 export async function loadFinancialPerformance(
   monthStart: string
-): Promise<FinancialPerformanceSummary | null> {
+): Promise<
+  FinancialPerformanceSummary | null
+> {
   const {
     data,
     error,
@@ -469,6 +524,13 @@ export async function loadFinancialPerformance(
       toNumber(
         data.booked_value
       ),
+
+    /*
+     * These remain nullable deliberately.
+     *
+     * The client has not yet supplied the
+     * final CAC/CPL/Conversion/ROI formulas.
+     */
 
     cac:
       toNullableNumber(
@@ -528,50 +590,49 @@ export async function loadActiveFinancialObligations(): Promise<
 
   return (
     data ?? []
-  ).map(
-    (row) => ({
-      id: row.id,
+  ).map((row) => ({
+    id: row.id,
 
-      name: row.name,
+    name:
+      row.name,
 
-      category:
-        row.category,
+    category:
+      row.category,
 
-      amount:
-        toNumber(
-          row.amount
-        ),
+    amount:
+      toNumber(
+        row.amount
+      ),
 
-      frequency:
-        row.frequency,
+    frequency:
+      row.frequency,
 
-      start_date:
-        row.start_date,
+    start_date:
+      row.start_date,
 
-      end_date:
-        row.end_date,
+    end_date:
+      row.end_date,
 
-      outstanding_balance:
-        toNumber(
-          row.outstanding_balance
-        ),
+    outstanding_balance:
+      toNumber(
+        row.outstanding_balance
+      ),
 
-      next_due_date:
-        row.next_due_date,
+    next_due_date:
+      row.next_due_date,
 
-      status:
-        row.status,
+    status:
+      row.status,
 
-      notes:
-        row.notes,
+    notes:
+      row.notes,
 
-      created_at:
-        row.created_at,
+    created_at:
+      row.created_at,
 
-      updated_at:
-        row.updated_at,
-    })
-  );
+    updated_at:
+      row.updated_at,
+  }));
 }
 
 /* =====================================================
@@ -610,10 +671,105 @@ export async function loadFinancialDashboard(
     loadActiveFinancialObligations(),
   ]);
 
+  /*
+   * If there is no monthly summary yet,
+   * create a safe calculated summary for
+   * the dashboard using the agreed targets.
+   *
+   * This does NOT write anything to Supabase.
+   */
+
+  const effectiveBookingValue =
+    settings.booking_value ||
+    DEFAULT_BOOKING_VALUE;
+
+  const effectiveBookingTarget =
+    settings.monthly_booking_target ||
+    DEFAULT_MONTHLY_BOOKING_TARGET;
+
+  const fallbackMonthlyTargetValue =
+    effectiveBookingValue *
+    effectiveBookingTarget;
+
+  const effectiveSummary =
+    summary ??
+    {
+      month_start:
+        monthStart,
+
+      bookings_count:
+        0,
+
+      booked_value:
+        0,
+
+      booking_value:
+        effectiveBookingValue,
+
+      monthly_booking_target:
+        effectiveBookingTarget,
+
+      monthly_revenue_target:
+        fallbackMonthlyTargetValue,
+
+      money_received:
+        0,
+
+      money_spent:
+        0,
+
+      money_pending:
+        0,
+
+      net_cash_flow:
+        0,
+
+      lifetime_booking_target:
+        settings.lifetime_booking_target,
+    };
+
+  /*
+   * Revenue definition:
+   *
+   * Revenue on the financial dashboard is
+   * TOTAL BOOKED VALUE.
+   *
+   * The monthly target is:
+   *
+   * 24 bookings × KSh 21,850
+   * = KSh 524,400
+   *
+   * We preserve the database summary when
+   * it exists, but ensure the target follows
+   * the agreed architecture when missing.
+   */
+
+  if (
+    !effectiveSummary.monthly_revenue_target
+  ) {
+    effectiveSummary.monthly_revenue_target =
+      fallbackMonthlyTargetValue;
+  }
+
+  if (
+    !effectiveSummary.booking_value
+  ) {
+    effectiveSummary.booking_value =
+      effectiveBookingValue;
+  }
+
+  if (
+    !effectiveSummary.monthly_booking_target
+  ) {
+    effectiveSummary.monthly_booking_target =
+      effectiveBookingTarget;
+  }
+
   return {
     settings,
 
-    summary,
+    summary:
+      effectiveSummary,
 
     expenses,
 
