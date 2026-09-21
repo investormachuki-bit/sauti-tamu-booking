@@ -1,76 +1,157 @@
 import { supabase } from "@/lib/supabase";
 
+/* =====================================================
+   TYPES
+===================================================== */
+
 export type FinancialSettings = {
   id: boolean;
+
   booking_value: number;
+
   monthly_booking_target: number;
-  lifetime_booking_target: number | null;
+
+  lifetime_booking_target:
+    | number
+    | null;
+
   cac_status: string;
+
   cpl_status: string;
+
   conversion_rate_status: string;
+
   roi_status: string;
 };
 
 export type FinancialMonthlySummary = {
   month_start: string;
+
   bookings_count: number;
+
   booked_value: number;
+
   booking_value: number;
+
   monthly_booking_target: number;
+
   monthly_revenue_target: number;
+
   money_received: number;
+
   money_spent: number;
+
   money_pending: number;
+
   net_cash_flow: number;
-  lifetime_booking_target: number | null;
+
+  lifetime_booking_target:
+    | number
+    | null;
 };
 
 export type FinancialExpenseBreakdown = {
   month_start: string;
+
   category: string;
+
   amount: number;
+
   percentage: number;
 };
 
 export type FinancialStudentActivity = {
   month_start: string;
+
   attended: number;
+
   booked: number;
+
   registered: number;
+
   cancelled: number;
+
   missed: number;
 };
 
 export type FinancialPerformanceSummary = {
   month_start: string;
+
   leads: number;
+
   registered_students: number;
+
   booked_value: number;
+
   cac: number | null;
+
   cpl: number | null;
+
   conversion_rate: number | null;
+
   roi: number | null;
-  revenue_per_student: number | null;
+
+  revenue_per_student:
+    | number
+    | null;
 };
 
 export type FinancialObligation = {
   id: string;
+
   name: string;
+
   category: string;
+
   amount: number;
+
   frequency: string;
+
   start_date: string | null;
+
   end_date: string | null;
+
   outstanding_balance: number;
+
   next_due_date: string | null;
+
   status: string;
+
   notes: string | null;
+
   created_at: string;
+
   updated_at: string;
 };
 
+export type FinancialDashboardData = {
+  settings: FinancialSettings;
+
+  summary:
+    | FinancialMonthlySummary
+    | null;
+
+  expenses: FinancialExpenseBreakdown[];
+
+  activity:
+    | FinancialStudentActivity
+    | null;
+
+  performance:
+    | FinancialPerformanceSummary
+    | null;
+
+  obligations: FinancialObligation[];
+};
+
+/* =====================================================
+   HELPERS
+===================================================== */
+
 function throwIfError(
-  error: { message?: string } | null
+  error: {
+    message?: string;
+  } | null
 ): void {
   if (error) {
     throw new Error(
@@ -83,20 +164,26 @@ function throwIfError(
 function toNumber(
   value: unknown
 ): number {
-  return Number(value ?? 0);
+  return Number(
+    value ?? 0
+  );
 }
 
 function toNullableNumber(
   value: unknown
 ): number | null {
-  return value === null ||
+  if (
+    value === null ||
     value === undefined
-    ? null
-    : Number(value);
+  ) {
+    return null;
+  }
+
+  return Number(value);
 }
 
 /* =====================================================
-   SETTINGS
+   FINANCIAL SETTINGS
 ===================================================== */
 
 export async function loadFinancialSettings(): Promise<FinancialSettings> {
@@ -104,7 +191,9 @@ export async function loadFinancialSettings(): Promise<FinancialSettings> {
     data,
     error,
   } = await supabase
-    .from("financial_settings")
+    .from(
+      "financial_settings"
+    )
     .select("*")
     .eq("id", true)
     .single();
@@ -113,29 +202,38 @@ export async function loadFinancialSettings(): Promise<FinancialSettings> {
 
   return {
     id: data.id,
+
     booking_value:
-      toNumber(data.booking_value),
+      toNumber(
+        data.booking_value
+      ),
+
     monthly_booking_target:
       toNumber(
         data.monthly_booking_target
       ),
+
     lifetime_booking_target:
       toNullableNumber(
         data.lifetime_booking_target
       ),
+
     cac_status:
       data.cac_status,
+
     cpl_status:
       data.cpl_status,
+
     conversion_rate_status:
       data.conversion_rate_status,
+
     roi_status:
       data.roi_status,
   };
 }
 
 /* =====================================================
-   MONTHLY SUMMARY
+   MONTHLY FINANCIAL SUMMARY
 ===================================================== */
 
 export async function loadFinancialMonthlySummary(
@@ -247,21 +345,25 @@ export async function loadFinancialExpenseBreakdown(
 
   return (
     data ?? []
-  ).map((row) => ({
-    month_start:
-      row.month_start,
+  ).map(
+    (row) => ({
+      month_start:
+        row.month_start,
 
-    category:
-      row.category,
+      category:
+        row.category,
 
-    amount:
-      toNumber(row.amount),
+      amount:
+        toNumber(
+          row.amount
+        ),
 
-    percentage:
-      toNumber(
-        row.percentage
-      ),
-  }));
+      percentage:
+        toNumber(
+          row.percentage
+        ),
+    })
+  );
 }
 
 /* =====================================================
@@ -323,7 +425,7 @@ export async function loadFinancialStudentActivity(
 }
 
 /* =====================================================
-   PERFORMANCE
+   BUSINESS PERFORMANCE
 ===================================================== */
 
 export async function loadFinancialPerformance(
@@ -426,43 +528,59 @@ export async function loadActiveFinancialObligations(): Promise<
 
   return (
     data ?? []
-  ).map((row) => ({
-    id: row.id,
-    name: row.name,
-    category:
-      row.category,
-    amount:
-      toNumber(row.amount),
-    frequency:
-      row.frequency,
-    start_date:
-      row.start_date,
-    end_date:
-      row.end_date,
-    outstanding_balance:
-      toNumber(
-        row.outstanding_balance
-      ),
-    next_due_date:
-      row.next_due_date,
-    status:
-      row.status,
-    notes:
-      row.notes,
-    created_at:
-      row.created_at,
-    updated_at:
-      row.updated_at,
-  }));
+  ).map(
+    (row) => ({
+      id: row.id,
+
+      name: row.name,
+
+      category:
+        row.category,
+
+      amount:
+        toNumber(
+          row.amount
+        ),
+
+      frequency:
+        row.frequency,
+
+      start_date:
+        row.start_date,
+
+      end_date:
+        row.end_date,
+
+      outstanding_balance:
+        toNumber(
+          row.outstanding_balance
+        ),
+
+      next_due_date:
+        row.next_due_date,
+
+      status:
+        row.status,
+
+      notes:
+        row.notes,
+
+      created_at:
+        row.created_at,
+
+      updated_at:
+        row.updated_at,
+    })
+  );
 }
 
 /* =====================================================
-   COMPLETE FINANCIAL DASHBOARD LOAD
+   COMPLETE FINANCIAL DASHBOARD
 ===================================================== */
 
 export async function loadFinancialDashboard(
   monthStart: string
-) {
+): Promise<FinancialDashboardData> {
   const [
     settings,
     summary,
@@ -494,10 +612,15 @@ export async function loadFinancialDashboard(
 
   return {
     settings,
+
     summary,
+
     expenses,
+
     activity,
+
     performance,
+
     obligations,
   };
 }
