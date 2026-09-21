@@ -1303,6 +1303,10 @@ export default function AdminStudentsPage() {
         studentId:
           selectedStudent.student.id,
 
+        enrollmentId:
+          selectedStudent.enrollment?.id ??
+          null,
+
         fullName:
           editStudentName,
 
@@ -2092,32 +2096,36 @@ export default function AdminStudentsPage() {
       ================================================= */}
 
       {selectedStudent && (
-       <StudentDetails
-  selectedStudent={
-    selectedStudent
-  }
+        <StudentDetails
+          selectedStudent={
+            selectedStudent
+          }
 
-  onClose={() =>
-    setSelectedStudent(
-      null
-    )
-  }
+          onClose={() =>
+            setSelectedStudent(
+              null
+            )
+          }
 
-  onEditStudent={(student) => {
-  const record = findRecord(
-    student.student.id
-  );
+          onEditStudent={(student) => {
+            const record =
+              findRecord(
+                student.student.id
+              );
 
-  if (record) {
-    openEditStudent({
-      student: record.student,
-      enrollment: record.enrollment,
-      payments: record.payments,
-    });
-  }
-}}
+            if (record) {
+              openEditStudent({
+                student:
+                  record.student,
+                enrollment:
+                  record.enrollment,
+                payments:
+                  record.payments,
+              });
+            }
+          }}
 
-  onWhatsApp={(
+          onWhatsApp={(
             student
           ) => {
             const record =
@@ -2631,30 +2639,7 @@ export default function AdminStudentsPage() {
             }
 
             setStartDate={
-              (value) => {
-                setEditStartDate(
-                  value
-                );
-
-                /*
-                 * Only automatically calculate
-                 * the end date when the current
-                 * programme follows the standard
-                 * 3-month structure.
-                 */
-                if (
-                  editProgrammeName
-                    .toLowerCase()
-                    .includes("3 month")
-                ) {
-                  setEditEndDate(
-                    addMonthsToDate(
-                      value,
-                      3
-                    )
-                  );
-                }
-              }
+              setEditStartDate
             }
 
             setEndDate={
