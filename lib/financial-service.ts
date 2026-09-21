@@ -157,16 +157,16 @@ const DEFAULT_BOOKING_VALUE = 21850;
 const DEFAULT_MONTHLY_BOOKING_TARGET = 24;
 
 const DEFAULT_CAC_STATUS =
-  "Placeholder";
+  "Advertising Spend ÷ Students Acquired";
 
 const DEFAULT_CPL_STATUS =
-  "Placeholder";
+  "Advertising Spend ÷ Leads Generated";
 
 const DEFAULT_CONVERSION_RATE_STATUS =
-  "Placeholder";
+  "Enrollments ÷ Leads × 100";
 
 const DEFAULT_ROI_STATUS =
-  "Placeholder";
+  "(Revenue − Advertising Cost) ÷ Advertising Cost × 100";
 
 /* =====================================================
    HELPERS
@@ -227,17 +227,6 @@ export async function loadFinancialSettings(): Promise<FinancialSettings> {
     .eq("id", true)
     .maybeSingle();
 
-  /*
-   * Do NOT use .single() here.
-   *
-   * The financial dashboard is an administrative
-   * add-on and the settings row may not have been
-   * created yet.
-   *
-   * If it does not exist, use the agreed business
-   * defaults instead of breaking the dashboard.
-   */
-
   throwIfError(error);
 
   const bookingValue =
@@ -297,9 +286,7 @@ export async function loadFinancialMonthlySummary(
     data,
     error,
   } = await supabase
-    .from(
-      "financial_monthly_summary"
-    )
+    .from("financial_monthly_summary")
     .select("*")
     .eq(
       "month_start",
@@ -418,6 +405,76 @@ export async function loadFinancialExpenseBreakdown(
 }
 
 /* =====================================================
+   ADVERTISING SPEND
+
+   Advertising spend is deliberately separated
+   from total expenses.
+
+   This is important because:
+
+   CAC = Advertising Spend ÷ Students Acquired
+
+   CPL = Advertising Spend ÷ Leads
+
+   ROI = (Revenue - Advertising Spend)
+         ÷ Advertising Spend × 100
+
+   We therefore do NOT use total expenses here.
+===================================================== */
+
+function isAdvertisingCategory(
+  category: unknown
+): boolean {
+  const value =
+    String(category ?? "")
+      .trim()
+      .toLowerCase();
+
+  if (!value) {
+    return false;
+  }
+
+  return (
+    value.includes("facebook") ||
+    value.includes("google ads") ||
+    value.includes("google advertising") ||
+    value.includes("instagram ads") ||
+    value.includes("tiktok ads") ||
+    value.includes("advertising") ||
+    value.includes("advertisement") ||
+    value.includes("ad spend") ||
+    value.includes("ads")
+  );
+}
+
+function calculateAdvertisingSpend(
+  expenses: FinancialExpenseBreakdown[]
+): number {
+  return expenses.reduce(
+    (
+      total,
+      expense
+    ) => {
+      if (
+        isAdvertisingCategory(
+          expense.category
+        )
+      ) {
+        return (
+          total +
+          toNumber(
+            expense.amount
+          )
+        );
+      }
+
+      return total;
+    },
+    0
+  );
+}
+
+/* =====================================================
    STUDENT ACTIVITY
 ===================================================== */
 
@@ -526,10 +583,11 @@ export async function loadFinancialPerformance(
       ),
 
     /*
-     * These remain nullable deliberately.
+     * These are intentionally nullable here.
      *
-     * The client has not yet supplied the
-     * final CAC/CPL/Conversion/ROI formulas.
+     * The actual calculations are performed
+     * in loadFinancialDashboard(), after the
+     * expense breakdown has been loaded.
      */
 
     cac:
@@ -556,6 +614,160 @@ export async function loadFinancialPerformance(
       toNullableNumber(
         data.revenue_per_student
       ),
+  };
+}
+
+/* =====================================================
+   CALCULATE BUSINESS PERFORMANCE
+
+   Agreed formulas:
+
+   CAC
+   = Advertising Spend
+     ÷ Students Acquired
+
+   CPL
+   = Advertising Spend
+     ÷ Leads Generated
+
+   Conversion Rate
+   = Enrollments
+     ÷ Leads × 100
+
+   ROI
+   = (Revenue - Advertising Cost)
+     ÷ Advertising Cost × 100
+
+   Revenue per Student
+   = Revenue ÷ Students Acquired
+
+   Revenue = Total Booked Value
+===================================================== */
+
+function calculatePerformanceMetrics({
+  leads,
+  registeredStudents,
+  bookedValue,
+  advertisingSpend,
+}: {
+  leads: number;
+
+  registeredStudents: number;
+
+  bookedValue: number;
+
+  advertisingSpend: number;
+}): {
+  cac: number | null;
+
+  cpl: number | null;
+
+  conversion_rate: number | null;
+
+  roi: number | null;
+
+  revenue_per_student: number | null;
+} {
+  const safeLeads =
+    toNumber(leads);
+
+  const safeRegisteredStudents =
+    toNumber(
+      registeredStudents
+    );
+
+  const safeBookedValue =
+    toNumber(
+      bookedValue
+    );
+
+  const safeAdvertisingSpend =
+    toNumber(
+      advertisingSpend
+    );
+
+  /*
+   * CAC
+   *
+   * Advertising Spend ÷ Students Acquired
+   */
+
+  const cac =
+    safeRegisteredStudents > 0
+      ? safeAdvertisingSpend /
+        safeRegisteredStudents
+      : null;
+
+  /*
+   * CPL
+   *
+   * Advertising Spend ÷ Leads
+   */
+
+  const cpl =
+    safeLeads > 0
+      ? safeAdvertisingSpend /
+        safeLeads
+      : null;
+
+  /*
+   * Conversion Rate
+   *
+   * Enrollments ÷ Leads × 100
+   */
+
+  const conversionRate =
+    safeLeads > 0
+      ? (
+          safeRegisteredStudents /
+          safeLeads
+        ) *
+        100
+      : null;
+
+  /*
+   * ROI
+   *
+   * (Revenue - Advertising Cost)
+   * ÷ Advertising Cost × 100
+   *
+   * Revenue is Total Booked Value.
+   */
+
+  const roi =
+    safeAdvertisingSpend > 0
+      ? (
+          (
+            safeBookedValue -
+            safeAdvertisingSpend
+          ) /
+          safeAdvertisingSpend
+        ) *
+        100
+      : null;
+
+  /*
+   * Revenue per Student
+   */
+
+  const revenuePerStudent =
+    safeRegisteredStudents > 0
+      ? safeBookedValue /
+        safeRegisteredStudents
+      : null;
+
+  return {
+    cac,
+
+    cpl,
+
+    conversion_rate:
+      conversionRate,
+
+    roi,
+
+    revenue_per_student:
+      revenuePerStudent,
   };
 }
 
@@ -591,7 +803,8 @@ export async function loadActiveFinancialObligations(): Promise<
   return (
     data ?? []
   ).map((row) => ({
-    id: row.id,
+    id:
+      row.id,
 
     name:
       row.name,
@@ -671,13 +884,9 @@ export async function loadFinancialDashboard(
     loadActiveFinancialObligations(),
   ]);
 
-  /*
-   * If there is no monthly summary yet,
-   * create a safe calculated summary for
-   * the dashboard using the agreed targets.
-   *
-   * This does NOT write anything to Supabase.
-   */
+  /* ===================================================
+     SAFE BUSINESS DEFAULTS
+  =================================================== */
 
   const effectiveBookingValue =
     settings.booking_value ||
@@ -729,19 +938,8 @@ export async function loadFinancialDashboard(
     };
 
   /*
-   * Revenue definition:
-   *
-   * Revenue on the financial dashboard is
-   * TOTAL BOOKED VALUE.
-   *
-   * The monthly target is:
-   *
-   * 24 bookings × KSh 21,850
-   * = KSh 524,400
-   *
-   * We preserve the database summary when
-   * it exists, but ensure the target follows
-   * the agreed architecture when missing.
+   * Make sure target values remain available
+   * even if the database contains zero/null.
    */
 
   if (
@@ -765,6 +963,86 @@ export async function loadFinancialDashboard(
       effectiveBookingTarget;
   }
 
+  /* ===================================================
+     LIVE PERFORMANCE CALCULATIONS
+  =================================================== */
+
+  const advertisingSpend =
+    calculateAdvertisingSpend(
+      expenses
+    );
+
+  /*
+   * Prefer the performance summary values
+   * for leads and registered students.
+   *
+   * The database performance summary already
+   * supplies these operational metrics.
+   */
+
+  const leads =
+    toNumber(
+      performance?.leads
+    );
+
+  const registeredStudents =
+    toNumber(
+      performance?.registered_students
+    );
+
+  /*
+   * Revenue is deliberately TOTAL BOOKED VALUE.
+   *
+   * Do not replace this with money received.
+   */
+
+  const bookedValue =
+    toNumber(
+      effectiveSummary.booked_value
+    );
+
+  const calculatedMetrics =
+    calculatePerformanceMetrics({
+      leads,
+
+      registeredStudents,
+
+      bookedValue,
+
+      advertisingSpend,
+    });
+
+  /*
+   * If the performance record exists,
+   * replace its placeholder/stale formula
+   * values with the live calculations.
+   */
+
+  const effectivePerformance =
+    performance
+      ? {
+          ...performance,
+
+          booked_value:
+            bookedValue,
+
+          cac:
+            calculatedMetrics.cac,
+
+          cpl:
+            calculatedMetrics.cpl,
+
+          conversion_rate:
+            calculatedMetrics.conversion_rate,
+
+          roi:
+            calculatedMetrics.roi,
+
+          revenue_per_student:
+            calculatedMetrics.revenue_per_student,
+        }
+      : null;
+
   return {
     settings,
 
@@ -775,7 +1053,8 @@ export async function loadFinancialDashboard(
 
     activity,
 
-    performance,
+    performance:
+      effectivePerformance,
 
     obligations,
   };
