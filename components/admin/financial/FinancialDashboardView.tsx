@@ -10,7 +10,6 @@ import {
   CircleDollarSign,
   CreditCard,
   RefreshCw,
-  Target,
   TrendingUp,
   Users,
   WalletCards,
@@ -233,29 +232,31 @@ function KpiCard({
   const colors = toneClasses[tone];
 
   return (
-    <div className="relative min-w-0 px-4 py-3">
-      <div className="flex items-start gap-3">
+    <div className="relative min-w-0 px-3 py-3">
+      <div className="flex items-start gap-2">
         <div
-          className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${colors.icon}`}
+          className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${colors.icon}`}
         >
           {icon}
         </div>
 
         <div className="min-w-0 flex-1">
           <p
-            className={`m-0 text-[10px] font-bold leading-tight ${colors.label}`}
+            className={`m-0 text-[9px] font-bold leading-tight ${colors.label}`}
           >
             {label}
           </p>
 
+          {/* Compact responsive value.
+              No truncate so money is never replaced with "...". */}
           <p
-            className={`mt-1 mb-0 truncate text-[22px] font-extrabold leading-none tracking-[-0.04em] ${colors.value}`}
+            className={`mt-1 mb-0 whitespace-nowrap text-[clamp(15px,1.35vw,20px)] font-extrabold leading-none tracking-[-0.035em] ${colors.value}`}
           >
             {value}
           </p>
 
           {detail && (
-            <p className="mt-1 mb-0 truncate text-[8px] leading-tight text-slate-500">
+            <p className="mt-1 mb-0 truncate text-[7px] leading-tight text-slate-500">
               {detail}
             </p>
           )}
@@ -281,21 +282,21 @@ function TargetCard({
   icon: ReactNode;
 }) {
   return (
-    <div className="flex min-w-0 items-center gap-4 border-b border-blue-100 px-5 py-3 last:border-b-0">
-      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-700">
+    <div className="flex min-w-0 items-center gap-3 border-b border-blue-100 px-4 py-3 last:border-b-0">
+      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-700">
         {icon}
       </div>
 
       <div className="min-w-0">
-        <p className="m-0 text-[10px] font-bold leading-tight text-blue-900">
+        <p className="m-0 text-[9px] font-bold leading-tight text-blue-900">
           {label}
         </p>
 
-        <p className="mt-1 mb-0 truncate text-[21px] font-extrabold leading-none tracking-[-0.04em] text-blue-700">
+        <p className="mt-1 mb-0 whitespace-nowrap text-[clamp(17px,1.45vw,20px)] font-extrabold leading-none tracking-[-0.035em] text-blue-700">
           {value}
         </p>
 
-        <p className="mt-1 mb-0 truncate text-[8px] leading-tight text-slate-500">
+        <p className="mt-1 mb-0 truncate text-[7px] leading-tight text-slate-500">
           {detail}
         </p>
       </div>
@@ -371,7 +372,7 @@ function ExpenseBreakdown({
                 Total Expenses
               </span>
 
-              <span className="mt-2 text-[18px] font-extrabold leading-none text-slate-900">
+              <span className="mt-2 whitespace-nowrap text-[17px] font-extrabold leading-none text-slate-900">
                 {formatCurrency(total)}
               </span>
             </div>
@@ -400,11 +401,11 @@ function ExpenseBreakdown({
                   return (
                     <div
                       key={`${expense.category}-${index}`}
-                      className="flex items-center justify-between gap-3"
+                      className="flex min-w-0 items-center justify-between gap-2"
                     >
-                      <div className="flex min-w-0 items-center gap-2">
+                      <div className="flex min-w-0 items-center gap-1.5">
                         <span
-                          className="h-2.5 w-2.5 shrink-0 rounded-full"
+                          className="h-2 w-2 shrink-0 rounded-full"
                           style={{
                             backgroundColor:
                               colors[
@@ -414,19 +415,19 @@ function ExpenseBreakdown({
                           }}
                         />
 
-                        <span className="truncate text-[9px] font-medium text-slate-700">
+                        <span className="truncate text-[8px] font-medium text-slate-700">
                           {expense.category}
                         </span>
                       </div>
 
-                      <div className="shrink-0 text-right">
-                        <span className="text-[9px] font-bold text-slate-900">
+                      <div className="flex shrink-0 items-center gap-2 text-right">
+                        <span className="whitespace-nowrap text-[8px] font-bold text-slate-900">
                           {formatCurrency(
                             expense.amount
                           )}
                         </span>
 
-                        <span className="ml-3 text-[8px] font-medium text-slate-500">
+                        <span className="whitespace-nowrap text-[7px] font-medium text-slate-500">
                           (
                           {formatPercentage(
                             percentage
@@ -440,7 +441,7 @@ function ExpenseBreakdown({
               )}
 
               <div className="mt-2 border-t border-slate-200 pt-2 text-right">
-                <span className="text-[10px] font-extrabold text-red-600">
+                <span className="whitespace-nowrap text-[9px] font-extrabold text-red-600">
                   Total Monthly Expenses{" "}
                   {formatCurrency(total)}
                 </span>
@@ -525,7 +526,8 @@ function PerformanceMetrics({
     },
     {
       label: "Revenue per Student",
-      sublabel: "Average revenue per enrollment",
+      sublabel:
+        "Average revenue per enrollment",
       value:
         performance?.revenue_per_student !==
           null &&
@@ -539,7 +541,8 @@ function PerformanceMetrics({
                 ?.booking_value ||
                 21850
             ),
-      footer: "Average booked value per student",
+      footer:
+        "Average booked value per student",
     },
   ];
 
@@ -578,7 +581,7 @@ function PerformanceMetrics({
               {metric.sublabel}
             </p>
 
-            <p className="mt-2 mb-0 truncate text-[22px] font-extrabold leading-none text-slate-900">
+            <p className="mt-2 mb-0 truncate text-[20px] font-extrabold leading-none text-slate-900">
               {metric.value}
             </p>
 
@@ -674,7 +677,7 @@ function StudentActivity({
               </span>
             </div>
 
-            <p className="mt-3 mb-0 text-[24px] font-extrabold leading-none text-slate-900">
+            <p className="mt-3 mb-0 text-[22px] font-extrabold leading-none text-slate-900">
               {formatInteger(item.value)}
             </p>
           </div>
@@ -712,7 +715,7 @@ function FinancialObligations({
   return (
     <DashboardCard className="h-full">
       <div className="border-b border-blue-100 px-5 py-3">
-        <div className="flex items-center justify-between gap-4">
+        <div className="flex items-center justify-between gap-3">
           <div className="flex min-w-0 items-center gap-3">
             <WalletCards
               size={25}
@@ -735,7 +738,7 @@ function FinancialObligations({
               Outstanding
             </p>
 
-            <p className="mt-1 mb-0 text-[11px] font-extrabold text-red-600">
+            <p className="mt-1 mb-0 whitespace-nowrap text-[10px] font-extrabold text-red-600">
               {formatCurrency(
                 totalOutstanding
               )}
@@ -758,24 +761,25 @@ function FinancialObligations({
           {visible.map((item) => (
             <div
               key={item.id}
-              className="min-w-0 px-3 py-4 text-center"
+              className="min-w-0 px-2 py-4 text-center"
             >
-              <p className="m-0 truncate text-[9px] font-bold text-slate-700">
+              <p className="m-0 truncate text-[8px] font-bold text-slate-700">
                 {item.name}
               </p>
 
-              <p className="mt-2 mb-0 truncate text-[18px] font-extrabold leading-none text-slate-900">
+              {/* Smaller and never truncated */}
+              <p className="mt-2 mb-0 whitespace-nowrap text-[clamp(13px,1.15vw,17px)] font-extrabold leading-none tracking-[-0.03em] text-slate-900">
                 {formatCurrency(item.amount)}
               </p>
 
-              <p className="mt-2 truncate text-[8px] capitalize text-slate-500">
+              <p className="mt-2 truncate text-[7px] capitalize text-slate-500">
                 {item.frequency}
               </p>
 
               {Number(
                 item.outstanding_balance || 0
               ) > 0 && (
-                <p className="mt-2 truncate text-[8px] font-bold text-red-600">
+                <p className="mt-2 whitespace-nowrap text-[7px] font-bold text-red-600">
                   Outstanding{" "}
                   {formatCurrency(
                     item.outstanding_balance
@@ -1018,7 +1022,7 @@ export default function FinancialDashboardView({
             )} @ ${formatCurrency(
               bookingValue
             )} per booking`}
-            icon={<Users size={22} />}
+            icon={<Users size={21} />}
             tone="blue"
           />
 
@@ -1029,7 +1033,7 @@ export default function FinancialDashboardView({
             )}
             detail="Payments received"
             icon={
-              <WalletCards size={22} />
+              <WalletCards size={21} />
             }
             tone="green"
           />
@@ -1041,7 +1045,7 @@ export default function FinancialDashboardView({
             )}
             detail="Recorded expenses"
             icon={
-              <CreditCard size={22} />
+              <CreditCard size={21} />
             }
             tone="red"
           />
@@ -1054,9 +1058,9 @@ export default function FinancialDashboardView({
             detail="Received less money spent"
             icon={
               netCashFlow >= 0 ? (
-                <ArrowUpRight size={22} />
+                <ArrowUpRight size={21} />
               ) : (
-                <ArrowDownRight size={22} />
+                <ArrowDownRight size={21} />
               )
             }
             tone="dark"
@@ -1069,7 +1073,7 @@ export default function FinancialDashboardView({
             )}
             detail="Outstanding expected collections"
             icon={
-              <TrendingUp size={22} />
+              <TrendingUp size={21} />
             }
             tone="purple"
           />
