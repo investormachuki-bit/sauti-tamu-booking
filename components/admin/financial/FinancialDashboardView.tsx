@@ -533,7 +533,7 @@ function PerformanceMetrics({
               performance.revenue_per_student
             )
           : formatCurrency(
-              settings?.booking_value ||
+              settings?.booking_value ??
                 21850
             ),
       footer:
@@ -813,24 +813,36 @@ export default function FinancialDashboardView({
       summary?.booked_value || 0
     );
 
-  const monthlyTarget =
+  /*
+   * Normalize the dashboard settings before
+   * doing arithmetic. This prevents TypeScript
+   * "possibly undefined" errors and keeps the
+   * target calculations safe while data loads.
+   */
+  const monthlyBookingTarget =
     Number(
-      summary?.monthly_revenue_target ||
-        settings?.monthly_booking_target *
-          settings?.booking_value ||
-        0
+      summary?.monthly_booking_target ??
+        settings?.monthly_booking_target ??
+        24
+    );
+
+  const bookingValue =
+    Number(
+      summary?.booking_value ??
+        settings?.booking_value ??
+        21850
+    );
+
+  const monthlyRevenueTarget =
+    Number(
+      summary?.monthly_revenue_target ??
+        monthlyBookingTarget *
+          bookingValue
     );
 
   const bookings =
     Number(
       summary?.bookings_count || 0
-    );
-
-  const bookingValue =
-    Number(
-      summary?.booking_value ||
-        settings?.booking_value ||
-        21850
     );
 
   const moneyReceived =
@@ -855,6 +867,9 @@ export default function FinancialDashboardView({
           moneySpent
     );
 
+  const monthlyTarget =
+    monthlyRevenueTarget;
+
   const targetProgress =
     monthlyTarget > 0
       ? Math.min(
@@ -873,10 +888,7 @@ export default function FinancialDashboardView({
     );
 
   const maximumBookableValue =
-    Number(
-      settings?.monthly_booking_target ||
-        24
-    ) *
+    monthlyBookingTarget *
     bookingValue;
 
   const annualTargetValue =
@@ -1105,8 +1117,7 @@ export default function FinancialDashboardView({
               maximumBookableValue
             )}
             detail={`${formatInteger(
-              settings?.monthly_booking_target ||
-                24
+              monthlyBookingTarget
             )} bookings @ ${formatCurrency(
               bookingValue
             )}`}
@@ -1121,8 +1132,7 @@ export default function FinancialDashboardView({
               annualTargetValue
             )}
             detail={`${formatInteger(
-              settings?.monthly_booking_target ||
-                24
+              monthlyBookingTarget
             )} bookings per month × 12`}
             icon={
               <TrendingUp size={17} />
