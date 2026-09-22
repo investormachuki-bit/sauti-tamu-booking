@@ -190,7 +190,7 @@ function KpiCard({
   icon,
   tone = "blue",
 }: {
-  label: string;
+  label: ReactNode;
   value: string;
   detail?: string;
   icon: ReactNode;
