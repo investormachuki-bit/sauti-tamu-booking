@@ -247,8 +247,6 @@ function KpiCard({
             {label}
           </p>
 
-          {/* Compact responsive value.
-              No truncate so money is never replaced with "...". */}
           <p
             className={`mt-1 mb-0 whitespace-nowrap text-[clamp(15px,1.35vw,20px)] font-extrabold leading-none tracking-[-0.035em] ${colors.value}`}
           >
@@ -356,7 +354,6 @@ function ExpenseBreakdown({
       </div>
 
       <div className="grid min-h-[285px] grid-cols-[220px_minmax(0,1fr)] gap-5 p-4">
-        {/* DONUT */}
         <div className="flex items-center justify-center">
           <div
             className="relative flex h-[205px] w-[205px] items-center justify-center rounded-full"
@@ -379,7 +376,6 @@ function ExpenseBreakdown({
           </div>
         </div>
 
-        {/* BREAKDOWN */}
         <div className="flex min-w-0 flex-col justify-center">
           {sortedExpenses.length === 0 ? (
             <div className="flex h-full min-h-[200px] items-center justify-center rounded-xl bg-slate-50 px-5 text-center">
@@ -479,22 +475,22 @@ function PerformanceMetrics({
           ? formatPercentage(
               performance.roi
             )
-          : settings.roi_status ||
-            "Placeholder",
+          : "Placeholder",
       footer: "Revenue vs Ad Spend",
     },
     {
       label: "CAC",
-      sublabel: "Customer Acquisition Cost",
+      sublabel:
+        "Customer Acquisition Cost",
       value:
         performance?.cac !== null &&
         performance?.cac !== undefined
           ? formatCurrency(
               performance.cac
             )
-          : settings.cac_status ||
-            "Placeholder",
-      footer: "Cost per enrolled student",
+          : "Placeholder",
+      footer:
+        "Cost per enrolled student",
     },
     {
       label: "CPL",
@@ -505,13 +501,13 @@ function PerformanceMetrics({
           ? formatCurrency(
               performance.cpl
             )
-          : settings.cpl_status ||
-            "Placeholder",
+          : "Placeholder",
       footer: "Cost per lead from ads",
     },
     {
       label: "Conversion Rate",
-      sublabel: "Leads → Enrollments",
+      sublabel:
+        "Leads → Enrollments",
       value:
         performance?.conversion_rate !==
           null &&
@@ -520,9 +516,9 @@ function PerformanceMetrics({
           ? formatPercentage(
               performance.conversion_rate
             )
-          : settings.conversion_rate_status ||
-            "Placeholder",
-      footer: "Formula awaiting client definition",
+          : "Placeholder",
+      footer:
+        "Formula awaiting client definition",
     },
     {
       label: "Revenue per Student",
@@ -537,8 +533,7 @@ function PerformanceMetrics({
               performance.revenue_per_student
             )
           : formatCurrency(
-              dashboard.settings
-                ?.booking_value ||
+              settings?.booking_value ||
                 21850
             ),
       footer:
@@ -573,19 +568,19 @@ function PerformanceMetrics({
             key={metric.label}
             className="min-w-0 px-4 py-3 text-center"
           >
-            <p className="m-0 text-[9px] font-bold text-slate-700">
+            <p className="m-0 text-[8px] font-bold text-slate-700">
               {metric.label}
             </p>
 
-            <p className="mt-1 mb-0 truncate text-[8px] text-slate-500">
+            <p className="mt-1 mb-0 text-[7px] text-slate-500">
               {metric.sublabel}
             </p>
 
-            <p className="mt-2 mb-0 truncate text-[20px] font-extrabold leading-none text-slate-900">
+            <p className="mt-2 mb-0 truncate text-[20px] font-extrabold leading-none tracking-[-0.04em] text-slate-900">
               {metric.value}
             </p>
 
-            <p className="mt-1 mb-0 truncate text-[8px] text-blue-700">
+            <p className="mt-1 mb-0 truncate text-[7px] text-blue-700">
               {metric.footer}
             </p>
           </div>
@@ -610,38 +605,38 @@ function StudentActivity({
   const items = [
     {
       label: "Attended",
-      value: activity?.attended || 0,
-      icon: <Users size={17} />,
-      className: "text-blue-700",
+      value: activity?.attended ?? 0,
+      icon: <Users size={13} />,
+      color: "text-blue-700",
     },
     {
       label: "Booked",
-      value: activity?.booked || 0,
-      icon: <CalendarDays size={17} />,
-      className: "text-blue-700",
+      value: activity?.booked ?? 0,
+      icon: <CalendarDays size={13} />,
+      color: "text-blue-700",
     },
     {
       label: "Registered",
-      value: activity?.registered || 0,
-      icon: <Users size={17} />,
-      className: "text-emerald-700",
+      value: activity?.registered ?? 0,
+      icon: <Users size={13} />,
+      color: "text-emerald-700",
     },
     {
       label: "Cancelled",
-      value: activity?.cancelled || 0,
-      icon: <ArrowDownRight size={17} />,
-      className: "text-red-600",
+      value: activity?.cancelled ?? 0,
+      icon: <ArrowDownRight size={13} />,
+      color: "text-red-600",
     },
     {
       label: "Missed",
-      value: activity?.missed || 0,
-      icon: <ArrowDownRight size={17} />,
-      className: "text-purple-700",
+      value: activity?.missed ?? 0,
+      icon: <ArrowDownRight size={13} />,
+      color: "text-purple-700",
     },
   ];
 
   return (
-    <DashboardCard className="h-full">
+    <DashboardCard>
       <div className="border-b border-blue-100 px-5 py-3">
         <div className="flex items-center gap-3">
           <Users
@@ -665,20 +660,22 @@ function StudentActivity({
         {items.map((item) => (
           <div
             key={item.label}
-            className="min-w-0 px-3 py-4 text-center"
+            className="min-w-0 px-4 py-4 text-center"
           >
             <div
-              className={`flex items-center justify-center gap-1 ${item.className}`}
+              className={`flex items-center justify-center gap-1 text-[8px] font-bold ${item.color}`}
             >
               {item.icon}
 
-              <span className="truncate text-[8px] font-bold">
+              <span className="truncate">
                 {item.label}
               </span>
             </div>
 
             <p className="mt-3 mb-0 text-[22px] font-extrabold leading-none text-slate-900">
-              {formatInteger(item.value)}
+              {formatInteger(
+                item.value
+              )}
             </p>
           </div>
         ))}
@@ -699,95 +696,92 @@ function FinancialObligations({
   const obligations =
     dashboard.obligations || [];
 
-  const totalOutstanding =
+  const outstanding =
     obligations.reduce(
-      (total, item) =>
+      (total, obligation) =>
         total +
         Number(
-          item.outstanding_balance || 0
+          obligation.outstanding_balance ||
+            0
         ),
       0
     );
 
-  const visible =
-    obligations.slice(0, 4);
-
   return (
-    <DashboardCard className="h-full">
+    <DashboardCard>
       <div className="border-b border-blue-100 px-5 py-3">
-        <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center justify-between gap-4">
           <div className="flex min-w-0 items-center gap-3">
             <WalletCards
               size={25}
-              className="text-blue-700"
+              className="shrink-0 text-blue-700"
             />
 
             <div className="min-w-0">
-              <h2 className="m-0 truncate text-[16px] font-extrabold leading-none text-blue-900">
+              <h2 className="m-0 text-[16px] font-extrabold leading-none text-blue-900">
                 Financial Obligations
               </h2>
 
-              <p className="mt-1 mb-0 truncate text-[9px] text-slate-500">
+              <p className="mt-1 mb-0 text-[9px] text-slate-500">
                 Track your key personal and business financial commitments
               </p>
             </div>
           </div>
 
-          <div className="shrink-0 rounded-lg bg-red-50 px-3 py-2 text-right">
-            <p className="m-0 text-[7px] font-bold uppercase text-slate-500">
+          <div className="shrink-0 rounded-full bg-red-50 px-4 py-2 text-right">
+            <p className="m-0 text-[6px] font-bold uppercase tracking-[0.12em] text-slate-500">
               Outstanding
             </p>
 
-            <p className="mt-1 mb-0 whitespace-nowrap text-[10px] font-extrabold text-red-600">
+            <p className="mt-1 mb-0 text-[11px] font-extrabold text-red-600">
               {formatCurrency(
-                totalOutstanding
+                outstanding
               )}
             </p>
           </div>
         </div>
       </div>
 
-      {visible.length === 0 ? (
+      {obligations.length === 0 ? (
         <div className="p-4">
-          <div className="flex min-h-[105px] items-center justify-center rounded-xl bg-slate-50 px-5 text-center">
+          <div className="flex min-h-[120px] items-center justify-center rounded-xl bg-slate-50">
             <p className="m-0 text-[9px] text-slate-500">
-              No financial obligations have
-              been recorded yet.
+              No financial obligations have been recorded yet.
             </p>
           </div>
         </div>
       ) : (
         <div className="grid grid-cols-4 divide-x divide-blue-100">
-          {visible.map((item) => (
-            <div
-              key={item.id}
-              className="min-w-0 px-2 py-4 text-center"
-            >
-              <p className="m-0 truncate text-[8px] font-bold text-slate-700">
-                {item.name}
-              </p>
+          {obligations.map(
+            (obligation) => (
+              <div
+                key={obligation.id}
+                className="min-w-0 px-4 py-4 text-center"
+              >
+                <p className="m-0 truncate text-[8px] font-bold text-slate-700">
+                  {obligation.name}
+                </p>
 
-              {/* Smaller and never truncated */}
-              <p className="mt-2 mb-0 whitespace-nowrap text-[clamp(13px,1.15vw,17px)] font-extrabold leading-none tracking-[-0.03em] text-slate-900">
-                {formatCurrency(item.amount)}
-              </p>
-
-              <p className="mt-2 truncate text-[7px] capitalize text-slate-500">
-                {item.frequency}
-              </p>
-
-              {Number(
-                item.outstanding_balance || 0
-              ) > 0 && (
-                <p className="mt-2 whitespace-nowrap text-[7px] font-bold text-red-600">
-                  Outstanding{" "}
+                <p className="mt-2 mb-0 whitespace-nowrap text-[18px] font-extrabold leading-none text-slate-900">
                   {formatCurrency(
-                    item.outstanding_balance
+                    obligation.amount
                   )}
                 </p>
-              )}
-            </div>
-          ))}
+
+                <p className="mt-2 mb-0 text-[7px] text-slate-500">
+                  {obligation.frequency ||
+                    "One_time"}
+                </p>
+
+                <p className="mt-2 truncate text-[7px] font-bold text-red-600">
+                  Outstanding{" "}
+                  {formatCurrency(
+                    obligation.outstanding_balance
+                  )}
+                </p>
+              </div>
+            )
+          )}
         </div>
       )}
     </DashboardCard>
@@ -808,66 +802,35 @@ export default function FinancialDashboardView({
   onPreviousMonth,
   onNextMonth,
 }: FinancialDashboardViewProps) {
-  if (loading && !dashboard) {
-    return (
-      <main className="st-content overflow-x-hidden">
-        <div className="flex min-h-[420px] items-center justify-center">
-          <div className="text-center">
-            <RefreshCw
-              size={24}
-              className="mx-auto animate-spin text-blue-700"
-            />
-
-            <p className="mt-3 mb-0 text-[11px] font-semibold text-slate-700">
-              Loading financial dashboard...
-            </p>
-          </div>
-        </div>
-      </main>
-    );
-  }
-
-  if (!dashboard) {
-    return (
-      <main className="st-content overflow-x-hidden">
-        <div className="rounded-xl border border-red-200 bg-red-50 px-5 py-4">
-          <p className="m-0 text-[10px] font-semibold text-red-700">
-            {error ||
-              "Financial dashboard data is unavailable."}
-          </p>
-
-          {onRefresh && (
-            <button
-              type="button"
-              onClick={onRefresh}
-              className="mt-3 text-[10px] font-bold text-red-700 underline"
-            >
-              Try refreshing the dashboard
-            </button>
-          )}
-        </div>
-      </main>
-    );
-  }
-
   const summary =
-    dashboard.summary;
+    dashboard?.summary;
 
   const settings =
-    dashboard.settings;
-
-  /* =====================================================
-     AGREED BUSINESS MODEL
-
-     Revenue = Total booked value
-
-     Monthly target =
-     24 bookings × KSh 21,850
-  ===================================================== */
+    dashboard?.settings;
 
   const bookedValue =
     Number(
       summary?.booked_value || 0
+    );
+
+  const monthlyTarget =
+    Number(
+      summary?.monthly_revenue_target ||
+        settings?.monthly_booking_target *
+          settings?.booking_value ||
+        0
+    );
+
+  const bookings =
+    Number(
+      summary?.bookings_count || 0
+    );
+
+  const bookingValue =
+    Number(
+      summary?.booking_value ||
+        settings?.booking_value ||
+        21850
     );
 
   const moneyReceived =
@@ -892,22 +855,28 @@ export default function FinancialDashboardView({
           moneySpent
     );
 
-  const monthlyBookingTarget =
-    Number(
-      summary?.monthly_booking_target ||
-        settings?.monthly_booking_target ||
-        24
-    );
+  const targetProgress =
+    monthlyTarget > 0
+      ? Math.min(
+          (bookedValue /
+            monthlyTarget) *
+            100,
+          100
+        )
+      : 0;
 
-  const bookingValue =
-    Number(
-      summary?.booking_value ||
-        settings?.booking_value ||
-        21850
+  const targetRemaining =
+    Math.max(
+      monthlyTarget -
+        bookedValue,
+      0
     );
 
   const maximumBookableValue =
-    monthlyBookingTarget *
+    Number(
+      settings?.monthly_booking_target ||
+        24
+    ) *
     bookingValue;
 
   const annualTargetValue =
@@ -917,190 +886,233 @@ export default function FinancialDashboardView({
     settings?.lifetime_booking_target;
 
   return (
-    <main className="st-content overflow-x-hidden">
+    <div className="w-full min-w-0">
       {/* =================================================
           HEADER
       ================================================= */}
 
-      <div className="mb-4">
-        <div className="flex items-start justify-between gap-4">
-          <div className="min-w-0">
-            <p className="m-0 text-[9px] font-bold uppercase tracking-[0.16em] text-blue-700">
-              FINANCIAL DASHBOARD
-            </p>
+      <div className="mb-4 flex items-end justify-between gap-4">
+        <div className="min-w-0">
+          <p className="m-0 text-[8px] font-bold uppercase tracking-[0.16em] text-red-600">
+            Financial Dashboard
+          </p>
 
-            <h1 className="mt-1 mb-0 text-[24px] font-extrabold leading-none tracking-[-0.04em] text-blue-950">
-              Financial &amp; Booking Overview
-            </h1>
+          <h1 className="mt-1 mb-0 text-[25px] font-extrabold leading-none tracking-[-0.04em] text-blue-950">
+            Financial & Booking Overview
+          </h1>
 
-            <p className="mt-1 mb-0 text-[10px] text-slate-500">
-              Track your bookings, income, expenses and business performance at a glance
-            </p>
+          <p className="mt-1 mb-0 text-[9px] text-slate-500">
+            Track your bookings, income, expenses and business performance at a glance
+          </p>
+        </div>
+
+        <div className="flex shrink-0 items-center gap-2">
+          <button
+            type="button"
+            onClick={onPreviousMonth}
+            disabled={loading}
+            className="inline-flex h-10 items-center gap-1 rounded-xl border border-slate-200 bg-white px-4 text-[10px] font-medium text-slate-700 transition hover:bg-slate-50 disabled:opacity-50"
+          >
+            ← Previous
+          </button>
+
+          <div className="inline-flex h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-[9px] font-medium text-slate-700">
+            <CalendarDays
+              size={13}
+              className="text-red-600"
+            />
+
+            {formatMonthLabel(
+              monthStart
+            )}
           </div>
 
-          <div className="flex shrink-0 items-center gap-1">
-            <button
-              type="button"
-              onClick={onPreviousMonth}
-              disabled={
-                !onPreviousMonth ||
+          <button
+            type="button"
+            onClick={onNextMonth}
+            disabled={loading}
+            className="inline-flex h-10 items-center gap-1 rounded-xl border border-slate-200 bg-white px-4 text-[10px] font-medium text-slate-700 transition hover:bg-slate-50 disabled:opacity-50"
+          >
+            Next →
+          </button>
+
+          <button
+            type="button"
+            onClick={onRefresh}
+            disabled={
+              loading ||
+              refreshing
+            }
+            className="inline-flex h-10 items-center gap-2 rounded-xl bg-red-600 px-4 text-[10px] font-bold text-white transition hover:bg-red-700 disabled:opacity-60"
+          >
+            <RefreshCw
+              size={12}
+              className={
                 refreshing
+                  ? "animate-spin"
+                  : ""
               }
-              className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-[9px] font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
-            >
-              ← Previous
-            </button>
+            />
 
-            <div className="flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-[9px] font-bold text-slate-700">
-              <CalendarDays
-                size={12}
-                className="text-red-600"
-              />
-
-              {formatMonthLabel(
-                monthStart
-              )}
-            </div>
-
-            <button
-              type="button"
-              onClick={onNextMonth}
-              disabled={
-                !onNextMonth ||
-                refreshing
-              }
-              className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-[9px] font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
-            >
-              Next →
-            </button>
-
-            <button
-              type="button"
-              onClick={onRefresh}
-              disabled={
-                !onRefresh ||
-                refreshing
-              }
-              className="flex items-center gap-1 rounded-lg bg-red-600 px-3 py-2 text-[9px] font-bold text-white hover:bg-red-700 disabled:opacity-50"
-            >
-              <RefreshCw
-                size={11}
-                className={
-                  refreshing
-                    ? "animate-spin"
-                    : ""
-                }
-              />
-
-              Refresh
-            </button>
-          </div>
+            Refresh
+          </button>
         </div>
       </div>
 
       {error && (
-        <div className="mb-3 rounded-lg border border-red-200 bg-red-50 px-4 py-2">
-          <p className="m-0 text-[9px] font-semibold text-red-700">
-            {error}
-          </p>
+        <div className="mb-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-[9px] font-medium text-red-600">
+          {error}
         </div>
       )}
 
       {/* =================================================
           TOP KPI ROW
+          FULL WIDTH — UNCHANGED
       ================================================= */}
 
-      <DashboardCard>
-        <div className="grid grid-cols-5 divide-x divide-blue-100">
+      <section className="grid grid-cols-5 overflow-hidden rounded-[14px] border border-[#bfdbfe] bg-white">
+        <div className="border-r border-blue-100">
           <KpiCard
-            label="Students Booked This Month"
+            label={
+              <>
+                Students Booked This
+                Month
+              </>
+            }
             value={formatInteger(
-              summary?.bookings_count || 0
+              bookings
             )}
             detail={`Value: ${formatCurrency(
               bookedValue
-            )} @ ${formatCurrency(
-              bookingValue
-            )} per booking`}
-            icon={<Users size={21} />}
+            )}`}
+            icon={
+              <Users size={19} />
+            }
             tone="blue"
           />
+        </div>
 
+        <div className="border-r border-blue-100">
           <KpiCard
-            label="Money Received This Month"
+            label={
+              <>
+                Money Received This
+                Month
+              </>
+            }
             value={formatCurrency(
               moneyReceived
             )}
             detail="Payments received"
             icon={
-              <WalletCards size={21} />
+              <CreditCard size={19} />
             }
             tone="green"
           />
+        </div>
 
+        <div className="border-r border-blue-100">
           <KpiCard
-            label="Money Spent This Month"
+            label={
+              <>
+                Money Spent This
+                Month
+              </>
+            }
             value={formatCurrency(
               moneySpent
             )}
             detail="Recorded expenses"
             icon={
-              <CreditCard size={21} />
+              <CreditCard size={19} />
             }
             tone="red"
           />
+        </div>
 
+        <div className="border-r border-blue-100">
           <KpiCard
-            label="Net Cash Flow"
+            label={
+              <>
+                Net Cash Flow
+              </>
+            }
             value={formatCurrency(
               netCashFlow
             )}
             detail="Received less money spent"
             icon={
               netCashFlow >= 0 ? (
-                <ArrowUpRight size={21} />
+                <ArrowUpRight
+                  size={19}
+                />
               ) : (
-                <ArrowDownRight size={21} />
+                <ArrowDownRight
+                  size={19}
+                />
               )
             }
             tone="dark"
           />
+        </div>
 
+        <div>
           <KpiCard
-            label="Money Pending This Month"
+            label={
+              <>
+                Money Pending This
+                Month
+              </>
+            }
             value={formatCurrency(
               moneyPending
             )}
             detail="Outstanding expected collections"
             icon={
-              <TrendingUp size={21} />
+              <TrendingUp
+                size={19}
+              />
             }
             tone="purple"
           />
         </div>
-      </DashboardCard>
+      </section>
 
       {/* =================================================
-          EXPENSE + TARGETS
+          EXPENSE BREAKDOWN
+          FULL WIDTH
       ================================================= */}
 
-      <section className="mt-3 grid grid-cols-[minmax(0,1.65fr)_minmax(320px,0.75fr)] gap-3">
+      <section className="mt-3 w-full">
         <ExpenseBreakdown
           expenses={
-            dashboard.expenses || []
+            dashboard?.expenses ||
+            []
           }
         />
+      </section>
 
-        <DashboardCard className="h-full">
+      {/* =================================================
+          TARGET VALUES
+          FULL WIDTH — MOVED BELOW EXPENSE BREAKDOWN
+      ================================================= */}
+
+      <section className="mt-3 w-full">
+        <DashboardCard>
           <TargetCard
             label="Maximum Bookable Value"
             value={formatCurrency(
               maximumBookableValue
             )}
-            detail={`${monthlyBookingTarget} bookings @ ${formatCurrency(
+            detail={`${formatInteger(
+              settings?.monthly_booking_target ||
+                24
+            )} bookings @ ${formatCurrency(
               bookingValue
             )}`}
-            icon={<BarChart3 size={21} />}
+            icon={
+              <BarChart3 size={17} />
+            }
           />
 
           <TargetCard
@@ -1108,40 +1120,32 @@ export default function FinancialDashboardView({
             value={formatCurrency(
               annualTargetValue
             )}
-            detail={`${monthlyBookingTarget} bookings per month × 12`}
+            detail={`${formatInteger(
+              settings?.monthly_booking_target ||
+                24
+            )} bookings per month × 12`}
             icon={
-              <TrendingUp size={21} />
+              <TrendingUp size={17} />
             }
           />
 
           <TargetCard
             label="Lifetime Target Value"
             value={
-              lifetimeTarget !==
-                null &&
-              lifetimeTarget !==
-                undefined
+              lifetimeTarget
                 ? formatCurrency(
-                    lifetimeTarget *
-                      bookingValue
+                    lifetimeTarget
                   )
                 : "Not set"
             }
             detail={
-              lifetimeTarget !==
-                null &&
-              lifetimeTarget !==
-                undefined
-                ? `${formatInteger(
-                    lifetimeTarget
-                  )} lifetime bookings @ ${formatCurrency(
-                    bookingValue
-                  )}`
+              lifetimeTarget
+                ? "Configured long-term business target"
                 : "Configure long-term business target"
             }
             icon={
               <CircleDollarSign
-                size={21}
+                size={17}
               />
             }
           />
@@ -1150,42 +1154,105 @@ export default function FinancialDashboardView({
 
       {/* =================================================
           BUSINESS PERFORMANCE
+          FULL WIDTH — UNCHANGED
       ================================================= */}
 
-      <section className="mt-3">
-        <PerformanceMetrics
-          dashboard={dashboard}
-        />
+      <section className="mt-3 w-full">
+        {dashboard ? (
+          <PerformanceMetrics
+            dashboard={
+              dashboard
+            }
+          />
+        ) : (
+          <DashboardCard>
+            <div className="p-8 text-center text-[9px] text-slate-500">
+              Financial dashboard
+              data is unavailable.
+            </div>
+          </DashboardCard>
+        )}
       </section>
 
       {/* =================================================
-          STUDENT ACTIVITY + OBLIGATIONS
+          STUDENT ACTIVITY
+          FULL WIDTH — MOVED BELOW PERFORMANCE
       ================================================= */}
 
-      <section className="mt-3 grid grid-cols-[minmax(0,1fr)_minmax(0,1.35fr)] gap-3">
-        <StudentActivity
-          dashboard={dashboard}
-        />
-
-        <FinancialObligations
-          dashboard={dashboard}
-        />
+      <section className="mt-3 w-full">
+        {dashboard ? (
+          <StudentActivity
+            dashboard={
+              dashboard
+            }
+          />
+        ) : null}
       </section>
+
+      {/* =================================================
+          FINANCIAL OBLIGATIONS
+          FULL WIDTH — MOVED BELOW STUDENT ACTIVITY
+      ================================================= */}
+
+      <section className="mt-3 w-full">
+        {dashboard ? (
+          <FinancialObligations
+            dashboard={
+              dashboard
+            }
+          />
+        ) : null}
+      </section>
+
+      {/* =================================================
+          BOOKING TARGET SUMMARY
+          Kept available in the data flow without
+          changing the dashboard visual structure.
+      ================================================= */}
+
+      <div className="sr-only">
+        <span>
+          Current booked value:{" "}
+          {formatCurrency(
+            bookedValue
+          )}
+        </span>
+
+        <span>
+          Monthly target:{" "}
+          {formatCurrency(
+            monthlyTarget
+          )}
+        </span>
+
+        <span>
+          Target progress:{" "}
+          {formatPercentage(
+            targetProgress
+          )}
+        </span>
+
+        <span>
+          Target remaining:{" "}
+          {formatCurrency(
+            targetRemaining
+          )}
+        </span>
+      </div>
 
       {/* =================================================
           FOOTER
       ================================================= */}
 
-      <div className="mt-3 flex items-center justify-between border-t border-blue-100 pt-3">
-        <p className="m-0 text-[8px] text-slate-400">
-          Sauti Tamu Piano Center ·
-          Financial Dashboard
+      <div className="mt-4 flex items-center justify-between border-t border-slate-200 pt-3">
+        <p className="m-0 text-[7px] text-slate-400">
+          Sauti Tamu Piano Center · Financial Dashboard
         </p>
 
-        <p className="m-0 text-[8px] text-slate-400">
+        <p className="m-0 text-[7px] text-slate-400">
           Live financial administration
         </p>
       </div>
-    </main>
+    </div>
   );
 }
