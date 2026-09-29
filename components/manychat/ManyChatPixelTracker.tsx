@@ -26,23 +26,32 @@ export default function ManyChatPixelTracker() {
       const response = await originalFetch(...args);
 
       try {
+        const input = args[0];
+
         const requestUrl =
-          typeof args[0] === "string"
-            ? args[0]
-            : args[0] instanceof Request
-              ? args[0].url
-              : args[0]?.url || "";
+          typeof input === "string"
+            ? input
+            : input instanceof Request
+              ? input.url
+              : input instanceof URL
+                ? input.toString()
+                : "";
 
         if (requestUrl.includes(BOOKING_ENDPOINT)) {
           const clone = response.clone();
           const result = await clone.json().catch(() => null);
 
           if (result?.success === true) {
-            window.MC_PIXEL?.fireLogConversionEvent(BOOKING_EVENT);
+            window.MC_PIXEL?.fireLogConversionEvent(
+              BOOKING_EVENT,
+            );
           }
         }
       } catch (error) {
-        console.warn("ManyChat Pixel booking event error:", error);
+        console.warn(
+          "ManyChat Pixel booking event error:",
+          error,
+        );
       }
 
       return response;
