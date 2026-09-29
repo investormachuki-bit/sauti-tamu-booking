@@ -17,21 +17,15 @@ function escapeHtml(value: unknown) {
 
 function instrumentLabel(value: unknown) {
   const normalized = String(value ?? "").toLowerCase();
-
   if (normalized === "piano") return "Piano";
   if (normalized === "guitar") return "Acoustic Guitar";
-
   return String(value ?? "");
 }
 
 function formatDate(value: string | null | undefined) {
   if (!value) return "";
-
   const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) {
-    return value;
-  }
+  if (Number.isNaN(date.getTime())) return value;
 
   return new Intl.DateTimeFormat("en-KE", {
     weekday: "long",
@@ -44,12 +38,8 @@ function formatDate(value: string | null | undefined) {
 
 function formatTime(value: string | null | undefined) {
   if (!value) return "";
-
   const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) {
-    return value;
-  }
+  if (Number.isNaN(date.getTime())) return value;
 
   return new Intl.DateTimeFormat("en-KE", {
     hour: "2-digit",
@@ -105,228 +95,74 @@ function buildAdminBookingEmail({
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta
-    name="viewport"
-    content="width=device-width, initial-scale=1.0"
-  />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>New Trial Booking</title>
 </head>
-
-<body
-  style="
-    margin:0;
-    padding:0;
-    font-family:Arial,Helvetica,sans-serif;
-    color:#202020;
-  "
->
-  <div
-    style="
-      width:100%;
-      padding:20px 12px;
-      box-sizing:border-box;
-    "
-  >
-    <div
-      style="
-        max-width:640px;
-        margin:0 auto;
-        background:#ffffff;
-        border:1px solid #ececec;
-        border-radius:18px;
-        overflow:hidden;
-      "
-    >
-
-      <!-- HEADER -->
-      <div
-        style="
-          background:#cf2428;
-          padding:34px 34px 30px;
-        "
-      >
-        <div
-          style="
-            font-size:24px;
-            line-height:1.2;
-            font-weight:800;
-            letter-spacing:4px;
-            color:#ffffff;
-          "
-        >
+<body style="margin:0;padding:0;font-family:Arial,Helvetica,sans-serif;color:#202020;">
+  <div style="width:100%;padding:20px 12px;box-sizing:border-box;">
+    <div style="max-width:640px;margin:0 auto;background:#ffffff;border:1px solid #ececec;border-radius:18px;overflow:hidden;">
+      <div style="background:#cf2428;padding:34px 34px 30px;">
+        <div style="font-size:24px;line-height:1.2;font-weight:800;letter-spacing:4px;color:#ffffff;">
           SAUTI TAMU
         </div>
-
-        <div
-          style="
-            margin-top:10px;
-            font-size:15px;
-            line-height:1.4;
-            font-weight:700;
-            letter-spacing:4px;
-            color:#ffffff;
-          "
-        >
+        <div style="margin-top:10px;font-size:15px;line-height:1.4;font-weight:700;letter-spacing:4px;color:#ffffff;">
           NEW TRIAL BOOKING
         </div>
       </div>
 
-      <!-- MAIN CONTENT -->
-      <div
-        style="
-          padding:40px 34px 34px;
-        "
-      >
-        <div
-          style="
-            font-size:12px;
-            line-height:1.4;
-            font-weight:800;
-            letter-spacing:3px;
-            color:#cf2428;
-          "
-        >
+      <div style="padding:40px 34px 34px;">
+        <div style="font-size:12px;line-height:1.4;font-weight:800;letter-spacing:3px;color:#cf2428;">
           NEW BOOKING
         </div>
 
-        <div
-          style="
-            margin-top:20px;
-            font-size:42px;
-            line-height:1.08;
-            font-weight:800;
-            color:#202020;
-            word-break:break-word;
-          "
-        >
+        <div style="margin-top:20px;font-size:42px;line-height:1.08;font-weight:800;color:#202020;word-break:break-word;">
           ${safeName}
         </div>
 
-        <!-- TRIAL LESSON -->
-        <div
-          style="
-            margin-top:36px;
-            background:#f7f7f7;
-            border:1px solid #e8e8e8;
-            border-radius:18px;
-            padding:28px 28px 30px;
-          "
-        >
-          <div
-            style="
-              font-size:14px;
-              line-height:1.4;
-              font-weight:800;
-              letter-spacing:2px;
-              color:#777777;
-            "
-          >
+        <div style="margin-top:36px;background:#f7f7f7;border:1px solid #e8e8e8;border-radius:18px;padding:28px 28px 30px;">
+          <div style="font-size:14px;line-height:1.4;font-weight:800;letter-spacing:2px;color:#777777;">
             TRIAL LESSON
           </div>
 
-          <div
-            style="
-              margin-top:16px;
-              font-size:31px;
-              line-height:1.2;
-              font-weight:800;
-              color:#202020;
-            "
-          >
+          <div style="margin-top:16px;font-size:31px;line-height:1.2;font-weight:800;color:#202020;">
             ${instrumentIcon} ${safeInstrument}
           </div>
 
-          ${
-            lessonDate
-              ? `
-          <div
-            style="
-              margin-top:24px;
-              font-size:18px;
-              line-height:1.5;
-              color:#444444;
-            "
-          >
+          ${lessonDate ? `
+          <div style="margin-top:24px;font-size:18px;line-height:1.5;color:#444444;">
             📅 ${lessonDate}
           </div>
-          `
-              : ""
-          }
+          ` : ""}
 
-          ${
-            lessonTime
-              ? `
-          <div
-            style="
-              margin-top:6px;
-              font-size:34px;
-              line-height:1.15;
-              font-weight:800;
-              color:#cf2428;
-              letter-spacing:.5px;
-            "
-          >
+          ${lessonTime ? `
+          <div style="margin-top:6px;font-size:34px;line-height:1.15;font-weight:800;color:#cf2428;letter-spacing:.5px;">
             ${lessonTime}
           </div>
-          `
-              : ""
-          }
+          ` : ""}
 
-          <div
-            style="
-              margin-top:10px;
-              font-size:12px;
-              line-height:1.5;
-              color:#777777;
-            "
-          >
+          <div style="margin-top:10px;font-size:12px;line-height:1.5;color:#777777;">
             60-minute trial lesson
           </div>
         </div>
 
-        <!-- CUSTOMER DETAILS -->
-        <div
-          style="
-            margin-top:42px;
-          "
-        >
-          <div
-            style="
-              font-size:13px;
-              line-height:1.4;
-              font-weight:800;
-              letter-spacing:2px;
-              color:#cf2428;
-            "
-          >
+        <div style="margin-top:42px;">
+          <div style="font-size:13px;line-height:1.4;font-weight:800;letter-spacing:2px;color:#cf2428;">
             CUSTOMER DETAILS
           </div>
 
-          <div
-            style="
-              margin-top:24px;
-              font-size:17px;
-              line-height:1.65;
-              color:#555555;
-            "
-          >
+          <div style="margin-top:24px;font-size:17px;line-height:1.65;color:#555555;">
             <div style="margin-bottom:10px;">
               <strong style="color:#202020;">Name:</strong>
               ${safeName}
             </div>
-
             <div style="margin-bottom:10px;">
               <strong style="color:#202020;">Email:</strong>
-              <span style="color:#365f91;">
-                ${safeEmail}
-              </span>
+              <span style="color:#365f91;">${safeEmail}</span>
             </div>
-
             <div style="margin-bottom:10px;">
               <strong style="color:#202020;">WhatsApp:</strong>
               ${safeWhatsapp}
             </div>
-
             <div>
               <strong style="color:#202020;">Instrument:</strong>
               ${safeInstrument}
@@ -334,64 +170,74 @@ function buildAdminBookingEmail({
           </div>
         </div>
 
-        <!-- STATUS -->
-        <div
-          style="
-            margin-top:38px;
-            background:#fff5f5;
-            border:1px solid #f1d8d8;
-            border-radius:17px;
-            padding:24px 26px;
-          "
-        >
-          <div
-            style="
-              font-size:19px;
-              line-height:1.4;
-              font-weight:800;
-              color:#202020;
-            "
-          >
+        <div style="margin-top:38px;background:#fff5f5;border:1px solid #f1d8d8;border-radius:17px;padding:24px 26px;">
+          <div style="font-size:19px;line-height:1.4;font-weight:800;color:#202020;">
             Booking status: ${safeStatus}
           </div>
-
-          <div
-            style="
-              margin-top:9px;
-              font-size:15px;
-              line-height:1.5;
-              color:#777777;
-              word-break:break-word;
-            "
-          >
+          <div style="margin-top:9px;font-size:15px;line-height:1.5;color:#777777;word-break:break-word;">
             Booking ID: ${safeBookingId}
           </div>
         </div>
 
-        <!-- FOOTER -->
-        <div
-          style="
-            margin-top:34px;
-            padding-top:28px;
-            border-top:1px solid #e5e5e5;
-          "
-        >
-          <div
-            style="
-              font-size:15px;
-              line-height:1.5;
-              color:#777777;
-            "
-          >
+        <div style="margin-top:34px;padding-top:28px;border-top:1px solid #e5e5e5;">
+          <div style="font-size:15px;line-height:1.5;color:#777777;">
             Sauti Tamu Piano Center — Admin Notification
           </div>
         </div>
-
       </div>
     </div>
   </div>
 </body>
 </html>`;
+}
+
+type ManyChatBookingPayload = {
+  bookingId: string;
+  leadId: string | null;
+  fullName: string;
+  email: string;
+  whatsappNumber: string;
+  instrument: string;
+  bookingStatus: string;
+  startsAt: string | null;
+  endsAt: string | null;
+};
+
+async function triggerManyChatBookingFollowUp(
+  payload: ManyChatBookingPayload,
+) {
+  const endpoint = process.env.MANYCHAT_BOOKING_WEBHOOK_URL;
+
+  if (!endpoint) {
+    return {
+      integrated: false,
+      skipped: true,
+      reason: "MANYCHAT_BOOKING_WEBHOOK_URL is not configured.",
+    };
+  }
+
+  const secret = process.env.MANYCHAT_WEBHOOK_SECRET;
+
+  const response = await fetch(endpoint, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(secret ? { "x-manychat-webhook-secret": secret } : {}),
+    },
+    body: JSON.stringify(payload),
+    cache: "no-store",
+  });
+
+  const result = await response.json().catch(() => ({}));
+
+  if (!response.ok || result?.success === false) {
+    throw new Error(
+      result?.error ||
+        `ManyChat integration returned HTTP ${response.status}.`,
+    );
+  }
+
+  return result;
 }
 
 export async function POST(request: NextRequest) {
@@ -439,10 +285,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (
-      typeof whatsappNumber !== "string" ||
-      !whatsappNumber.trim()
-    ) {
+    if (typeof whatsappNumber !== "string" || !whatsappNumber.trim()) {
       return NextResponse.json(
         {
           success: false,
@@ -487,8 +330,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         {
           success: false,
-          error:
-            "We couldn't create your booking. Please try again.",
+          error: "We couldn't create your booking. Please try again.",
         },
         { status: 500 },
       );
@@ -498,8 +340,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         {
           success: false,
-          error:
-            "We couldn't confirm your booking. Please try again.",
+          error: "We couldn't confirm your booking. Please try again.",
         },
         { status: 500 },
       );
@@ -524,6 +365,7 @@ export async function POST(request: NextRequest) {
         bookingCreated: true,
         confirmationSent: false,
         adminNotificationSent: false,
+        manychatTriggered: false,
         followUpsCreated: 0,
         warning:
           "Your booking was created, but we could not prepare the confirmation message.",
@@ -531,11 +373,6 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    /*
-     * =========================================================
-     * LOAD THE ACTUAL BOOKED LESSON DATE/TIME
-     * =========================================================
-     */
     const { data: lessonSlot, error: lessonSlotError } =
       await supabaseServer
         .from("lesson_slots")
@@ -544,17 +381,9 @@ export async function POST(request: NextRequest) {
         .single();
 
     if (lessonSlotError) {
-      console.error(
-        "Lesson slot details error:",
-        lessonSlotError,
-      );
+      console.error("Lesson slot details error:", lessonSlotError);
     }
 
-    /*
-     * =========================================================
-     * CUSTOMER CONFIRMATION EMAIL
-     * =========================================================
-     */
     const rendered = await renderSautiTamuEmail(
       "booking_confirmation",
       {
@@ -583,6 +412,7 @@ export async function POST(request: NextRequest) {
         bookingCreated: true,
         confirmationSent: false,
         adminNotificationSent: false,
+        manychatTriggered: false,
         followUpsCreated: 0,
         warning:
           "Your booking was created, but the confirmation email could not be sent.",
@@ -597,11 +427,50 @@ export async function POST(request: NextRequest) {
       })
       .eq("id", booking.booking_id);
 
-    /*
-     * =========================================================
-     * ADMIN NOTIFICATION EMAIL
-     * =========================================================
-     */
+    let manychatResult:
+      | {
+          integrated?: boolean;
+          subscriberId?: number;
+          tagApplied?: boolean;
+          flowTriggered?: boolean;
+          skipped?: boolean;
+          reason?: string;
+          warning?: string;
+        }
+      | null = null;
+
+    try {
+      manychatResult =
+        await triggerManyChatBookingFollowUp({
+          bookingId: String(booking.booking_id),
+          leadId: bookingDetails.lead_id
+            ? String(bookingDetails.lead_id)
+            : null,
+          fullName: cleanName,
+          email: cleanEmail,
+          whatsappNumber: cleanWhatsapp,
+          instrument: String(bookingDetails.instrument || ""),
+          bookingStatus: String(
+            bookingDetails.status || "confirmed",
+          ),
+          startsAt: lessonSlot?.starts_at ?? null,
+          endsAt: lessonSlot?.ends_at ?? null,
+        });
+    } catch (manychatError) {
+      console.error(
+        "ManyChat booking trigger error:",
+        manychatError,
+      );
+
+      manychatResult = {
+        integrated: false,
+        warning:
+          manychatError instanceof Error
+            ? manychatError.message
+            : "ManyChat integration failed.",
+      };
+    }
+
     const adminEmail = process.env.RESEND_ADMIN_EMAIL;
 
     let adminEmailResult: {
@@ -615,12 +484,8 @@ export async function POST(request: NextRequest) {
         email: cleanEmail,
         whatsappNumber: cleanWhatsapp,
         bookingId: booking.booking_id,
-        instrument: String(
-          bookingDetails.instrument || "",
-        ),
-        status: String(
-          bookingDetails.status || "confirmed",
-        ),
+        instrument: String(bookingDetails.instrument || ""),
+        status: String(bookingDetails.status || "confirmed"),
         startsAt: lessonSlot?.starts_at ?? null,
         endsAt: lessonSlot?.ends_at ?? null,
       });
@@ -640,6 +505,10 @@ export async function POST(request: NextRequest) {
       adminNotificationSent: Boolean(
         adminEmailResult && !adminEmailResult.error,
       ),
+      manychatTriggered: Boolean(
+        manychatResult?.flowTriggered,
+      ),
+      manychat: manychatResult,
       followUpsCreated: 0,
       bookingId: booking.booking_id,
     });
