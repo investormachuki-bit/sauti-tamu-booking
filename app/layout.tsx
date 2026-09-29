@@ -1,4 +1,5 @@
 import "./globals.css";
+import ManyChatPixelTracker from "@/components/manychat/ManyChatPixelTracker";
 
 export const metadata = {
   title: "Sauti Tamu Piano Center",
@@ -13,7 +14,10 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body>
+        <ManyChatPixelTracker />
+        {children}
+      </body>
     </html>
   );
 }
