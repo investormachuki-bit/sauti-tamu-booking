@@ -132,10 +132,16 @@ async function syncBookingToManyChat({
   fullName,
   email,
   whatsappNumber,
+  instrument,
+  startsAt,
+  endsAt,
 }: {
   fullName: string;
   email: string;
   whatsappNumber: string;
+  instrument: string;
+  startsAt: string | null;
+  endsAt: string | null;
 }) {
   if (!process.env.MANYCHAT_API_TOKEN) {
     return {
@@ -217,6 +223,73 @@ async function syncBookingToManyChat({
       success: false,
       reason: "Could not create or find the ManyChat subscriber",
     };
+  }
+
+  const lessonDate = startsAt ? formatDate(startsAt) : "";
+  const lessonStartTime = startsAt ? formatTime(startsAt) : "";
+  const lessonEndTime = endsAt ? formatTime(endsAt) : "";
+  const lessonTime =
+    lessonStartTime && lessonEndTime
+      ? lessonStartTime + " – " + lessonEndTime
+      : lessonStartTime;
+
+  const bookingFields = [
+    ["Full names", fullName],
+    ["Instrument Choice", instrumentLabel(instrument)],
+    ["preferred day", lessonDate],
+    ["preferred time", lessonTime],
+    ["booking_instrument", instrumentLabel(instrument)],
+    ["booking_status", "CONFIRMED"],
+    ["trial date", lessonDate],
+    ["trial time", lessonTime],
+  ] as const;
+
+  for (const [fieldName, fieldValue] of bookingFields) {
+    const fieldResult = await manychatRequest(
+      "/fb/subscriber/setCustomFieldByName",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          subscriber_id: subscriberId,
+          field_name: fieldName,
+          field_value: fieldValue,
+        }),
+      },
+    );
+
+    if (!fieldResult?.ok) {
+      console.error("ManyChat custom field sync failed:", {
+        status: fieldResult?.status,
+        payload: fieldResult?.payload,
+        subscriberId,
+        fieldName,
+      });
+    }
+  }
+
+  if (startsAt) {
+    for (const fieldName of ["booking_time", "Date & Time"]) {
+      const fieldResult = await manychatRequest(
+        "/fb/subscriber/setCustomFieldByName",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            subscriber_id: subscriberId,
+            field_name: fieldName,
+            field_value: startsAt,
+          }),
+        },
+      );
+
+      if (!fieldResult?.ok) {
+        console.error("ManyChat datetime field sync failed:", {
+          status: fieldResult?.status,
+          payload: fieldResult?.payload,
+          subscriberId,
+          fieldName,
+        });
+      }
+    }
   }
 
   const tagResult = await manychatRequest(
@@ -550,6 +623,9 @@ export async function POST(request: NextRequest) {
         fullName: cleanName,
         email: cleanEmail,
         whatsappNumber: cleanWhatsapp,
+        instrument: String(bookingDetails.instrument || ""),
+        startsAt: lessonSlot?.starts_at ?? null,
+        endsAt: lessonSlot?.ends_at ?? null,
       });
     } catch (manychatError) {
       console.error("ManyChat integration error:", manychatError);
