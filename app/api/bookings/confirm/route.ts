@@ -233,6 +233,45 @@ async function syncBookingToManyChat({
       ? lessonStartTime + " – " + lessonEndTime
       : lessonStartTime;
 
+  /*
+   * ManyChat's Public API supports setting custom fields by field ID.
+   * We deliberately resolve the IDs from ManyChat's own field registry
+   * instead of hard-coding them, so renamed/recreated fields do not
+   * silently receive data in the wrong place.
+   */
+  const customFieldsResult = await manychatRequest(
+    "/fb/page/getCustomFields",
+    { method: "GET" },
+  );
+
+  const customFields = Array.isArray(customFieldsResult?.payload?.data)
+    ? customFieldsResult.payload.data
+    : [];
+
+  const normalizeFieldName = (value: unknown) =>
+    String(value ?? "")
+      .trim()
+      .toLowerCase();
+
+  const customFieldByName = new Map<string, any>();
+
+  for (const field of customFields) {
+    const names = [
+      field?.name,
+      field?.caption,
+      field?.field_name,
+      field?.label,
+    ];
+
+    for (const name of names) {
+      const normalized = normalizeFieldName(name);
+
+      if (normalized && !customFieldByName.has(normalized)) {
+        customFieldByName.set(normalized, field);
+      }
+    }
+  }
+
   const bookingFields = [
     ["Full names", fullName],
     ["Instrument Choice", instrumentLabel(instrument)],
@@ -244,38 +283,75 @@ async function syncBookingToManyChat({
     ["trial time", lessonTime],
   ] as const;
 
-  for (const [fieldName, fieldValue] of bookingFields) {
-    const fieldResult = await manychatRequest(
-      "/fb/subscriber/setCustomFieldByName",
-      {
-        method: "POST",
-        body: JSON.stringify({
-          subscriber_id: subscriberId,
-          field_name: fieldName,
-          field_value: fieldValue,
-        }),
-      },
-    );
+  if (!customFieldsResult?.ok) {
+    console.error("ManyChat custom field registry lookup failed:", {
+      status: customFieldsResult?.status,
+      payload: customFieldsResult?.payload,
+      subscriberId,
+    });
+  } else {
+    for (const [fieldName, fieldValue] of bookingFields) {
+      const field = customFieldByName.get(
+        normalizeFieldName(fieldName),
+      );
 
-    if (!fieldResult?.ok) {
-      console.error("ManyChat custom field sync failed:", {
-        status: fieldResult?.status,
-        payload: fieldResult?.payload,
-        subscriberId,
-        fieldName,
-      });
+      const fieldId = field?.id ?? field?.field_id ?? null;
+
+      if (!fieldId) {
+        console.error("ManyChat custom field ID not found:", {
+          subscriberId,
+          fieldName,
+        });
+        continue;
+      }
+
+      const fieldResult = await manychatRequest(
+        "/fb/subscriber/setCustomField",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            subscriber_id: subscriberId,
+            field_id: fieldId,
+            field_value: fieldValue,
+          }),
+        },
+      );
+
+      if (!fieldResult?.ok) {
+        console.error("ManyChat custom field sync failed:", {
+          status: fieldResult?.status,
+          payload: fieldResult?.payload,
+          subscriberId,
+          fieldName,
+          fieldId,
+        });
+      }
     }
   }
 
   if (startsAt) {
     for (const fieldName of ["booking_time", "Date & Time"]) {
+      const field = customFieldByName.get(
+        normalizeFieldName(fieldName),
+      );
+
+      const fieldId = field?.id ?? field?.field_id ?? null;
+
+      if (!fieldId) {
+        console.error("ManyChat datetime field ID not found:", {
+          subscriberId,
+          fieldName,
+        });
+        continue;
+      }
+
       const fieldResult = await manychatRequest(
-        "/fb/subscriber/setCustomFieldByName",
+        "/fb/subscriber/setCustomField",
         {
           method: "POST",
           body: JSON.stringify({
             subscriber_id: subscriberId,
-            field_name: fieldName,
+            field_id: fieldId,
             field_value: startsAt,
           }),
         },
@@ -287,6 +363,7 @@ async function syncBookingToManyChat({
           payload: fieldResult?.payload,
           subscriberId,
           fieldName,
+          fieldId,
         });
       }
     }
