@@ -49,6 +49,7 @@ type Instrument =
   | "guitar";
 
 type BookingFilter =
+  | "all"
   | "yesterday"
   | "today"
   | "tomorrow"
@@ -176,6 +177,7 @@ const FILTER_LABELS: Record<
   BookingFilter,
   string
 > = {
+  all: "ALL",
   yesterday: "YESTERDAY",
   today: "TODAY",
   tomorrow: "TOMORROW",
@@ -193,6 +195,11 @@ const FILTER_BUTTONS: Array<{
   label: string;
   color: string;
 }> = [
+  {
+    key: "all",
+    label: "All",
+    color: "bg-[var(--st-red)] text-white",
+  },
   {
     key: "yesterday",
     label: "Yesterday",
@@ -1150,6 +1157,8 @@ export default function AdminBookingsPage() {
            */
 
           switch (filter) {
+        case "all":
+          return true;
             case "yesterday":
               if (
                 slotDateKey !==
