@@ -578,6 +578,21 @@ export default function AdminBookingsPage() {
   const [selectedBooking, setSelectedBooking] =
     useState<BookingRecord | null>(null);
 
+  const [rescheduleBooking, setRescheduleBooking] =
+    useState<BookingRecord | null>(null);
+
+  const [rescheduleSlots, setRescheduleSlots] =
+    useState<LessonSlot[]>([]);
+
+  const [selectedRescheduleSlotId, setSelectedRescheduleSlotId] =
+    useState("");
+
+  const [rescheduling, setRescheduling] =
+    useState(false);
+
+  const [rescheduleError, setRescheduleError] =
+    useState("");
+
   const [updatingId, setUpdatingId] =
     useState<string | null>(null);
 
@@ -636,6 +651,123 @@ export default function AdminBookingsPage() {
     registrationError,
     setRegistrationError,
   ] = useState("");
+
+  async function openReschedule(record: BookingRecord) {
+    setRescheduleBooking(record);
+    setSelectedRescheduleSlotId("");
+    setRescheduleSlots([]);
+    setRescheduleError("");
+
+    try {
+      const { data, error } = await supabase
+        .from("lesson_slots")
+        .select("id, starts_at, ends_at, instrument, is_available")
+        .eq("instrument", record.booking.instrument)
+        .eq("is_available", true)
+        .gte("starts_at", new Date().toISOString())
+        .order("starts_at", { ascending: true })
+        .limit(40);
+
+      if (error) throw error;
+
+      setRescheduleSlots(
+        ((data ?? []) as LessonSlot[]).filter(
+          (slot) => slot.id !== record.booking.slot_id
+        )
+      );
+    } catch (error) {
+      console.error("Load reschedule slots error:", error);
+      setRescheduleError(
+        error instanceof Error
+          ? error.message
+          : "We couldn't load available lesson slots."
+      );
+    }
+  }
+
+  function closeReschedule() {
+    if (rescheduling) return;
+    setRescheduleBooking(null);
+    setRescheduleSlots([]);
+    setSelectedRescheduleSlotId("");
+    setRescheduleError("");
+  }
+
+  async function confirmReschedule() {
+    if (!rescheduleBooking || !selectedRescheduleSlotId) return;
+
+    const oldSlotId = rescheduleBooking.booking.slot_id;
+    const newSlotId = selectedRescheduleSlotId;
+
+    if (oldSlotId === newSlotId) return;
+
+    try {
+      setRescheduling(true);
+      setRescheduleError("");
+
+      const { error: claimError } = await supabase
+        .from("lesson_slots")
+        .update({ is_available: false })
+        .eq("id", newSlotId)
+        .eq("is_available", true);
+
+      if (claimError) throw claimError;
+
+      const { error: bookingError } = await supabase
+        .from("bookings")
+        .update({
+          slot_id: newSlotId,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", rescheduleBooking.booking.id);
+
+      if (bookingError) {
+        await supabase
+          .from("lesson_slots")
+          .update({ is_available: true })
+          .eq("id", newSlotId);
+        throw bookingError;
+      }
+
+      const { error: releaseError } = await supabase
+        .from("lesson_slots")
+        .update({ is_available: true })
+        .eq("id", oldSlotId);
+
+      if (releaseError) {
+        console.error("Old slot release warning:", releaseError);
+      }
+
+      const followUpResponse = await fetch("/api/followups/process", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          bookingId: rescheduleBooking.booking.id,
+          taskType: "trial_reschedule_follow_up",
+        }),
+      });
+
+      if (!followUpResponse.ok) {
+        console.warn(
+          "Reschedule follow-up could not be queued:",
+          await followUpResponse.text()
+        );
+      }
+
+      closeReschedule();
+      setSelectedBooking(null);
+      await loadBookings(true);
+    } catch (error) {
+      console.error("Reschedule booking error:", error);
+      setRescheduleError(
+        error instanceof Error
+          ? error.message
+          : "We couldn't reschedule this booking."
+      );
+    } finally {
+      setRescheduling(false);
+    }
+  }
 
   /*
    * =========================================================
@@ -3128,7 +3260,24 @@ export default function AdminBookingsPage() {
                             </button>
                           )}
 
-                          {/* CALL */}
+                          {/* RESCHEDULE */}
+
+                        {selectedBooking.booking.status === "confirmed" &&
+                          selectedBooking.slot && (
+                            <button
+                              type="button"
+                              disabled={updatingId === selectedBooking.booking.id}
+                              onClick={() => openReschedule(selectedBooking)}
+                              className="w-full rounded-xl border border-violet-200 bg-violet-50 px-4 py-3 text-[9px] font-bold text-violet-700 disabled:opacity-50"
+                            >
+                              <span className="inline-flex items-center gap-2">
+                                <CalendarDays size={14} />
+                                Reschedule
+                              </span>
+                            </button>
+                          )}
+
+                        {/* CALL */}
 
                           {actions.canCall && (
                             <button
@@ -4169,6 +4318,104 @@ export default function AdminBookingsPage() {
 
           </div>
 
+        </div>
+      )}
+
+      {/* =====================================================
+          RESCHEDULE MODAL
+      ===================================================== */}
+
+      {rescheduleBooking && (
+        <div className="fixed inset-0 z-[130] flex items-end justify-center bg-black/40 sm:items-center sm:p-4">
+          <div className="w-full max-w-[520px] rounded-t-2xl bg-white shadow-2xl sm:rounded-2xl">
+            <div className="flex items-center justify-between border-b border-[var(--st-border)] px-4 py-3">
+              <div>
+                <p className="m-0 text-[11px] font-bold text-[var(--st-charcoal-dark)]">
+                  Reschedule lesson
+                </p>
+                <p className="mt-1 mb-0 text-[9px] text-[var(--st-gray)]">
+                  {rescheduleBooking.lead?.full_name ?? "Learner"} · {instrumentLabel(rescheduleBooking.booking.instrument)}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={closeReschedule}
+                disabled={rescheduling}
+                className="inline-flex h-7 w-7 items-center justify-center rounded-md text-[var(--st-gray)] hover:bg-[var(--st-bg-soft)] disabled:opacity-50"
+              >
+                <X size={14} />
+              </button>
+            </div>
+
+            <div className="space-y-4 p-4">
+              {rescheduleError && (
+                <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-3 text-[9px] text-red-700">
+                  {rescheduleError}
+                </div>
+              )}
+
+              <div className="rounded-xl bg-[var(--st-bg-soft)] p-3">
+                <p className="m-0 text-[8px] font-bold uppercase tracking-[0.08em] text-[var(--st-gray)]">
+                  Current lesson
+                </p>
+                <p className="mt-1 mb-0 text-[10px] font-semibold text-[var(--st-charcoal-dark)]">
+                  {rescheduleBooking.slot
+                    ? `${formatLongDate(rescheduleBooking.slot.starts_at)} · ${formatTimeRange(rescheduleBooking.slot.starts_at, rescheduleBooking.slot.ends_at)}`
+                    : "Current slot unavailable"}
+                </p>
+              </div>
+
+              <div>
+                <label className="mb-2 block text-[8px] font-bold uppercase tracking-[0.08em] text-[var(--st-gray)]">
+                  Select new available slot
+                </label>
+
+                {rescheduleSlots.length === 0 ? (
+                  <div className="rounded-xl border border-dashed border-[var(--st-border)] px-4 py-6 text-center text-[9px] text-[var(--st-gray)]">
+                    No available future slots were found for this instrument.
+                  </div>
+                ) : (
+                  <select
+                    value={selectedRescheduleSlotId}
+                    onChange={(event) => setSelectedRescheduleSlotId(event.target.value)}
+                    disabled={rescheduling}
+                    className="h-11 w-full rounded-xl border border-[var(--st-border)] bg-white px-3 text-[10px] font-semibold text-[var(--st-charcoal-dark)] outline-none focus:border-[var(--st-red)]"
+                  >
+                    <option value="">Choose a new slot...</option>
+                    {rescheduleSlots.map((slot) => (
+                      <option key={slot.id} value={slot.id}>
+                        {formatLongDate(slot.starts_at)} · {formatTimeRange(slot.starts_at, slot.ends_at)}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
+
+              <div className="flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={closeReschedule}
+                  disabled={rescheduling}
+                  className="st-button st-button-secondary"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={confirmReschedule}
+                  disabled={rescheduling || !selectedRescheduleSlotId}
+                  className="st-button st-button-primary disabled:opacity-50"
+                >
+                  {rescheduling ? (
+                    <RefreshCw size={13} className="animate-spin" />
+                  ) : (
+                    <CalendarDays size={13} />
+                  )}
+                  Confirm Reschedule
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 
