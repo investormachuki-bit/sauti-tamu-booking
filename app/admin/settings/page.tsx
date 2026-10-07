@@ -21,6 +21,7 @@ import {
   Image as ImageIcon,
   Upload,
   Trash2,
+  Download,
   Phone,
   Globe,
   Receipt,
