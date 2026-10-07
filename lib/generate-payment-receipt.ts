@@ -263,8 +263,14 @@ export async function generatePaymentReceipt(
    * =========================================================
    */
 
+  const safeStudentName =
+    data.studentName
+      .trim()
+      .replace(/[^a-zA-Z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "") || "Student";
+
   const fileName =
-    `${receiptBusinessName}-Receipt-${data.receiptNumber}.pdf`;
+    `${safeStudentName}-Receipt-${data.receiptNumber}.pdf`;
 
   /*
    * =========================================================
