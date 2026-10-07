@@ -3246,19 +3246,19 @@ export default function AdminBookingsPage() {
 
                           {/* RESCHEDULE */}
 
-                        {selectedBooking &&
-                          selectedBooking.booking.status === "confirmed" &&
-                          selectedBooking.slot && (
+                          {actions.isConfirmed && record.slot && (
                             <button
                               type="button"
-                              disabled={updatingId === selectedBooking.booking.id}
-                              onClick={() => openReschedule(selectedBooking)}
-                              className="w-full rounded-xl border border-violet-200 bg-violet-50 px-4 py-3 text-[9px] font-bold text-violet-700 disabled:opacity-50"
+                              disabled={isUpdating || rescheduling}
+                              onClick={() => openReschedule(record)}
+                              className="inline-flex h-8 w-fit shrink-0 items-center justify-center gap-1 rounded-md border border-violet-200 bg-violet-50 px-2 text-[8px] font-bold leading-none text-violet-700 transition hover:bg-violet-100 disabled:cursor-not-allowed disabled:opacity-40"
                             >
-                              <span className="inline-flex items-center gap-2">
-                                <CalendarDays size={14} />
-                                Reschedule
-                              </span>
+                              {rescheduling && rescheduleBooking?.booking.id === record.booking.id ? (
+                                <RefreshCw size={11} className="animate-spin" />
+                              ) : (
+                                <CalendarDays size={11} />
+                              )}
+                              Reschedule
                             </button>
                           )}
 
