@@ -1273,8 +1273,8 @@ export default function AdminBookingsPage() {
            */
 
           switch (filter) {
-        case "all":
-          return true;
+            case "all":
+              break;
             case "yesterday":
               if (
                 slotDateKey !==
