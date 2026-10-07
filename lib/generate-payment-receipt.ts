@@ -27,7 +27,8 @@ import {
 
 export type ReceiptAction =
   | "view"
-  | "download";
+  | "download"
+  | "email";
 
 export async function generatePaymentReceipt(
   data: PaymentReceiptData,
@@ -283,6 +284,24 @@ export async function generatePaymentReceipt(
    * Convert the PDF to a Blob and open it in a
    * new browser tab.
    */
+
+  if (action === "email") {
+    const arrayBuffer = doc.output("arraybuffer");
+    const bytes = new Uint8Array(arrayBuffer);
+    let binary = "";
+    const chunkSize = 0x8000;
+
+    for (let index = 0; index < bytes.length; index += chunkSize) {
+      binary += String.fromCharCode(
+        ...bytes.subarray(index, Math.min(index + chunkSize, bytes.length))
+      );
+    }
+
+    return {
+      fileName,
+      base64: btoa(binary),
+    };
+  }
 
   if (action === "view") {
     const blob =
