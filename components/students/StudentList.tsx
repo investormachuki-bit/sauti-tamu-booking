@@ -13,7 +13,7 @@ type Student = {
     id: string;
     full_name: string;
     photo_url?: string | null;
-    whatsapp?: string | null;
+    whatsapp_number?: string | null;
     email?: string | null;
   };
 
@@ -183,6 +183,11 @@ export default function StudentList({
                 {/* DETAILS */}
 
                 <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1">
+                  {student.student.whatsapp_number && (
+                    <span className="text-[8px] font-semibold text-[var(--st-charcoal-dark)]">
+                      {student.student.whatsapp_number}
+                    </span>
+                  )}
                   {enrollment?.instrument && (
                     <span className="text-[8px] font-semibold uppercase tracking-[0.05em] text-[var(--st-gray)]">
                       {instrumentName(
@@ -253,7 +258,7 @@ export default function StudentList({
                     event.stopPropagation()
                   }
                 >
-                  {student.student.whatsapp && (
+                  {student.student.whatsapp_number && (
                     <span
                       role="button"
                       tabIndex={0}
@@ -280,7 +285,7 @@ export default function StudentList({
                     </span>
                   )}
 
-                  {student.student.whatsapp && (
+                  {student.student.whatsapp_number && (
                     <span
                       role="button"
                       tabIndex={0}
