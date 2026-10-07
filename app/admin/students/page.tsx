@@ -1533,6 +1533,7 @@ export default function AdminStudentsPage() {
         );
 
       const {
+        data: savedPayment,
         error:
           paymentError,
       } = await supabase
@@ -1563,10 +1564,68 @@ export default function AdminStudentsPage() {
 
           notes:
             null,
-        });
+        })
+        .select("*")
+        .single();
 
       if (paymentError) {
         throw paymentError;
+      }
+
+      if (!savedPayment) {
+        throw new Error("The payment was saved but could not be reloaded for receipt generation.");
+      }
+
+      if (paymentStudent.student.email) {
+        try {
+          const savedPaymentRecord = savedPayment as Payment;
+          const receiptRecord: SelectedStudentRecord = {
+            ...paymentStudent,
+            payments: [
+              ...paymentStudent.payments,
+              savedPaymentRecord,
+            ],
+          };
+
+          const receiptData = buildReceiptData(
+            receiptRecord,
+            savedPaymentRecord
+          );
+
+          const generated = await generatePaymentReceipt(
+            receiptData,
+            "email"
+          );
+
+          if (generated && "base64" in generated) {
+            const response = await fetch(
+              "/api/payments/share-receipt",
+              {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                  ...receiptData,
+                  fileName: generated.fileName,
+                  base64: generated.base64,
+                }),
+              }
+            );
+
+            if (!response.ok) {
+              console.error(
+                "Automatic receipt sharing failed:",
+                await response.text()
+              );
+            }
+          }
+        } catch (receiptError) {
+          console.error(
+            "Automatic receipt generation/sharing failed:",
+            receiptError
+          );
+        }
       }
 
       setShowPaymentModal(false);
