@@ -11,7 +11,9 @@ import {
 type Student = {
   student: {
     id: string;
+    id: string;
     full_name: string;
+    photo_url?: string | null;
     whatsapp?: string | null;
     email?: string | null;
   };
@@ -123,23 +125,28 @@ export default function StudentList({
               {/* AVATAR */}
 
               <div
-                className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${
+                className={`flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full ${
                   isSelected
                     ? "bg-[var(--st-red)] text-white"
                     : "bg-[var(--st-bg-soft)] text-[var(--st-red)]"
                 }`}
               >
-                <span className="text-[11px] font-bold">
-                  {student.student.full_name
-                    .split(" ")
-                    .map(
-                      (name) =>
-                        name.charAt(0),
-                    )
-                    .slice(0, 2)
-                    .join("")
-                    .toUpperCase()}
-                </span>
+                {student.student.photo_url ? (
+                  <img
+                    src={student.student.photo_url}
+                    alt={student.student.full_name}
+                    className="h-full w-full object-cover"
+                  />
+                ) : (
+                  <span className="text-[11px] font-bold">
+                    {student.student.full_name
+                      .split(" ")
+                      .map((name) => name.charAt(0))
+                      .slice(0, 2)
+                      .join("")
+                      .toUpperCase()}
+                  </span>
+                )}
               </div>
 
               {/* MAIN INFORMATION */}
@@ -158,6 +165,9 @@ export default function StudentList({
                             enrollment.instrument,
                           )
                         : "No active programme"}
+                    </p>
+                    <p className="mt-1 text-[8px] font-semibold uppercase tracking-[0.06em] text-[var(--st-gray)]">
+                      Student No: ST-{student.student.id.replace(/-/g, "").slice(0, 8).toUpperCase()}
                     </p>
                   </div>
 
