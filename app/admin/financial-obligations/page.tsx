@@ -1860,18 +1860,16 @@ export default function FinancialObligationsPage() {
                           <div className="flex items-center justify-end gap-1">
                             {/* PAY OBLIGATION */}
 
-                            {obligation.outstanding_balance > 0 && (
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  openPayObligation(obligation)
-                                }
-                                className="flex h-8 items-center justify-center rounded-lg border border-emerald-200 bg-emerald-50 px-2 text-[8px] font-bold text-emerald-700 hover:bg-emerald-100"
-                                aria-label="Pay financial obligation"
-                              >
-                                Pay
-                              </button>
-                            )}
+                            <button
+                              type="button"
+                              onClick={() =>
+                                openPayObligation(obligation)
+                              }
+                              className="flex h-8 items-center justify-center rounded-lg border border-emerald-200 bg-emerald-50 px-2 text-[8px] font-bold text-emerald-700 hover:bg-emerald-100"
+                              aria-label="Pay financial obligation"
+                            >
+                              Pay
+                            </button>
 
                             {/* EDIT */}
 
@@ -1961,6 +1959,11 @@ export default function FinancialObligationsPage() {
                 <p className="mt-1 mb-0 text-[9px] text-[var(--st-gray)]">
                   {payingObligation.name} · Outstanding {formatCurrency(payingObligation.outstanding_balance)}
                 </p>
+                {payingObligation.outstanding_balance <= 0 && (
+                  <p className="mt-2 mb-0 text-[9px] font-semibold text-blue-700">
+                    This obligation has no outstanding balance. The payment form is available for review, but no payment can be recorded.
+                  </p>
+                )}
               </div>
               <button
                 type="button"
@@ -2032,7 +2035,11 @@ export default function FinancialObligationsPage() {
                 <button
                   type="button"
                   onClick={payObligation}
-                  disabled={paying || !obligationPaymentAmount}
+                  disabled={
+                    paying ||
+                    !obligationPaymentAmount ||
+                    payingObligation.outstanding_balance <= 0
+                  }
                   className="st-button st-button-primary disabled:opacity-50"
                 >
                   {paying ? (
