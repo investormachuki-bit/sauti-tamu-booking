@@ -95,6 +95,14 @@ type BookingSettings = {
   updated_at?: string;
 };
 
+type DocumentItem = {
+  name: string;
+  path: string;
+  size: number;
+  createdAt: string | null;
+  signedUrl: string | null;
+};
+
 type BusinessSettings = {
   id: boolean;
 
@@ -607,6 +615,18 @@ export default function SettingsPage() {
   const [stampPreview, setStampPreview] =
     useState<string | null>(null);
 
+  const [documents, setDocuments] =
+    useState<DocumentItem[]>([]);
+
+  const [loadingDocuments, setLoadingDocuments] =
+    useState(false);
+
+  const [uploadingDocument, setUploadingDocument] =
+    useState(false);
+
+  const [deletingDocument, setDeletingDocument] =
+    useState<string | null>(null);
+
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
@@ -683,6 +703,8 @@ export default function SettingsPage() {
           businessResult.data.logo_url,
           businessResult.data.stamp_url
         );
+
+        await loadDocuments();
       }
     } catch (err) {
       console.error(err);
@@ -700,6 +722,129 @@ export default function SettingsPage() {
   /* =======================================================
      ASSETS
   ======================================================= */
+
+  async function loadDocuments() {
+    setLoadingDocuments(true);
+
+    try {
+      const { data, error } = await supabase.storage
+        .from("business-assets")
+        .list("documents", {
+          limit: 100,
+          sortBy: { column: "created_at", order: "desc" },
+        });
+
+      if (error) throw error;
+
+      const items = await Promise.all(
+        (data ?? [])
+          .filter((item) => item.name)
+          .map(async (item) => {
+            const path = `documents/${item.name}`;
+            const signed = await getSignedAssetUrl(path);
+            return {
+              name: item.name,
+              path,
+              size: item.metadata?.size ?? 0,
+              createdAt: item.created_at ?? null,
+              signedUrl: signed,
+            };
+          })
+      );
+
+      setDocuments(items);
+    } catch (error) {
+      console.error("Load documents error:", error);
+      setDocuments([]);
+    } finally {
+      setLoadingDocuments(false);
+    }
+  }
+
+  async function uploadDocument(file: File) {
+    if (!file) return;
+
+    setUploadingDocument(true);
+    setMessage("");
+    setError("");
+
+    try {
+      if (file.size > 25 * 1024 * 1024) {
+        throw new Error("Document must be smaller than 25 MB.");
+      }
+
+      const allowedTypes = [
+        "application/pdf",
+        "application/msword",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "application/vnd.ms-excel",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "application/vnd.ms-powerpoint",
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        "text/plain",
+      ];
+
+      if (!allowedTypes.includes(file.type)) {
+        throw new Error("Please upload a PDF, Word, Excel, PowerPoint or text document.");
+      }
+
+      const extension = getFileExtension(file);
+      const safeName = file.name
+        .replace(/[^a-zA-Z0-9._-]+/g, "-")
+        .replace(/-+/g, "-");
+
+      const path = `documents/${Date.now()}-${safeName || `document.${extension}`}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from("business-assets")
+        .upload(path, file, {
+          cacheControl: "3600",
+          upsert: false,
+          contentType: file.type,
+        });
+
+      if (uploadError) throw uploadError;
+
+      setMessage("Document uploaded successfully.");
+      await loadDocuments();
+    } catch (error) {
+      console.error("Upload document error:", error);
+      setError(
+        error instanceof Error
+          ? error.message
+          : "We couldn't upload the document."
+      );
+    } finally {
+      setUploadingDocument(false);
+    }
+  }
+
+  async function deleteDocument(document: DocumentItem) {
+    if (!window.confirm(`Delete "${document.name}"?`)) return;
+
+    try {
+      setDeletingDocument(document.path);
+      setError("");
+
+      const { error } = await supabase.storage
+        .from("business-assets")
+        .remove([document.path]);
+
+      if (error) throw error;
+
+      await loadDocuments();
+      setMessage("Document deleted.");
+    } catch (error) {
+      console.error("Delete document error:", error);
+      setError(
+        error instanceof Error
+          ? error.message
+          : "We couldn't delete the document."
+      );
+    } finally {
+      setDeletingDocument(null);
+    }
+  }
 
   async function getSignedAssetUrl(
     path: string | null
@@ -3217,6 +3362,122 @@ export default function SettingsPage() {
           </div>
         </Section>
 
+      </div>
+
+      {/* ===================================================
+          DOCUMENTS PORTAL
+      =================================================== */}
+
+      <div className="mt-5">
+        <Section
+          icon={FileText}
+          eyebrow="DOCUMENTS"
+          title="Documents Portal"
+          description="Upload internal documents and keep them available for viewing and download."
+        >
+          <div className="p-5 sm:p-6">
+            <div className="flex flex-col gap-3 rounded-xl border border-dashed border-[#ddd] bg-[#faf8f8] p-4 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="m-0 text-[10px] font-bold text-[#292929]">
+                  Upload a document
+                </p>
+                <p className="mt-1 mb-0 text-[9px] text-[#999]">
+                  PDF, Word, Excel, PowerPoint or text · maximum 25 MB
+                </p>
+              </div>
+
+              <label className="inline-flex h-10 cursor-pointer items-center justify-center gap-2 rounded-xl bg-[#c91f2b] px-4 text-[9px] font-bold text-white hover:opacity-90">
+                {uploadingDocument ? (
+                  <Loader2 size={13} className="animate-spin" />
+                ) : (
+                  <Upload size={13} />
+                )}
+                {uploadingDocument ? "Uploading..." : "Upload Document"}
+                <input
+                  type="file"
+                  className="hidden"
+                  disabled={uploadingDocument}
+                  accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    event.target.value = "";
+                    if (file) uploadDocument(file);
+                  }}
+                />
+              </label>
+            </div>
+
+            <div className="mt-5">
+              {loadingDocuments ? (
+                <div className="flex items-center gap-2 py-6 text-[9px] text-[#999]">
+                  <Loader2 size={13} className="animate-spin" />
+                  Loading documents...
+                </div>
+              ) : documents.length === 0 ? (
+                <div className="rounded-xl border border-dashed border-[#ddd] px-4 py-8 text-center text-[9px] text-[#999]">
+                  No documents uploaded yet.
+                </div>
+              ) : (
+                <div className="divide-y divide-[#eeeaea] rounded-xl border border-[#eeeaea]">
+                  {documents.map((document) => (
+                    <div
+                      key={document.path}
+                      className="flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between"
+                    >
+                      <div className="min-w-0">
+                        <p className="m-0 truncate text-[10px] font-semibold text-[#292929]">
+                          {document.name}
+                        </p>
+                        <p className="mt-1 mb-0 text-[8px] text-[#999]">
+                          {document.size
+                            ? `${Math.ceil(document.size / 1024)} KB`
+                            : "Document"}
+                        </p>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        {document.signedUrl && (
+                          <>
+                            <a
+                              href={document.signedUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-[#ddd] px-3 text-[8px] font-bold text-[#555] hover:bg-[#faf8f8]"
+                            >
+                              <ExternalLink size={12} />
+                              View
+                            </a>
+                            <a
+                              href={document.signedUrl}
+                              download={document.name}
+                              className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-[#242424] px-3 text-[8px] font-bold text-white hover:opacity-90"
+                            >
+                              <Download size={12} />
+                              Download
+                            </a>
+                          </>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => deleteDocument(document)}
+                          disabled={deletingDocument === document.path}
+                          className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-red-200 px-3 text-[8px] font-bold text-red-600 hover:bg-red-50 disabled:opacity-50"
+                        >
+                          {deletingDocument === document.path ? (
+                            <Loader2 size={12} className="animate-spin" />
+                          ) : (
+                            <Trash2 size={12} />
+                          )}
+                          Delete
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </Section>
       </div>
 
       {/* ===================================================
