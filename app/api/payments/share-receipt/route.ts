@@ -40,6 +40,7 @@ export async function POST(request: Request) {
     }
 
     const from =
+      process.env.RESEND_FROM_EMAIL ||
       process.env.RESEND_FROM ||
       "Sauti Tamu Piano Center <onboarding@resend.dev>";
 
