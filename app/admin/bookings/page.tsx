@@ -3246,7 +3246,8 @@ export default function AdminBookingsPage() {
 
                           {/* RESCHEDULE */}
 
-                        {selectedBooking.booking.status === "confirmed" &&
+                        {selectedBooking &&
+                          selectedBooking.booking.status === "confirmed" &&
                           selectedBooking.slot && (
                             <button
                               type="button"
