@@ -42,6 +42,13 @@ type Obligation = {
   updated_at: string;
 };
 
+type PaymentMethod =
+  | "mpesa"
+  | "cash"
+  | "bank"
+  | "card"
+  | "other";
+
 type ObligationForm = {
   name: string;
   category: string;
@@ -672,6 +679,21 @@ export default function FinancialObligationsPage() {
     setStatusFilter,
   ] = useState("active");
 
+  const [payingObligation, setPayingObligation] =
+    useState<Obligation | null>(null);
+
+  const [obligationPaymentAmount, setObligationPaymentAmount] =
+    useState("");
+
+  const [obligationPaymentMethod, setObligationPaymentMethod] =
+    useState<PaymentMethod>("mpesa");
+
+  const [obligationPaymentReference, setObligationPaymentReference] =
+    useState("");
+
+  const [paying, setPaying] =
+    useState(false);
+
   /* ===================================================
      LOAD
   =================================================== */
@@ -900,6 +922,106 @@ export default function FinancialObligationsPage() {
     setEditingObligation(null);
     setForm(emptyForm());
     setShowModal(true);
+  }
+
+  function openPayObligation(obligation: Obligation) {
+    setActionError("");
+    setPayingObligation(obligation);
+    setObligationPaymentAmount("");
+    setObligationPaymentMethod("mpesa");
+    setObligationPaymentReference("");
+  }
+
+  function closePayObligation() {
+    if (paying) return;
+    setPayingObligation(null);
+    setObligationPaymentAmount("");
+    setObligationPaymentReference("");
+  }
+
+  async function payObligation() {
+    if (!payingObligation) return;
+
+    try {
+      setPaying(true);
+      setActionError("");
+
+      const paymentAmount = Number(obligationPaymentAmount);
+
+      if (!Number.isFinite(paymentAmount) || paymentAmount <= 0) {
+        throw new Error("Please enter a valid payment amount.");
+      }
+
+      if (paymentAmount > payingObligation.outstanding_balance) {
+        throw new Error("Payment cannot exceed the outstanding obligation balance.");
+      }
+
+      const newBalance = Math.max(
+        payingObligation.outstanding_balance - paymentAmount,
+        0
+      );
+
+      const now = new Date().toISOString();
+
+      const { data: updatedRows, error: updateError } = await supabase
+        .from("financial_obligations")
+        .update({
+          outstanding_balance: newBalance,
+          status: newBalance === 0 ? "completed" : payingObligation.status,
+          updated_at: now,
+        })
+        .eq("id", payingObligation.id)
+        .select("*");
+
+      if (updateError) throw updateError;
+      if (!updatedRows || updatedRows.length === 0) {
+        throw new Error("The obligation balance could not be updated.");
+      }
+
+      const { error: expenseError } = await supabase
+        .from("expenses")
+        .insert({
+          expense_date: getTodayKey(),
+          category: "Financial Obligations",
+          description: `Payment — ${payingObligation.name}`,
+          amount: paymentAmount,
+          payment_method: obligationPaymentMethod,
+          reference: obligationPaymentReference.trim() || null,
+          vendor: payingObligation.name,
+          notes: "Automatically created from Financial Obligations payment.",
+          created_at: now,
+          updated_at: now,
+        });
+
+      if (expenseError) {
+        await supabase
+          .from("financial_obligations")
+          .update({
+            outstanding_balance: payingObligation.outstanding_balance,
+            status: payingObligation.status,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", payingObligation.id);
+
+        throw new Error(
+          `The obligation was not marked as paid because the corresponding expense could not be created: ${expenseError.message}`
+        );
+      }
+
+      setPayingObligation(null);
+      setObligationPaymentAmount("");
+      setObligationPaymentReference("");
+      await loadObligations(true);
+    } catch (err) {
+      console.error("Pay obligation error:", err);
+      setActionError(
+        err instanceof Error
+          ? err.message
+          : "We couldn't record the obligation payment."
+      );
+    } finally {
+      setPaying(false);
+    }
   }
 
   function openEditObligation(
@@ -1736,6 +1858,21 @@ export default function FinancialObligationsPage() {
 
                         <td className="px-3 py-4">
                           <div className="flex items-center justify-end gap-1">
+                            {/* PAY OBLIGATION */}
+
+                            {obligation.outstanding_balance > 0 && (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  openPayObligation(obligation)
+                                }
+                                className="flex h-8 items-center justify-center rounded-lg border border-emerald-200 bg-emerald-50 px-2 text-[8px] font-bold text-emerald-700 hover:bg-emerald-100"
+                                aria-label="Pay financial obligation"
+                              >
+                                Pay
+                              </button>
+                            )}
+
                             {/* EDIT */}
 
                             <button
@@ -1809,6 +1946,107 @@ export default function FinancialObligationsPage() {
           saveObligation
         }
       />
+
+      {payingObligation && (
+        <div className="fixed inset-0 z-[160] flex items-center justify-center bg-black/40 px-4 py-6">
+          <div className="w-full max-w-lg overflow-hidden rounded-2xl border border-[var(--st-border)] bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-[var(--st-border)] px-5 py-4">
+              <div>
+                <p className="m-0 text-[9px] font-bold uppercase tracking-[0.12em] text-[var(--st-gray)]">
+                  Financial Obligations
+                </p>
+                <h2 className="mt-1 mb-0 text-[18px] font-bold text-[var(--st-charcoal-dark)]">
+                  Pay Obligation
+                </h2>
+                <p className="mt-1 mb-0 text-[9px] text-[var(--st-gray)]">
+                  {payingObligation.name} · Outstanding {formatCurrency(payingObligation.outstanding_balance)}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={closePayObligation}
+                disabled={paying}
+                className="flex h-8 w-8 items-center justify-center rounded-lg text-[var(--st-gray)] hover:bg-[var(--st-bg-soft)] disabled:opacity-50"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="space-y-4 px-5 py-5">
+              <label>
+                <span className="block text-[9px] font-bold uppercase tracking-[0.08em] text-[var(--st-gray)]">
+                  Payment Amount (KES)
+                </span>
+                <input
+                  type="number"
+                  min="0"
+                  max={payingObligation.outstanding_balance}
+                  step="0.01"
+                  value={obligationPaymentAmount}
+                  onChange={(event) => setObligationPaymentAmount(event.target.value)}
+                  className="mt-2 h-10 w-full rounded-xl border border-[var(--st-border)] px-3 text-[11px] outline-none focus:border-[var(--st-red)]"
+                />
+              </label>
+
+              <label>
+                <span className="block text-[9px] font-bold uppercase tracking-[0.08em] text-[var(--st-gray)]">
+                  Payment Method
+                </span>
+                <select
+                  value={obligationPaymentMethod}
+                  onChange={(event) =>
+                    setObligationPaymentMethod(event.target.value as PaymentMethod)
+                  }
+                  className="mt-2 h-10 w-full rounded-xl border border-[var(--st-border)] bg-white px-3 text-[11px] outline-none focus:border-[var(--st-red)]"
+                >
+                  <option value="mpesa">M-Pesa</option>
+                  <option value="cash">Cash</option>
+                  <option value="bank">Bank</option>
+                  <option value="card">Card</option>
+                  <option value="other">Other</option>
+                </select>
+              </label>
+
+              <label>
+                <span className="block text-[9px] font-bold uppercase tracking-[0.08em] text-[var(--st-gray)]">
+                  Reference
+                </span>
+                <input
+                  type="text"
+                  value={obligationPaymentReference}
+                  onChange={(event) => setObligationPaymentReference(event.target.value)}
+                  placeholder="Transaction / receipt reference"
+                  className="mt-2 h-10 w-full rounded-xl border border-[var(--st-border)] px-3 text-[11px] outline-none focus:border-[var(--st-red)]"
+                />
+              </label>
+
+              <div className="flex justify-end gap-2 border-t border-[var(--st-border)] pt-4">
+                <button
+                  type="button"
+                  onClick={closePayObligation}
+                  disabled={paying}
+                  className="st-button st-button-secondary"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={payObligation}
+                  disabled={paying || !obligationPaymentAmount}
+                  className="st-button st-button-primary disabled:opacity-50"
+                >
+                  {paying ? (
+                    <Loader2 size={14} className="animate-spin" />
+                  ) : (
+                    <Check size={14} />
+                  )}
+                  Record Payment
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
