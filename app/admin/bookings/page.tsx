@@ -738,22 +738,6 @@ export default function AdminBookingsPage() {
         console.error("Old slot release warning:", releaseError);
       }
 
-      const followUpResponse = await fetch("/api/followups/process", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          bookingId: rescheduleBooking.booking.id,
-          taskType: "trial_reschedule_follow_up",
-        }),
-      });
-
-      if (!followUpResponse.ok) {
-        console.warn(
-          "Reschedule follow-up could not be queued:",
-          await followUpResponse.text()
-        );
-      }
-
       closeReschedule();
       setSelectedBooking(null);
       await loadBookings(true);
