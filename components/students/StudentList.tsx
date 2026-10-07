@@ -11,7 +11,6 @@ import {
 type Student = {
   student: {
     id: string;
-    id: string;
     full_name: string;
     photo_url?: string | null;
     whatsapp?: string | null;
