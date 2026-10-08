@@ -1020,6 +1020,7 @@ export default function AdminStudentsPage() {
         numericInitialPayment > 0
       ) {
         const {
+          data: initialPaymentRecord,
           error:
             paymentError,
         } = await supabase
@@ -1049,10 +1050,45 @@ export default function AdminStudentsPage() {
 
             notes:
               "Initial payment at student registration.",
-          });
+          })
+          .select("*")
+          .single();
 
         if (paymentError) {
           throw paymentError;
+        }
+
+        if (!initialPaymentRecord) {
+          throw new Error(
+            "Initial payment was saved but could not be reloaded for receipt generation."
+          );
+        }
+
+        if (student.email) {
+          try {
+            const paymentRecord =
+              initialPaymentRecord as Payment;
+
+            const receiptRecord:
+              SelectedStudentRecord = {
+              student: student as SelectedStudentRecord["student"],
+              enrollment:
+                enrollment as SelectedStudentRecord["enrollment"],
+              payments: [
+                paymentRecord,
+              ],
+            };
+
+            await sendReceiptEmail(
+              receiptRecord,
+              paymentRecord
+            );
+          } catch (receiptError) {
+            console.error(
+              "Automatic initial receipt sharing failed:",
+              receiptError
+            );
+          }
         }
       }
 
