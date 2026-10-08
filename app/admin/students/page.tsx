@@ -1587,39 +1587,10 @@ export default function AdminStudentsPage() {
             ],
           };
 
-          const receiptData = buildReceiptData(
+          await sendReceiptEmail(
             receiptRecord,
             savedPaymentRecord
           );
-
-          const generated = await generatePaymentReceipt(
-            receiptData,
-            "email"
-          );
-
-          if (generated && "base64" in generated) {
-            const response = await fetch(
-              "/api/payments/share-receipt",
-              {
-                method: "POST",
-                headers: {
-                  "Content-Type": "application/json",
-                },
-                body: JSON.stringify({
-                  ...receiptData,
-                  fileName: generated.fileName,
-                  base64: generated.base64,
-                }),
-              }
-            );
-
-            if (!response.ok) {
-              console.error(
-                "Automatic receipt sharing failed:",
-                await response.text()
-              );
-            }
-          }
         } catch (receiptError) {
           console.error(
             "Automatic receipt generation/sharing failed:",
@@ -1859,66 +1830,123 @@ export default function AdminStudentsPage() {
     }
   }
 
-  function emailReceipt(
+  async function sendReceiptEmail(
     record: SelectedStudentRecord,
     payment: Payment
   ) {
-    if (
-      !record.student.email
-    ) {
+    if (!record.student.email) {
+      throw new Error(
+        "This student does not have an email address."
+      );
+    }
+
+    const receiptData = buildReceiptData(
+      record,
+      payment
+    );
+
+    const generated = await generatePaymentReceipt(
+      receiptData,
+      "email"
+    );
+
+    if (!generated || !("base64" in generated)) {
+      throw new Error(
+        "The receipt PDF could not be generated."
+      );
+    }
+
+    const { supabase } = await import(
+      "../../../lib/supabase"
+    );
+
+    const {
+      data: sessionData,
+      error: sessionError,
+    } = await supabase.auth.getSession();
+
+    if (sessionError) {
+      throw sessionError;
+    }
+
+    const accessToken =
+      sessionData.session?.access_token;
+
+    if (!accessToken) {
+      throw new Error(
+        "Your admin session has expired. Please sign in again."
+      );
+    }
+
+    const response = await fetch(
+      "/api/payments/share-receipt",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({
+          ...receiptData,
+          studentId:
+            record.student.id,
+          paymentId:
+            payment.id,
+          fileName:
+            generated.fileName,
+          base64:
+            generated.base64,
+        }),
+      }
+    );
+
+    const result =
+      await response.json().catch(
+        () => ({})
+      );
+
+    if (!response.ok || !result.success) {
+      throw new Error(
+        result.error ||
+        "The receipt email could not be sent."
+      );
+    }
+
+    return result;
+  }
+
+  async function emailReceipt(
+    record: SelectedStudentRecord,
+    payment: Payment
+  ) {
+    if (!record.student.email) {
       alert(
         "This student does not have an email address."
       );
-
       return;
     }
 
-    const receiptData =
-      buildReceiptData(
+    try {
+      await sendReceiptEmail(
         record,
         payment
       );
 
-    const subject =
-      encodeURIComponent(
-        `Sauti Tamu Payment Receipt ${receiptData.receiptNumber}`
+      alert(
+        `Receipt emailed successfully to ${record.student.email}.`
+      );
+    } catch (error) {
+      console.error(
+        "Manual receipt email error:",
+        error
       );
 
-    const body =
-      encodeURIComponent(
-        [
-          `Dear ${record.student.full_name},`,
-          "",
-          "Thank you for your payment to Sauti Tamu Music School.",
-          "",
-          `Receipt No: ${receiptData.receiptNumber}`,
-          `Amount received: ${formatCurrency(
-            receiptData.amountPaid
-          )}`,
-          `Payment date: ${formatDate(
-            receiptData.paymentDate
-          )}`,
-          `Payment method: ${receiptData.paymentMethod}`,
-          `Reference: ${
-            receiptData.reference ||
-            "—"
-          }`,
-          "",
-          `Programme: ${receiptData.programmeName}`,
-          `Programme fee: ${formatCurrency(
-            receiptData.programmeAmount
-          )}`,
-          `Balance after payment: ${formatCurrency(
-            receiptData.balanceAfterPayment
-          )}`,
-          "",
-          "Sauti Tamu Music School",
-        ].join("\n")
+      alert(
+        error instanceof Error
+          ? error.message
+          : "The receipt email could not be sent."
       );
-
-    window.location.href =
-      `mailto:${record.student.email}` +
-      `?subject=${subject}&body=${body}`;
+    }
   }
 
   /* ===================================================
