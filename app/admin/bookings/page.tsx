@@ -31,6 +31,7 @@ import RegistrationModal, {
 } from "../../../components/students/RegistrationModal";
 
 import { supabase } from "@/lib/supabase";
+import generatePaymentReceipt from "../../../lib/generate-payment-receipt";
 
 /*
  * =========================================================
@@ -2265,6 +2266,123 @@ export default function AdminBookingsPage() {
 
   /*
    * =========================================================
+   * INITIAL PAYMENT RECEIPT
+   * =========================================================
+   */
+
+  async function sendAutomaticBookingReceipt(
+    record: BookingRecord,
+    values: RegistrationFormValues
+  ) {
+    const initialAmount = Number(values.initialPayment) || 0;
+    if (initialAmount <= 0) return;
+
+    const studentId =
+      record.student?.id ??
+      (
+        await supabase
+          .from("students")
+          .select("id")
+          .eq("lead_id", record.booking.lead_id)
+          .maybeSingle()
+      ).data?.id;
+
+    if (!studentId) {
+      throw new Error("Student record could not be found for the initial payment receipt.");
+    }
+
+    const { data: student, error: studentError } = await supabase
+      .from("students")
+      .select("id, full_name, email, whatsapp_number")
+      .eq("id", studentId)
+      .single();
+    if (studentError) throw studentError;
+    if (!student?.email) return;
+
+    const { data: enrollment, error: enrollmentError } = await supabase
+      .from("student_enrollments")
+      .select("id, student_id, instrument, programme_name, start_date, end_date, total_fee, status")
+      .eq("student_id", studentId)
+      .eq("instrument", record.booking.instrument)
+      .in("status", ["active", "registered", "paused"])
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (enrollmentError) throw enrollmentError;
+    if (!enrollment) throw new Error("Enrollment could not be found for the initial payment receipt.");
+
+    const { data: payments, error: paymentsError } = await supabase
+      .from("payments")
+      .select("id, student_id, enrollment_id, amount, payment_date, payment_method, reference")
+      .eq("student_id", studentId)
+      .eq("enrollment_id", enrollment.id)
+      .order("payment_date", { ascending: true });
+    if (paymentsError) throw paymentsError;
+
+    const latestPayment = (payments ?? []).slice().sort(
+      (a, b) => new Date(b.payment_date).getTime() - new Date(a.payment_date).getTime()
+    )[0];
+    if (!latestPayment || Number(latestPayment.amount) !== initialAmount) {
+      throw new Error("The initial payment was saved but could not be identified for receipt generation.");
+    }
+
+    const totalFee = Number(enrollment.total_fee || values.totalFee || 0);
+    const totalPaid = (payments ?? []).reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
+    const receiptData = {
+      receiptNumber: "ST-" + new Date(latestPayment.payment_date).getFullYear() + "-" + latestPayment.id.replace(/-/g, "").slice(0, 8).toUpperCase(),
+      studentName: student.full_name,
+      studentEmail: student.email,
+      studentPhone: student.whatsapp_number || "",
+      programmeName: enrollment.programme_name || values.programmeName || "Music Training",
+      instrument: enrollment.instrument || record.booking.instrument,
+      programmeAmount: totalFee,
+      paymentHistory: (payments ?? []).map((payment) => ({
+        label: "Payment " + payment.payment_date,
+        amount: Number(payment.amount || 0),
+        date: payment.payment_date,
+        method: payment.payment_method,
+        reference: payment.reference,
+      })),
+      previousBalance: Math.max(0, totalFee - totalPaid + Number(latestPayment.amount || 0)),
+      amountPaid: Number(latestPayment.amount || 0),
+      balanceAfterPayment: Math.max(0, totalFee - totalPaid),
+      paymentMethod: latestPayment.payment_method,
+      paymentDate: latestPayment.payment_date,
+      reference: latestPayment.reference,
+    };
+
+    const generated = await generatePaymentReceipt(receiptData, "email");
+    if (!generated || !("base64" in generated)) {
+      throw new Error("The initial payment receipt PDF could not be generated.");
+    }
+
+    const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+    if (sessionError) throw sessionError;
+    const accessToken = sessionData.session?.access_token;
+    if (!accessToken) throw new Error("Your admin session has expired. Please sign in again.");
+
+    const response = await fetch("/api/payments/share-receipt", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: "Bearer " + accessToken,
+      },
+      body: JSON.stringify({
+        ...receiptData,
+        studentId,
+        paymentId: latestPayment.id,
+        fileName: generated.fileName,
+        base64: generated.base64,
+      }),
+    });
+
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok || !result.success) {
+      throw new Error(result.error || "The initial payment receipt email could not be sent.");
+    }
+  }
+  /*
+   * =========================================================
    * OPEN REGISTRATION MODAL
    * =========================================================
    */
@@ -2416,6 +2534,18 @@ export default function AdminBookingsPage() {
         "register_booking_student:",
         data
       );
+
+      try {
+        await sendAutomaticBookingReceipt(
+          record,
+          values
+        );
+      } catch (receiptError) {
+        console.error(
+          "Automatic REGISTER receipt sharing failed:",
+          receiptError
+        );
+      }
 
       setRegistrationModalOpen(
         false
@@ -2647,6 +2777,18 @@ export default function AdminBookingsPage() {
         "book_booking_student:",
         data
       );
+
+      try {
+        await sendAutomaticBookingReceipt(
+          record,
+          values
+        );
+      } catch (receiptError) {
+        console.error(
+          "Automatic BOOK receipt sharing failed:",
+          receiptError
+        );
+      }
 
       setRegistrationModalOpen(
         false
