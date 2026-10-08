@@ -1071,9 +1071,9 @@ export default function AdminStudentsPage() {
 
             const receiptRecord:
               SelectedStudentRecord = {
-              student: student as SelectedStudentRecord["student"],
+              student: student as unknown as SelectedStudentRecord["student"],
               enrollment:
-                enrollment as SelectedStudentRecord["enrollment"],
+                enrollment as unknown as SelectedStudentRecord["enrollment"],
               payments: [
                 paymentRecord,
               ],
