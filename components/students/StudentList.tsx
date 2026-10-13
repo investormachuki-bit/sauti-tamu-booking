@@ -1,7 +1,11 @@
 "use client";
 
+import { useState } from "react";
+
 import {
   ChevronRight,
+  Copy,
+  Check,
   Mail,
   MessageCircle,
   Phone,
@@ -73,6 +77,20 @@ export default function StudentList({
   callStudent,
   emailStudent,
 }: StudentListProps) {
+  const [copiedStudentNumber, setCopiedStudentNumber] = useState<string | null>(null);
+
+  async function copyStudentNumber(event: React.MouseEvent<HTMLElement>, studentId: string) {
+    event.stopPropagation();
+    const number = "ST-" + studentId.replace(/-/g, "").slice(0, 8).toUpperCase();
+    try {
+      await navigator.clipboard.writeText(number);
+      setCopiedStudentNumber(studentId);
+      window.setTimeout(() => setCopiedStudentNumber((current) => current === studentId ? null : current), 1800);
+    } catch {
+      setCopiedStudentNumber(null);
+    }
+  }
+
   if (students.length === 0) {
     return (
       <div className="rounded-2xl border border-dashed border-[var(--st-border)] bg-white p-8 text-center">
@@ -153,11 +171,11 @@ export default function StudentList({
               <div className="min-w-0 flex-1">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <p className="m-0 truncate text-[12px] font-bold text-[var(--st-charcoal-dark)]">
+                    <p className="m-0 truncate text-[15px] font-bold text-[var(--st-charcoal-dark)]">
                       {student.student.full_name}
                     </p>
 
-                    <p className="mt-1 truncate text-[9px] text-[var(--st-gray)]">
+                    <p className="mt-1 truncate text-[12px] text-[var(--st-gray)]">
                       {enrollment
                         ? enrollment.programme_name ||
                           instrumentName(
@@ -165,8 +183,28 @@ export default function StudentList({
                           )
                         : "No active programme"}
                     </p>
-                    <p className="mt-1 text-[8px] font-semibold uppercase tracking-[0.06em] text-[var(--st-gray)]">
-                      Student No: ST-{student.student.id.replace(/-/g, "").slice(0, 8).toUpperCase()}
+                    <p className="mt-2 flex flex-wrap items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.04em] text-[var(--st-gray)]">
+                      <span>
+                        Student No: ST-{student.student.id.replace(/-/g, "").slice(0, 8).toUpperCase()}
+                      </span>
+                      <span
+                        role="button"
+                        tabIndex={0}
+                        onClick={(event) => copyStudentNumber(event, student.student.id)}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter" || event.key === " ") {
+                            event.preventDefault();
+                            event.stopPropagation();
+                            void copyStudentNumber(event as unknown as React.MouseEvent<HTMLElement>, student.student.id);
+                          }
+                        }}
+                        className="inline-flex cursor-pointer items-center gap-1 rounded-md border border-[var(--st-border)] px-2 py-1 text-[10px] font-semibold normal-case text-[var(--st-charcoal-dark)] hover:bg-white"
+                        title="Copy student number"
+                        aria-label="Copy student number"
+                      >
+                        {copiedStudentNumber === student.student.id ? <Check size={12} /> : <Copy size={12} />}
+                        {copiedStudentNumber === student.student.id ? "Copied" : "Copy"}
+                      </span>
                     </p>
                   </div>
 
@@ -184,12 +222,12 @@ export default function StudentList({
 
                 <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1">
                   {student.student.whatsapp_number && (
-                    <span className="text-[8px] font-semibold text-[var(--st-charcoal-dark)]">
+                    <span className="text-[11px] font-semibold text-[var(--st-charcoal-dark)]">
                       {student.student.whatsapp_number}
                     </span>
                   )}
                   {enrollment?.instrument && (
-                    <span className="text-[8px] font-semibold uppercase tracking-[0.05em] text-[var(--st-gray)]">
+                    <span className="text-[10px] font-semibold uppercase tracking-[0.05em] text-[var(--st-gray)]">
                       {instrumentName(
                         enrollment.instrument,
                       )}
@@ -197,7 +235,7 @@ export default function StudentList({
                   )}
 
                   {enrollment?.start_date && (
-                    <span className="text-[8px] text-[var(--st-gray)]">
+                    <span className="text-[10px] text-[var(--st-gray)]">
                       Started{" "}
                       {formatDate(
                         enrollment.start_date,
@@ -221,7 +259,7 @@ export default function StudentList({
                       </p>
 
                       <p
-                        className={`mt-1 mb-0 text-[11px] font-bold ${
+                        className={`mt-1 mb-0 text-[13px] font-bold ${
                           balance > 0
                             ? "text-[var(--st-red)]"
                             : "text-green-700"
@@ -238,7 +276,7 @@ export default function StudentList({
                         Programme fee
                       </p>
 
-                      <p className="mt-1 mb-0 text-[10px] font-semibold text-[var(--st-charcoal-dark)]">
+                      <p className="mt-1 mb-0 text-[12px] font-semibold text-[var(--st-charcoal-dark)]">
                         {formatCurrency(
                           Number(
                             enrollment.total_fee ||
