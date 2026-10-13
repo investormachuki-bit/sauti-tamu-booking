@@ -61,6 +61,13 @@ export interface SelectedStudent {
 interface StudentDetailsProps {
   selectedStudent: SelectedStudent;
 
+  nextPayment: {
+    amount_due: number | string;
+    due_date: string;
+    follow_up_date: string | null;
+    notes: string | null;
+  } | null;
+
   onClose: () => void;
 
   onEditStudent: (
@@ -155,6 +162,7 @@ function getInitials(
 
 export default function StudentDetails({
   selectedStudent,
+  nextPayment,
   onClose,
   onEditStudent,
   onWhatsApp,
@@ -621,6 +629,48 @@ export default function StudentDetails({
 
             </div>
 
+          </div>
+
+          {/* =================================================
+              NEXT PAYMENT
+          ================================================= */}
+
+          <div className="mt-6">
+            <div className="flex items-center justify-between">
+              <p className="st-eyebrow">NEXT PAYMENT</p>
+              <button
+                type="button"
+                onClick={() => onEditStudent(selectedStudent)}
+                className="flex items-center gap-1 text-[9px] font-bold text-[var(--st-red)]"
+              >
+                <Edit3 size={12} />
+                Edit
+              </button>
+            </div>
+            <div className="mt-3 rounded-xl border border-[var(--st-border)] p-3">
+              {nextPayment ? (
+                <>
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="m-0 text-[8px] text-[var(--st-gray)]">Due date</p>
+                      <p className="mb-0 mt-1 text-[11px] font-bold text-[var(--st-charcoal-dark)]">{formatDate(nextPayment.due_date)}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="m-0 text-[8px] text-[var(--st-gray)]">Scheduled amount</p>
+                      <p className="mb-0 mt-1 text-[11px] font-bold text-[var(--st-charcoal-dark)]">{formatCurrency(Number(nextPayment.amount_due || 0))}</p>
+                    </div>
+                  </div>
+                  {nextPayment.follow_up_date && (
+                    <p className="mb-0 mt-2 text-[9px] text-[var(--st-gray)]">Follow-up: {formatDate(nextPayment.follow_up_date)}</p>
+                  )}
+                  {nextPayment.notes && (
+                    <p className="mb-0 mt-2 whitespace-pre-wrap text-[9px] text-[var(--st-gray)]">{nextPayment.notes}</p>
+                  )}
+                </>
+              ) : (
+                <p className="m-0 text-[10px] text-[var(--st-gray)]">There is no recorded next payment date.</p>
+              )}
+            </div>
           </div>
 
           {/* =================================================
