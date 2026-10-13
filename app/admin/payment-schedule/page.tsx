@@ -231,6 +231,13 @@ export default function PaymentSchedulePage() {
                       <p className="m-0 flex items-center gap-2 break-all"><MessageCircle size={13} className="shrink-0" /> {student.whatsapp_number || "WhatsApp number not recorded"}</p>
                       <p className="m-0 flex items-center gap-2 break-all"><Mail size={13} className="shrink-0" /> {student.email || "Email not recorded"}</p>
                     </div>
+                    {(student.notes || enrollment.notes) && (
+                      <div className="mt-3 rounded-xl border border-[var(--st-border)] px-3 py-2">
+                        <p className="m-0 text-[10px] font-bold uppercase tracking-wide text-[var(--st-gray)]">Notes</p>
+                        {student.notes && <p className="mb-0 mt-1 whitespace-pre-wrap text-xs text-[var(--st-charcoal-dark)]">{student.notes}</p>}
+                        {enrollment.notes && <p className="mb-0 mt-1 whitespace-pre-wrap text-xs text-[var(--st-gray)]">Programme: {enrollment.notes}</p>}
+                      </div>
+                    )}
                   </div>
                 </div>
 
