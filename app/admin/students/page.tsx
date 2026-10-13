@@ -15,6 +15,7 @@ import StudentDetails from "../../../components/students/StudentDetails";
 import AddStudentModal from "../../../components/students/AddStudentModal";
 import PaymentModal from "../../../components/students/PaymentModal";
 import EditStudentModal from "../../../components/students/EditStudentModal";
+import EditPaymentModal from "../../../components/students/EditPaymentModal";
 
 import { RefreshCw } from "lucide-react";
 
@@ -25,6 +26,7 @@ import {
   loadStudents,
   updateStudent as updateStudentRecord,
   updateNextPaymentSchedule,
+  updatePayment as updatePaymentRecord,
   uploadStudentPhoto,
 } from "../../../lib/students-service";
 
@@ -468,6 +470,22 @@ export default function AdminStudentsPage() {
     updatingPaymentId,
     setUpdatingPaymentId,
   ] = useState<string | null>(null);
+
+  const [editingPayment, setEditingPayment] = useState<{
+    id: string;
+    amount: number | string;
+    payment_date: string;
+    payment_method: PaymentMethod;
+    reference: string | null;
+    notes: string | null;
+  } | null>(null);
+  const [editPaymentAmount, setEditPaymentAmount] = useState("");
+  const [editPaymentDate, setEditPaymentDate] = useState("");
+  const [editPaymentMethod, setEditPaymentMethod] = useState<PaymentMethod>("mpesa");
+  const [editPaymentReference, setEditPaymentReference] = useState("");
+  const [editPaymentNotes, setEditPaymentNotes] = useState("");
+  const [savingEditedPayment, setSavingEditedPayment] = useState(false);
+  const [editPaymentError, setEditPaymentError] = useState<string | null>(null);
 
   /* ===================================================
      LOAD STUDENTS
@@ -2555,6 +2573,23 @@ export default function AdminStudentsPage() {
             );
           }}
 
+          onEditPayment={(payment) => {
+            setEditingPayment({
+              id: payment.id,
+              amount: payment.amount,
+              payment_date: payment.payment_date,
+              payment_method: payment.payment_method as PaymentMethod,
+              reference: payment.reference ?? null,
+              notes: payment.notes ?? null,
+            });
+            setEditPaymentAmount(String(payment.amount ?? ""));
+            setEditPaymentDate(payment.payment_date);
+            setEditPaymentMethod(payment.payment_method as PaymentMethod);
+            setEditPaymentReference(payment.reference ?? "");
+            setEditPaymentNotes(payment.notes ?? "");
+            setEditPaymentError(null);
+          }}
+
           formatCurrency={
             formatCurrency
           }
@@ -2904,6 +2939,59 @@ export default function AdminStudentsPage() {
             }
           />
         )}
+
+      <EditPaymentModal
+        payment={editingPayment}
+        amount={editPaymentAmount}
+        setAmount={setEditPaymentAmount}
+        paymentDate={editPaymentDate}
+        setPaymentDate={setEditPaymentDate}
+        method={editPaymentMethod}
+        setMethod={setEditPaymentMethod}
+        reference={editPaymentReference}
+        setReference={setEditPaymentReference}
+        notes={editPaymentNotes}
+        setNotes={setEditPaymentNotes}
+        saving={savingEditedPayment}
+        error={editPaymentError}
+        onClose={() => {
+          if (!savingEditedPayment) {
+            setEditingPayment(null);
+            setEditPaymentError(null);
+          }
+        }}
+        onSave={async () => {
+          if (!editingPayment || !selectedStudent?.enrollment) return;
+          try {
+            setSavingEditedPayment(true);
+            setEditPaymentError(null);
+            const amount = Number(editPaymentAmount);
+            if (!Number.isFinite(amount) || amount <= 0) {
+              throw new Error("Enter a payment amount greater than zero.");
+            }
+            if (!editPaymentDate) {
+              throw new Error("Select the payment date.");
+            }
+            await updatePaymentRecord({
+              paymentId: editingPayment.id,
+              studentId: selectedStudent.student.id,
+              enrollmentId: selectedStudent.enrollment.id,
+              amount,
+              paymentDate: editPaymentDate,
+              paymentMethod: editPaymentMethod,
+              reference: editPaymentReference.trim() || null,
+              notes: editPaymentNotes.trim() || null,
+            });
+            setEditingPayment(null);
+            await refreshStudents(true);
+          } catch (err) {
+            console.error("Edit payment error:", err);
+            setEditPaymentError(err instanceof Error ? err.message : "Unable to update this payment.");
+          } finally {
+            setSavingEditedPayment(false);
+          }
+        }}
+      />
 
       {/* =================================================
           PAYMENT MODAL
