@@ -249,43 +249,45 @@ export default function AddStudentModal({
 
               </div>
 
-              <div>
-                <label className="mb-2 block text-[9px] font-bold uppercase tracking-[0.08em] text-[var(--st-charcoal)]">
+              <div className="mt-4">
+                <label htmlFor="add-student-photo" className="mb-2 block text-[9px] font-bold uppercase tracking-[0.08em] text-[var(--st-charcoal)]">
                   Student photo *
                 </label>
-                <label className="flex cursor-pointer items-center gap-3 rounded-xl border border-[var(--st-border)] bg-white px-4 py-3.5 hover:border-[var(--st-red)]">
-                  <Camera size={18} className="shrink-0 text-[var(--st-red)]" />
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-[11px] font-semibold text-[var(--st-charcoal-dark)]">
-                      {studentPhotoFile?.name || "Choose student photo"}
-                    </span>
-                    <span className="mt-1 block text-[9px] text-[var(--st-gray)]">
-                      JPG, PNG or WEBP · Maximum 5MB
-                    </span>
-                  </span>
-                  <input
-                    type="file"
-                    accept="image/jpeg,image/png,image/webp"
-                    required
-                    disabled={addingStudent}
-                    className="sr-only"
-                    onChange={(event) => {
-                      const file = event.target.files?.[0] ?? null;
-                      if (!file) return;
-                      if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
-                        event.target.value = "";
-                        setStudentPhotoFile(null);
-                        return;
-                      }
-                      if (file.size > 5 * 1024 * 1024) {
-                        event.target.value = "";
-                        setStudentPhotoFile(null);
-                        return;
-                      }
-                      setStudentPhotoFile(file);
-                    }}
-                  />
-                </label>
+                <p className="mb-2 text-[10px] text-[var(--st-gray)]">
+                  Upload a clear student photo (JPG, PNG or WEBP; maximum 5MB).
+                </p>
+                <input
+                  id="add-student-photo"
+                  name="studentPhoto"
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  required
+                  disabled={addingStudent}
+                  className="block w-full min-w-0 rounded-xl border border-[var(--st-border)] bg-white px-3 py-3 text-[11px] text-[var(--st-charcoal)] file:mr-3 file:rounded-lg file:border-0 file:bg-[var(--st-red)] file:px-3 file:py-2 file:text-[10px] file:font-semibold file:text-white"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0] ?? null;
+                    if (!file) {
+                      setStudentPhotoFile(null);
+                      return;
+                    }
+                    if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
+                      event.target.value = "";
+                      setStudentPhotoFile(null);
+                      return;
+                    }
+                    if (file.size > 5 * 1024 * 1024) {
+                      event.target.value = "";
+                      setStudentPhotoFile(null);
+                      return;
+                    }
+                    setStudentPhotoFile(file);
+                  }}
+                />
+                {studentPhotoFile && (
+                  <p className="mt-2 break-all text-[10px] text-[var(--st-charcoal)]">
+                    Selected: {studentPhotoFile.name}
+                  </p>
+                )}
               </div>
 
               <div>
