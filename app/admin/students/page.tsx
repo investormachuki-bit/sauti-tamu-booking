@@ -21,8 +21,10 @@ import { RefreshCw } from "lucide-react";
 import generatePaymentReceipt from "../../../lib/generate-payment-receipt";
 
 import {
+  deleteStudentPhoto,
   loadStudents,
   updateStudent as updateStudentRecord,
+  uploadStudentPhoto,
 } from "../../../lib/students-service";
 
 import type {
@@ -259,6 +261,9 @@ export default function AdminStudentsPage() {
 
   const [studentEmail, setStudentEmail] =
     useState("");
+
+  const [studentPhotoFile, setStudentPhotoFile] =
+    useState<File | null>(null);
 
   const [studentNotes, setStudentNotes] =
     useState("");
@@ -857,6 +862,7 @@ export default function AdminStudentsPage() {
 
     setShowAddStudent(false);
     setAddStudentError("");
+    setStudentPhotoFile(null);
   }
 
   async function addStudent() {
@@ -879,6 +885,24 @@ export default function AdminStudentsPage() {
       if (!studentEmail.trim()) {
         throw new Error(
           "Please enter the student's email address."
+        );
+      }
+
+      if (!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(studentEmail.trim())) {
+        throw new Error(
+          "Please enter a valid email address."
+        );
+      }
+
+      if (!studentPhotoFile) {
+        throw new Error(
+          "Please upload a student photo."
+        );
+      }
+
+      if (remainingAfterInitial > 0 && numericNextPayment > 0 && !nextPaymentDueDate) {
+        throw new Error(
+          "Please select the next payment due date."
         );
       }
 
@@ -959,6 +983,25 @@ export default function AdminStudentsPage() {
         );
       }
 
+      let uploadedPhotoPath: string | null = null;
+      try {
+        uploadedPhotoPath = await uploadStudentPhoto(student.id, studentPhotoFile);
+        const { error: photoUpdateError } = await supabase
+          .from("students")
+          .update({ photo_path: uploadedPhotoPath })
+          .eq("id", student.id);
+
+        if (photoUpdateError) {
+          throw photoUpdateError;
+        }
+      } catch (photoError) {
+        if (uploadedPhotoPath) {
+          await deleteStudentPhoto(uploadedPhotoPath).catch(() => {});
+        }
+        await supabase.from("students").delete().eq("id", student.id);
+        throw photoError;
+      }
+
       const {
         data: enrollment,
         error:
@@ -1006,6 +1049,10 @@ export default function AdminStudentsPage() {
             "id",
             student.id
           );
+
+        if (uploadedPhotoPath) {
+          await deleteStudentPhoto(uploadedPhotoPath).catch(() => {});
+        }
 
         throw enrollmentError;
       }
@@ -1163,6 +1210,7 @@ export default function AdminStudentsPage() {
       setStudentName("");
       setStudentWhatsapp("");
       setStudentEmail("");
+      setStudentPhotoFile(null);
       setStudentNotes("");
 
       setSelectedInstrument(
@@ -2508,6 +2556,9 @@ export default function AdminStudentsPage() {
         studentEmail={
           studentEmail
         }
+
+        studentPhotoFile={studentPhotoFile}
+        setStudentPhotoFile={setStudentPhotoFile}
 
         studentNotes={
           studentNotes
