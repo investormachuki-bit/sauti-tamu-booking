@@ -888,7 +888,7 @@ export default function AdminStudentsPage() {
         );
       }
 
-      if (!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(studentEmail.trim())) {
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(studentEmail.trim())) {
         throw new Error(
           "Please enter a valid email address."
         );
@@ -1360,7 +1360,7 @@ export default function AdminStudentsPage() {
         throw new Error("Please enter the student's email address.");
       }
 
-      if (!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(editStudentEmail.trim())) {
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(editStudentEmail.trim())) {
         throw new Error("Please enter a valid email address.");
       }
 
