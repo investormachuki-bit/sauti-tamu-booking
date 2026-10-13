@@ -1481,8 +1481,16 @@ export default function AdminStudentsPage() {
           editPhotoFile,
       });
 
+      let savedEnrollmentId = selectedStudent.enrollment?.id ?? null;
+      if (!savedEnrollmentId && editNextPaymentDueDate) {
+        const afterProfileSave = await loadStudents();
+        savedEnrollmentId = afterProfileSave.find(
+          (record) => record.student.id === selectedStudent.student.id
+        )?.enrollment?.id ?? null;
+      }
+
       await updateNextPaymentSchedule({
-        enrollmentId: selectedStudent.enrollment?.id ?? null,
+        enrollmentId: savedEnrollmentId,
         scheduleId: editNextPaymentScheduleId,
         amountDue: editNextPaymentDueDate ? Number(editNextPaymentAmount) : null,
         dueDate: editNextPaymentDueDate || null,
