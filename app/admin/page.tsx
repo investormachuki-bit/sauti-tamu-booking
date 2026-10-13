@@ -16,6 +16,7 @@ import {
   Settings,
   UserPlus,
   Users,
+  Wallet,
 } from "lucide-react";
 
 import { supabase } from "@/lib/supabase";
@@ -860,6 +861,13 @@ export default function AdminDashboard() {
               description="View and manage enrolled students."
               icon={<Users size={17} />}
               href="/admin/students"
+            />
+
+            <QuickAction
+              label="Payment Schedule"
+              description="Review and manage students' scheduled payments and due dates."
+              icon={<Wallet size={17} />}
+              href="/admin/payment-schedule"
             />
 
             <QuickAction
