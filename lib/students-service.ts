@@ -343,29 +343,76 @@ export async function uploadStudentPhoto( studentId: string, file: File ): Promi
   const filePath =
     `${studentId}/${crypto.randomUUID()}.${extension}`;
 
-  const {
-    error,
-  } = await supabase.storage
-    .from(
-      STUDENT_PHOTO_BUCKET
-    )
-    .upload(
-      filePath,
-      file,
-      {
-        cacheControl:
-          "3600",
-        upsert: false,
-        contentType:
-          file.type,
-      }
-    );
+  const allowedImageTypes = new Set([
+    "image/jpeg",
+    "image/png",
+    "image/webp",
+  ]);
 
-  if (error) {
-    throw error;
+  if (!allowedImageTypes.has(file.type)) {
+    throw new Error(
+      "Please choose a JPG, PNG, or WEBP image."
+    );
   }
 
-  return filePath;
+  let lastUploadError: unknown = null;
+
+  // Mobile connections can briefly drop during larger Storage uploads.
+  // Retry one time only for a network-level failure; never overwrite an existing photo.
+  for (let attempt = 1; attempt <= 2; attempt += 1) {
+    try {
+      const {
+        error,
+      } = await supabase.storage
+        .from(STUDENT_PHOTO_BUCKET)
+        .upload(
+          filePath,
+          file,
+          {
+            cacheControl: "3600",
+            upsert: false,
+            contentType: file.type,
+          }
+        );
+
+      if (error) {
+        throw error;
+      }
+
+      return filePath;
+    } catch (uploadError) {
+      lastUploadError = uploadError;
+
+      const isNetworkFailure =
+        uploadError instanceof TypeError &&
+        /fetch|network|load failed/i.test(uploadError.message);
+
+      if (!isNetworkFailure || attempt === 2) {
+        break;
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+  }
+
+  if (
+    lastUploadError instanceof TypeError &&
+    /fetch|network|load failed/i.test(lastUploadError.message)
+  ) {
+    throw new Error(
+      "The photo could not reach Supabase Storage. Your student details were not changed. Please check your internet connection and try saving again."
+    );
+  }
+
+  if (lastUploadError instanceof Error) {
+    throw new Error(
+      `Photo upload failed: ${lastUploadError.message}`
+    );
+  }
+
+  throw new Error(
+    "Photo upload failed. Your student details were not changed. Please try again."
+  );
 }
 
 /* ===================================================== DELETE STUDENT PHOTO ===================================================== */
