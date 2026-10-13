@@ -35,6 +35,12 @@ interface EditStudentModalProps {
   totalFee: string;
   enrollmentStatus: StudentStatus;
 
+  nextPaymentScheduleId: string | null;
+  nextPaymentAmount: string;
+  nextPaymentDueDate: string;
+  nextPaymentFollowUpDate: string;
+  nextPaymentNotes: string;
+
   photoPreview: string | null;
   photoFile: File | null;
 
@@ -81,6 +87,11 @@ interface EditStudentModalProps {
   setEnrollmentStatus: (
     value: StudentStatus
   ) => void;
+
+  setNextPaymentAmount: (value: string) => void;
+  setNextPaymentDueDate: (value: string) => void;
+  setNextPaymentFollowUpDate: (value: string) => void;
+  setNextPaymentNotes: (value: string) => void;
 
   setPhotoFile: (
     value: File | null
@@ -155,6 +166,12 @@ export default function EditStudentModal({
   totalFee,
   enrollmentStatus,
 
+  nextPaymentScheduleId,
+  nextPaymentAmount,
+  nextPaymentDueDate,
+  nextPaymentFollowUpDate,
+  nextPaymentNotes,
+
   photoPreview,
   photoFile,
 
@@ -170,6 +187,11 @@ export default function EditStudentModal({
   setEndDate,
   setTotalFee,
   setEnrollmentStatus,
+
+  setNextPaymentAmount,
+  setNextPaymentDueDate,
+  setNextPaymentFollowUpDate,
+  setNextPaymentNotes,
 
   setPhotoFile,
   setPhotoPreview,
@@ -696,6 +718,69 @@ export default function EditStudentModal({
 
             </div>
 
+          </section>
+
+          {/* =================================================
+              NEXT PAYMENT SCHEDULE
+          ================================================= */}
+
+          <section className="mt-7">
+            <p className="st-eyebrow">NEXT PAYMENT SCHEDULE</p>
+            <p className="mt-1 text-[10px] leading-relaxed text-[var(--st-gray)]">
+              Edit the next unpaid payment date and amount. Clear the due date to remove it from the active schedule without deleting payment history.
+            </p>
+
+            <div className="mt-3 space-y-4 rounded-2xl border border-[var(--st-border)] p-4">
+              {nextPaymentScheduleId && (
+                <p className="m-0 text-[9px] text-[var(--st-gray)]">Editing the existing next scheduled payment.</p>
+              )}
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div>
+                  <label className="st-label">Next payment amount (KES)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={nextPaymentAmount}
+                    onChange={(event) => setNextPaymentAmount(event.target.value)}
+                    disabled={saving}
+                    className="st-input w-full"
+                    placeholder="e.g. 5000"
+                  />
+                </div>
+                <div>
+                  <label className="st-label">Next payment due date</label>
+                  <input
+                    type="date"
+                    value={nextPaymentDueDate}
+                    onChange={(event) => setNextPaymentDueDate(event.target.value)}
+                    disabled={saving}
+                    className="st-input w-full"
+                  />
+                </div>
+                <div>
+                  <label className="st-label">Follow-up date (optional)</label>
+                  <input
+                    type="date"
+                    value={nextPaymentFollowUpDate}
+                    onChange={(event) => setNextPaymentFollowUpDate(event.target.value)}
+                    disabled={saving}
+                    className="st-input w-full"
+                  />
+                </div>
+                <div>
+                  <label className="st-label">Payment schedule notes</label>
+                  <input
+                    type="text"
+                    value={nextPaymentNotes}
+                    onChange={(event) => setNextPaymentNotes(event.target.value)}
+                    disabled={saving}
+                    className="st-input w-full"
+                    placeholder="Payment arrangement..."
+                  />
+                </div>
+              </div>
+            </div>
           </section>
 
           {/* =================================================
