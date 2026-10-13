@@ -900,7 +900,7 @@ export default function AdminStudentsPage() {
         );
       }
 
-      if (remainingAfterInitial > 0 && numericNextPayment > 0 && !nextPaymentDueDate) {
+      if (remainingAfterInitial > 0 && !nextPaymentDueDate) {
         throw new Error(
           "Please select the next payment due date."
         );
@@ -1355,6 +1355,18 @@ export default function AdminStudentsPage() {
     try {
       setSavingStudent(true);
       setEditStudentError(null);
+
+      if (!editStudentEmail.trim()) {
+        throw new Error("Please enter the student's email address.");
+      }
+
+      if (!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(editStudentEmail.trim())) {
+        throw new Error("Please enter a valid email address.");
+      }
+
+      if (!selectedStudent.student.photo_path && !editPhotoFile) {
+        throw new Error("Please upload a student photo before saving.");
+      }
 
       const numericFee =
         Number(
