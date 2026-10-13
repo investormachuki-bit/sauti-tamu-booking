@@ -12,6 +12,7 @@ import {
   WalletCards,
   Receipt,
   Landmark,
+  CalendarClock,
 } from "lucide-react";
 
 interface SidebarProps {
@@ -67,6 +68,11 @@ const navigation = [
         label: "Financial Dashboard",
         href: "/admin/financials",
         icon: WalletCards,
+      },
+      {
+        label: "Payment Schedule",
+        href: "/admin/payment-schedule",
+        icon: CalendarClock,
       },
       {
         label: "Expenses",
