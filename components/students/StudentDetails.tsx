@@ -33,7 +33,7 @@ interface Payment {
 interface Student {
   id: string;
   full_name: string;
-  whatsapp?: string | null;
+  whatsapp_number?: string | null;
   email?: string | null;
   notes?: string | null;
   photo_url?: string | null;
@@ -424,7 +424,7 @@ export default function StudentDetails({
                 </p>
 
                 <p className="mt-1 truncate text-[10px] font-semibold text-[var(--st-charcoal-dark)]">
-                  {student.whatsapp ||
+                  {student.whatsapp_number ||
                     "Not provided"}
                 </p>
 
