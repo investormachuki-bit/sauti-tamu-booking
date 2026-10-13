@@ -1440,55 +1440,52 @@ export default function AdminStudentsPage() {
           editPhotoFile,
       });
 
-      /*
-       * Reload everything so the newly generated
-       * private signed photo URL is available.
-       */
-      const refreshed =
-        await loadStudents();
+      // The student and enrollment updates succeeded. Close the editor now so a
+      // later list-refresh network failure is not mistaken for a failed save.
+      setShowEditStudent(false);
+      setEditPhotoFile(null);
+      setEditPhotoPreview(null);
+      setEditStudentError(null);
 
-      setStudents(refreshed);
+      try {
+        /*
+         * Reload everything so the newly generated
+         * private signed photo URL is available.
+         */
+        const refreshed = await loadStudents();
+        setStudents(refreshed);
 
-      const updatedRecord =
-        refreshed.find(
+        const updatedRecord = refreshed.find(
           (record) =>
-            record.student.id ===
-            selectedStudent.student.id
+            record.student.id === selectedStudent.student.id
         );
 
-      if (updatedRecord) {
-        const updatedSelected = {
-          student:
-            updatedRecord.student,
+        if (updatedRecord) {
+          const updatedSelected = {
+            student: updatedRecord.student,
+            enrollment: updatedRecord.enrollment,
+            payments: updatedRecord.payments,
+          };
 
-          enrollment:
-            updatedRecord.enrollment,
+          setSelectedStudent(updatedSelected);
 
-          payments:
-            updatedRecord.payments,
-        };
-
-        setSelectedStudent(
-          updatedSelected
-        );
-
-        setPaymentStudent(
-          (current) => {
-            if (
-              current?.student.id !==
-              updatedRecord.student.id
-            ) {
+          setPaymentStudent((current) => {
+            if (current?.student.id !== updatedRecord.student.id) {
               return current;
             }
 
             return updatedSelected;
-          }
+          });
+        }
+      } catch (refreshError) {
+        console.error(
+          "Student saved, but refreshing the student list failed:",
+          refreshError
+        );
+        setError(
+          "Student changes were saved, but the list could not refresh. Reload the page to see the latest details."
         );
       }
-
-      setShowEditStudent(false);
-      setEditPhotoFile(null);
-      setEditPhotoPreview(null);
     } catch (err) {
       console.error(
         "Update student error:",
