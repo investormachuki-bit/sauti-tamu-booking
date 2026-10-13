@@ -28,7 +28,6 @@ import {
   ShieldCheck,
   ExternalLink,
   Pencil,
-  Check,
   ChevronDown,
   Plus,
   X,
@@ -752,7 +751,7 @@ export default function SettingsPage() {
             const path = `documents/${item.name}`;
             const signed = await getSignedAssetUrl(path);
             return {
-              name: item.name.replace(/^\\d{10,}-/, ""),
+              name: item.name.replace(/^\d{10,}-/, ""),
               path,
               size: item.metadata?.size ?? 0,
               createdAt: item.created_at ?? null,
@@ -774,7 +773,7 @@ export default function SettingsPage() {
     return value
       .trim()
       .replace(/[^a-zA-Z0-9._ -]+/g, "")
-      .replace(/\\s+/g, "-")
+      .replace(/\s+/g, "-")
       .replace(/-+/g, "-")
       .replace(/^[-.]+|[-.]+$/g, "");
   }
