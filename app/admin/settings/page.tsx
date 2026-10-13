@@ -990,112 +990,98 @@ export default function SettingsPage() {
 
     const isLogo = type === "logo";
 
-    if (isLogo)
-      setUploadingLogo(true);
-    else
-      setUploadingStamp(true);
+    if (isLogo) setUploadingLogo(true);
+    else setUploadingStamp(true);
 
     setMessage("");
     setError("");
 
     try {
-      if (!file.type.startsWith("image/")) {
-        throw new Error(
-          "Please select an image file."
-        );
+      const allowedTypes = [
+        "image/png",
+        "image/jpeg",
+        "image/webp",
+        "image/svg+xml",
+      ];
+
+      if (!allowedTypes.includes(file.type)) {
+        throw new Error("Please select a PNG, JPG or WebP image.");
       }
 
       if (file.size > 5 * 1024 * 1024) {
-        throw new Error(
-          "Image must be smaller than 5 MB."
-        );
+        throw new Error("Image must be smaller than 5 MB.");
       }
 
-      const extension =
-        getFileExtension(file);
+      const extension = getFileExtension(file);
+      const path = `${type}-${Date.now()}.${extension}`;
 
-      const path =
-        `${type}-${Date.now()}.${extension}`;
+      const { error: uploadError } = await supabase.storage
+        .from("business-assets")
+        .upload(path, file, {
+          cacheControl: "3600",
+          upsert: false,
+          contentType: file.type,
+        });
 
-      const { error: uploadError } =
-        await supabase.storage
-          .from("business-assets")
-          .upload(path, file, {
-            cacheControl: "3600",
-            upsert: false,
-            contentType: file.type,
-          });
+      if (uploadError) throw uploadError;
 
-      if (uploadError)
-        throw uploadError;
+      const oldPath = isLogo ? business.logo_url : business.stamp_url;
+      const changes = isLogo ? { logo_url: path } : { stamp_url: path };
 
-      const oldPath = isLogo
-        ? business.logo_url
-        : business.stamp_url;
+      const { error: databaseError } = await supabase
+        .from("business_settings")
+        .update({
+          ...changes,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", true);
 
-      if (
-        oldPath &&
-        !oldPath.startsWith("http://") &&
-        !oldPath.startsWith("https://")
-      ) {
-        await supabase.storage
-          .from("business-assets")
-          .remove([oldPath]);
+      if (databaseError) {
+        await supabase.storage.from("business-assets").remove([path]);
+        throw databaseError;
       }
 
-      const changes = isLogo
-        ? { logo_url: path }
-        : { stamp_url: path };
-
+      // Only replace local state after the database has accepted the new asset.
       setBusiness((current) => ({
         ...current,
         ...changes,
       }));
 
-      const { error: databaseError } =
-        await supabase
-          .from("business_settings")
-          .update({
-            ...changes,
-            updated_at:
-              new Date().toISOString(),
-          })
-          .eq("id", true);
+      const signed = await getSignedAssetUrl(path);
+      if (isLogo) setLogoPreview(signed);
+      else setStampPreview(signed);
 
-      if (databaseError) {
-        await supabase.storage
+      // Keep the previous asset until the new path has been saved successfully.
+      if (
+        oldPath &&
+        oldPath !== path &&
+        !oldPath.startsWith("http://") &&
+        !oldPath.startsWith("https://")
+      ) {
+        const { error: cleanupError } = await supabase.storage
           .from("business-assets")
-          .remove([path]);
+          .remove([oldPath]);
 
-        throw databaseError;
+        if (cleanupError) {
+          console.warn("Previous business asset could not be removed:", cleanupError);
+        }
       }
-
-      const signed =
-        await getSignedAssetUrl(path);
-
-      if (isLogo)
-        setLogoPreview(signed);
-      else
-        setStampPreview(signed);
 
       setMessage(
         isLogo
-          ? "Business logo uploaded."
-          : "Official e-stamp uploaded."
+          ? "Business logo uploaded and saved."
+          : "Official e-stamp uploaded and saved."
       );
     } catch (err) {
       console.error(err);
-
       setError(
         err instanceof Error
           ? err.message
           : "Unable to upload image."
       );
     } finally {
-      if (isLogo)
-        setUploadingLogo(false);
-      else
-        setUploadingStamp(false);
+      if (isLogo) setUploadingLogo(false);
+      else setUploadingStamp(false);
     }
   }
 
