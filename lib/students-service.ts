@@ -1051,3 +1051,109 @@ export async function completeStudent( studentId: string, enrollmentId: string )
     throw enrollmentUpdateError;
   }
 }
+
+/* ===================================================== UPDATE NEXT PAYMENT SCHEDULE ===================================================== */
+
+export interface UpdateNextPaymentScheduleInput {
+  enrollmentId: string | null;
+  scheduleId: string | null;
+  amountDue: number | null;
+  dueDate: string | null;
+  followUpDate: string | null;
+  notes: string | null;
+}
+
+/**
+ * Updates the next outstanding scheduled payment for the exact enrollment.
+ * An empty due date cancels the current unpaid schedule instead of deleting history.
+ */
+export async function updateNextPaymentSchedule(
+  input: UpdateNextPaymentScheduleInput
+): Promise<void> {
+  const {
+    enrollmentId,
+    scheduleId,
+    amountDue,
+    dueDate,
+    followUpDate,
+    notes,
+  } = input;
+
+  if (!enrollmentId) {
+    if (dueDate) {
+      throw new Error("Save or create the programme before adding a payment date.");
+    }
+    return;
+  }
+
+  if (!dueDate) {
+    if (scheduleId) {
+      const { data: current, error: lookupError } = await supabase
+        .from("payment_schedule")
+        .select("id, status")
+        .eq("id", scheduleId)
+        .eq("enrollment_id", enrollmentId)
+        .maybeSingle();
+
+      if (lookupError) throw lookupError;
+      if (current && !["paid", "cancelled"].includes(String(current.status).toLowerCase())) {
+        const { error } = await supabase
+          .from("payment_schedule")
+          .update({ status: "cancelled" })
+          .eq("id", scheduleId)
+          .eq("enrollment_id", enrollmentId);
+
+        if (error) throw error;
+      }
+    }
+    return;
+  }
+
+  const numericAmount = Number(amountDue);
+  if (!Number.isFinite(numericAmount) || numericAmount <= 0) {
+    throw new Error("Enter a next payment amount greater than zero, or clear the due date to remove the next payment.");
+  }
+
+  const values = {
+    amount_due: numericAmount,
+    due_date: dueDate,
+    follow_up_date: followUpDate || null,
+    status: "scheduled",
+    notes: notes?.trim() || null,
+  };
+
+  if (scheduleId) {
+    const { data: current, error: lookupError } = await supabase
+      .from("payment_schedule")
+      .select("id, status")
+      .eq("id", scheduleId)
+      .eq("enrollment_id", enrollmentId)
+      .maybeSingle();
+
+    if (lookupError) throw lookupError;
+    if (!current) {
+      throw new Error("The selected next payment schedule could not be found.");
+    }
+    if (String(current.status).toLowerCase() === "paid") {
+      throw new Error("This payment schedule is already paid and cannot be edited as the next payment.");
+    }
+
+    const { error } = await supabase
+      .from("payment_schedule")
+      .update(values)
+      .eq("id", scheduleId)
+      .eq("enrollment_id", enrollmentId);
+
+    if (error) throw error;
+    return;
+  }
+
+  const { error } = await supabase
+    .from("payment_schedule")
+    .insert({
+      enrollment_id: enrollmentId,
+      ...values,
+    });
+
+  if (error) throw error;
+}
