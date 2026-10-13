@@ -102,12 +102,11 @@ export default function PaymentSchedulePage() {
         if (!enrollment) return null;
 
         const totalFee = Number(enrollment.total_fee || 0);
-        // Payments are loaded by student across enrollment history; only count
-        // payments belonging to the currently displayed enrollment.
-        const enrollmentPayments = record.payments.filter(
-          (payment) => payment.enrollment_id === enrollment.id
-        );
-        const totalPaid = enrollmentPayments.reduce(
+        // Match the balance calculation used on the Students page:
+        // total the student's recorded payments against the displayed programme fee.
+        // Some existing payment records may not have a matching enrollment_id,
+        // so filtering only by enrollment_id can incorrectly show a cleared balance.
+        const totalPaid = record.payments.reduce(
           (sum, payment) => sum + Number(payment.amount || 0),
           0
         );
@@ -118,7 +117,7 @@ export default function PaymentSchedulePage() {
           .filter((schedule) => !["paid", "cancelled"].includes(String(schedule.status).toLowerCase()))
           .filter((schedule) => Boolean(schedule.due_date))
           .filter((schedule) => {
-            const paidAgainstSchedule = enrollmentPayments
+            const paidAgainstSchedule = record.payments
               .filter((payment) => payment.payment_schedule_id === schedule.id)
               .reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
             return paidAgainstSchedule < Number(schedule.amount_due || 0);
