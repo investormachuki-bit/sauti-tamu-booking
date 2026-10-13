@@ -1364,7 +1364,7 @@ export default function AdminStudentsPage() {
         throw new Error("Please enter a valid email address.");
       }
 
-      if (!selectedStudent.student.photo_path && !editPhotoFile) {
+      if (!selectedStudent.student.photo_url && !editPhotoFile) {
         throw new Error("Please upload a student photo before saving.");
       }
 
