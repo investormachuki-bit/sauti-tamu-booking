@@ -24,6 +24,7 @@ import {
   deleteStudentPhoto,
   loadStudents,
   updateStudent as updateStudentRecord,
+  updateNextPaymentSchedule,
   uploadStudentPhoto,
 } from "../../../lib/students-service";
 
@@ -402,6 +403,12 @@ export default function AdminStudentsPage() {
     editTotalFee,
     setEditTotalFee,
   ] = useState("");
+
+  const [editNextPaymentScheduleId, setEditNextPaymentScheduleId] = useState<string | null>(null);
+  const [editNextPaymentAmount, setEditNextPaymentAmount] = useState("");
+  const [editNextPaymentDueDate, setEditNextPaymentDueDate] = useState("");
+  const [editNextPaymentFollowUpDate, setEditNextPaymentFollowUpDate] = useState("");
+  const [editNextPaymentNotes, setEditNextPaymentNotes] = useState("");
 
   const [
     editEnrollmentStatus,
@@ -1326,6 +1333,18 @@ export default function AdminStudentsPage() {
         record.student.status
     );
 
+    const fullRecord = findRecord(record.student.id);
+    const nextSchedule = [...(fullRecord?.schedules ?? [])]
+      .filter((schedule) => !["paid", "cancelled"].includes(String(schedule.status).toLowerCase()))
+      .filter((schedule) => Boolean(schedule.due_date))
+      .sort((a, b) => a.due_date.localeCompare(b.due_date))[0] ?? null;
+
+    setEditNextPaymentScheduleId(nextSchedule?.id ?? null);
+    setEditNextPaymentAmount(nextSchedule ? String(nextSchedule.amount_due ?? "") : "");
+    setEditNextPaymentDueDate(nextSchedule?.due_date ?? "");
+    setEditNextPaymentFollowUpDate(nextSchedule?.follow_up_date ?? "");
+    setEditNextPaymentNotes(nextSchedule?.notes ?? "");
+
     setEditPhotoFile(null);
 
     setEditPhotoPreview(
@@ -1395,6 +1414,10 @@ export default function AdminStudentsPage() {
         );
       }
 
+      if (editNextPaymentDueDate && (!Number.isFinite(Number(editNextPaymentAmount)) || Number(editNextPaymentAmount) <= 0)) {
+        throw new Error("Enter a next payment amount greater than zero, or clear the due date.");
+      }
+
       await updateStudentRecord({
         studentId:
           selectedStudent.student.id,
@@ -1438,6 +1461,15 @@ export default function AdminStudentsPage() {
 
         photoFile:
           editPhotoFile,
+      });
+
+      await updateNextPaymentSchedule({
+        enrollmentId: selectedStudent.enrollment?.id ?? null,
+        scheduleId: editNextPaymentScheduleId,
+        amountDue: editNextPaymentDueDate ? Number(editNextPaymentAmount) : null,
+        dueDate: editNextPaymentDueDate || null,
+        followUpDate: editNextPaymentFollowUpDate || null,
+        notes: editNextPaymentNotes,
       });
 
       // The student and enrollment updates succeeded. Close the editor now so a
@@ -2784,6 +2816,16 @@ export default function AdminStudentsPage() {
             enrollmentStatus={
               editEnrollmentStatus
             }
+
+            nextPaymentScheduleId={editNextPaymentScheduleId}
+            nextPaymentAmount={editNextPaymentAmount}
+            nextPaymentDueDate={editNextPaymentDueDate}
+            nextPaymentFollowUpDate={editNextPaymentFollowUpDate}
+            nextPaymentNotes={editNextPaymentNotes}
+            setNextPaymentAmount={setEditNextPaymentAmount}
+            setNextPaymentDueDate={setEditNextPaymentDueDate}
+            setNextPaymentFollowUpDate={setEditNextPaymentFollowUpDate}
+            setNextPaymentNotes={setEditNextPaymentNotes}
 
             photoPreview={
               editPhotoPreview
