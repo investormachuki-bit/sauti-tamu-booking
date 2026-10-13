@@ -2,6 +2,7 @@
 
 import {
   AlertCircle,
+  Camera,
   CalendarDays,
   Check,
   ChevronDown,
@@ -25,6 +26,8 @@ interface AddStudentModalProps {
   studentName: string;
   studentWhatsapp: string;
   studentEmail: string;
+  studentPhotoFile: File | null;
+  setStudentPhotoFile: (file: File | null) => void;
   studentNotes: string;
 
   instrument: "piano" | "guitar";
@@ -84,6 +87,8 @@ export default function AddStudentModal({
   studentName,
   studentWhatsapp,
   studentEmail,
+  studentPhotoFile,
+  setStudentPhotoFile,
   studentNotes,
 
   instrument,
@@ -214,6 +219,7 @@ export default function AddStudentModal({
 
                   <input
                     type="tel"
+                    required
                     value={studentWhatsapp}
                     onChange={(event) =>
                       setStudentWhatsapp(event.target.value)
@@ -230,6 +236,7 @@ export default function AddStudentModal({
 
                   <input
                     type="email"
+                    required
                     value={studentEmail}
                     onChange={(event) =>
                       setStudentEmail(event.target.value)
@@ -239,6 +246,45 @@ export default function AddStudentModal({
                   />
                 </div>
 
+              </div>
+
+              <div>
+                <label className="mb-2 block text-[9px] font-bold uppercase tracking-[0.08em] text-[var(--st-charcoal)]">
+                  Student photo *
+                </label>
+                <label className="flex cursor-pointer items-center gap-3 rounded-xl border border-[var(--st-border)] bg-white px-4 py-3.5 hover:border-[var(--st-red)]">
+                  <Camera size={18} className="shrink-0 text-[var(--st-red)]" />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-[11px] font-semibold text-[var(--st-charcoal-dark)]">
+                      {studentPhotoFile?.name || "Choose student photo"}
+                    </span>
+                    <span className="mt-1 block text-[9px] text-[var(--st-gray)]">
+                      JPG, PNG or WEBP · Maximum 5MB
+                    </span>
+                  </span>
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    required
+                    disabled={addingStudent}
+                    className="sr-only"
+                    onChange={(event) => {
+                      const file = event.target.files?.[0] ?? null;
+                      if (!file) return;
+                      if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
+                        event.target.value = "";
+                        setStudentPhotoFile(null);
+                        return;
+                      }
+                      if (file.size > 5 * 1024 * 1024) {
+                        event.target.value = "";
+                        setStudentPhotoFile(null);
+                        return;
+                      }
+                      setStudentPhotoFile(file);
+                    }}
+                  />
+                </label>
               </div>
 
               <div>
@@ -652,6 +698,7 @@ export default function AddStudentModal({
 
                       <input
                         type="date"
+                        required={remainingAfterInitial > 0 && numericNextPayment > 0}
                         value={nextPaymentDueDate}
                         onChange={(event) =>
                           setNextPaymentDueDate(event.target.value)
