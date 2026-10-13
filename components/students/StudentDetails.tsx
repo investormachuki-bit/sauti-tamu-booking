@@ -28,6 +28,7 @@ interface Payment {
   payment_date: string;
   payment_method: PaymentMethod | string;
   reference?: string | null;
+  notes?: string | null;
 }
 
 interface Student {
@@ -95,6 +96,8 @@ interface StudentDetailsProps {
     payment: Payment
   ) => void;
 
+  onEditPayment: (payment: Payment) => void;
+
   formatCurrency: (
     amount: number
   ) => string;
@@ -161,6 +164,7 @@ export default function StudentDetails({
   viewReceipt,
   downloadReceipt,
   emailReceipt,
+  onEditPayment,
   formatCurrency,
   formatDate,
   getBalance,
@@ -736,6 +740,16 @@ export default function StudentDetails({
                       </div>
 
                       <div className="flex shrink-0 gap-1.5">
+
+                        <button
+                          type="button"
+                          onClick={() => onEditPayment(payment)}
+                          className="st-icon-button"
+                          aria-label="Edit payment"
+                          title="Edit payment details"
+                        >
+                          <Edit3 size={14} />
+                        </button>
 
                         <button
                           type="button"
