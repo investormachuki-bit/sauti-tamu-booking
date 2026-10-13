@@ -6,6 +6,7 @@ import {
   BookOpen,
   CalendarDays,
   CheckCircle2,
+  FileText,
   GraduationCap,
   Loader2,
   Mail,
@@ -873,6 +874,13 @@ export default function AdminDashboard() {
               description="Manage system email templates used by the platform."
               icon={<Mail size={17} />}
               href="/admin/email-templates"
+            />
+
+            <QuickAction
+              label="Documents"
+              description="Upload, view, download and manage business documents."
+              icon={<FileText size={17} />}
+              href="/admin/settings#documents-portal"
             />
 
             <QuickAction
