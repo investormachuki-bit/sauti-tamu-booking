@@ -27,6 +27,8 @@ import {
   Receipt,
   ShieldCheck,
   ExternalLink,
+  Pencil,
+  Check,
   ChevronDown,
   Plus,
   X,
@@ -628,6 +630,12 @@ export default function SettingsPage() {
   const [deletingDocument, setDeletingDocument] =
     useState<string | null>(null);
 
+  const [editingDocumentPath, setEditingDocumentPath] =
+    useState<string | null>(null);
+
+  const [editingDocumentName, setEditingDocumentName] =
+    useState("");
+
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
@@ -744,7 +752,7 @@ export default function SettingsPage() {
             const path = `documents/${item.name}`;
             const signed = await getSignedAssetUrl(path);
             return {
-              name: item.name,
+              name: item.name.replace(/^\\d{10,}-/, ""),
               path,
               size: item.metadata?.size ?? 0,
               createdAt: item.created_at ?? null,
@@ -762,18 +770,37 @@ export default function SettingsPage() {
     }
   }
 
-  async function uploadDocument(file: File) {
-    if (!file) return;
+  function safeDocumentName(value: string) {
+    return value
+      .trim()
+      .replace(/[^a-zA-Z0-9._ -]+/g, "")
+      .replace(/\\s+/g, "-")
+      .replace(/-+/g, "-")
+      .replace(/^[-.]+|[-.]+$/g, "");
+  }
+
+  function uniqueDocumentName(name: string, reserved: Set<string>) {
+    const dot = name.lastIndexOf(".");
+    const base = dot > 0 ? name.slice(0, dot) : name;
+    const extension = dot > 0 ? name.slice(dot) : "";
+    let candidate = name;
+    let index = 2;
+    while (reserved.has(candidate.toLowerCase())) {
+      candidate = `${base} (${index})${extension}`;
+      index += 1;
+    }
+    reserved.add(candidate.toLowerCase());
+    return candidate;
+  }
+
+  async function uploadDocuments(files: File[]) {
+    if (!files.length) return;
 
     setUploadingDocument(true);
     setMessage("");
     setError("");
 
     try {
-      if (file.size > 25 * 1024 * 1024) {
-        throw new Error("Document must be smaller than 25 MB.");
-      }
-
       const allowedTypes = [
         "application/pdf",
         "application/msword",
@@ -785,38 +812,108 @@ export default function SettingsPage() {
         "text/plain",
       ];
 
-      if (!allowedTypes.includes(file.type)) {
-        throw new Error("Please upload a PDF, Word, Excel, PowerPoint or text document.");
+      const reserved = new Set(documents.map((document) => document.name.toLowerCase()));
+      let uploadedCount = 0;
+
+      for (const file of files) {
+        if (file.size > 25 * 1024 * 1024) {
+          throw new Error(`"${file.name}" exceeds the 25 MB limit. ${uploadedCount} document(s) uploaded before this file.`);
+        }
+
+        if (!allowedTypes.includes(file.type)) {
+          throw new Error(`"${file.name}" is not a supported file. Upload PDF, Word, Excel, PowerPoint or text documents.`);
+        }
+
+        const safeName = safeDocumentName(file.name);
+        if (!safeName) {
+          throw new Error(`"${file.name}" does not have a usable filename.`);
+        }
+
+        const uniqueName = uniqueDocumentName(safeName, reserved);
+        const path = `documents/${uniqueName}`;
+
+        const { error: uploadError } = await supabase.storage
+          .from("business-assets")
+          .upload(path, file, {
+            cacheControl: "3600",
+            upsert: false,
+            contentType: file.type,
+          });
+
+        if (uploadError) {
+          reserved.delete(uniqueName.toLowerCase());
+          throw uploadError;
+        }
+
+        uploadedCount += 1;
       }
 
-      const extension = getFileExtension(file);
-      const safeName = file.name
-        .replace(/[^a-zA-Z0-9._-]+/g, "-")
-        .replace(/-+/g, "-");
-
-      const path = `documents/${Date.now()}-${safeName || `document.${extension}`}`;
-
-      const { error: uploadError } = await supabase.storage
-        .from("business-assets")
-        .upload(path, file, {
-          cacheControl: "3600",
-          upsert: false,
-          contentType: file.type,
-        });
-
-      if (uploadError) throw uploadError;
-
-      setMessage("Document uploaded successfully.");
+      setMessage(uploadedCount === 1 ? "Document uploaded successfully." : `${uploadedCount} documents uploaded successfully.`);
       await loadDocuments();
     } catch (error) {
       console.error("Upload document error:", error);
       setError(
         error instanceof Error
           ? error.message
-          : "We couldn't upload the document."
+          : "We couldn't upload the document(s)."
       );
+      await loadDocuments();
     } finally {
       setUploadingDocument(false);
+    }
+  }
+
+  async function renameDocument(document: DocumentItem) {
+    const requestedName = safeDocumentName(editingDocumentName);
+    if (!requestedName) {
+      setError("Enter a valid document title.");
+      return;
+    }
+
+    const oldExtension = document.name.includes(".")
+      ? document.name.slice(document.name.lastIndexOf("."))
+      : "";
+    const requestedExtension = requestedName.includes(".")
+      ? requestedName.slice(requestedName.lastIndexOf("."))
+      : "";
+    const finalName = requestedExtension || !oldExtension
+      ? requestedName
+      : requestedName + oldExtension;
+
+    if (finalName === document.name) {
+      setEditingDocumentPath(null);
+      setEditingDocumentName("");
+      return;
+    }
+
+    const reserved = new Set(
+      documents
+        .filter((item) => item.path !== document.path)
+        .map((item) => item.name.toLowerCase())
+    );
+    const uniqueName = uniqueDocumentName(finalName, reserved);
+    const newPath = `documents/${uniqueName}`;
+
+    setError("");
+    setMessage("");
+    setDeletingDocument(document.path);
+
+    try {
+      const { error: moveError } = await supabase.storage
+        .from("business-assets")
+        .move(document.path, newPath);
+
+      if (moveError) throw moveError;
+
+      setMessage("Document title updated.");
+      setEditingDocumentPath(null);
+      setEditingDocumentName("");
+      await loadDocuments();
+    } catch (error) {
+      console.error("Rename document error:", error);
+      setError(error instanceof Error ? error.message : "We couldn't update the document title.");
+    } finally {
+      setDeletingDocument(null);
     }
   }
 
@@ -3371,6 +3468,7 @@ export default function SettingsPage() {
 
       <div className="mt-5">
         <Section
+          id="documents-portal"
           icon={FileText}
           eyebrow="DOCUMENTS"
           title="Documents Portal"
@@ -3383,7 +3481,7 @@ export default function SettingsPage() {
                   Upload a document
                 </p>
                 <p className="mt-1 mb-0 text-[9px] text-[#999]">
-                  PDF, Word, Excel, PowerPoint or text · maximum 25 MB
+                  Select one or more PDF, Word, Excel, PowerPoint or text files · maximum 25 MB each
                 </p>
               </div>
 
@@ -3398,11 +3496,12 @@ export default function SettingsPage() {
                   type="file"
                   className="hidden"
                   disabled={uploadingDocument}
+                  multiple
                   accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt"
                   onChange={(event) => {
-                    const file = event.target.files?.[0];
+                    const files = Array.from(event.target.files ?? []);
                     event.target.value = "";
-                    if (file) uploadDocument(file);
+                    if (files.length) void uploadDocuments(files);
                   }}
                 />
               </label>
@@ -3426,9 +3525,36 @@ export default function SettingsPage() {
                       className="flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between"
                     >
                       <div className="min-w-0">
-                        <p className="m-0 truncate text-[10px] font-semibold text-[#292929]">
-                          {document.name}
-                        </p>
+                        {editingDocumentPath === document.path ? (
+                          <div className="flex min-w-0 items-center gap-2">
+                            <input
+                              value={editingDocumentName}
+                              onChange={(event) => setEditingDocumentName(event.target.value)}
+                              onKeyDown={(event) => {
+                                if (event.key === "Enter") void renameDocument(document);
+                                if (event.key === "Escape") {
+                                  setEditingDocumentPath(null);
+                                  setEditingDocumentName("");
+                                }
+                              }}
+                              aria-label="Document title"
+                              className="min-w-0 flex-1 rounded-lg border border-[#ddd] px-3 py-2 text-[10px] text-[#292929] outline-none focus:border-[#c91f2b]"
+                              autoFocus
+                            />
+                            <button
+                              type="button"
+                              onClick={() => void renameDocument(document)}
+                              disabled={deletingDocument === document.path}
+                              className="inline-flex h-8 items-center gap-1 rounded-lg bg-[#c91f2b] px-3 text-[8px] font-bold text-white disabled:opacity-50"
+                            >
+                              <Check size={12} /> Save
+                            </button>
+                          </div>
+                        ) : (
+                          <p className="m-0 break-words text-[10px] font-semibold text-[#292929]">
+                            {document.name}
+                          </p>
+                        )}
                         <p className="mt-1 mb-0 text-[8px] text-[#999]">
                           {document.size
                             ? `${Math.ceil(document.size / 1024)} KB`
@@ -3436,7 +3562,23 @@ export default function SettingsPage() {
                         </p>
                       </div>
 
-                      <div className="flex items-center gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
+                        {editingDocumentPath !== document.path && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditingDocumentPath(document.path);
+                              setEditingDocumentName(document.name.replace(/\\.[^.]+$/, ""));
+                              setError("");
+                              setMessage("");
+                            }}
+                            disabled={deletingDocument === document.path}
+                            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-[#ddd] px-3 text-[8px] font-bold text-[#555] hover:bg-[#faf8f8] disabled:opacity-50"
+                          >
+                            <Pencil size={12} />
+                            Edit title
+                          </button>
+                        )}
                         {document.signedUrl && (
                           <>
                             <a
