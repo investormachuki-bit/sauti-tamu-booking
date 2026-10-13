@@ -102,7 +102,12 @@ export default function PaymentSchedulePage() {
         if (!enrollment) return null;
 
         const totalFee = Number(enrollment.total_fee || 0);
-        const totalPaid = record.payments.reduce(
+        // Payments are loaded by student across enrollment history; only count
+        // payments belonging to the currently displayed enrollment.
+        const enrollmentPayments = record.payments.filter(
+          (payment) => payment.enrollment_id === enrollment.id
+        );
+        const totalPaid = enrollmentPayments.reduce(
           (sum, payment) => sum + Number(payment.amount || 0),
           0
         );
@@ -112,6 +117,12 @@ export default function PaymentSchedulePage() {
         const nextSchedule = [...record.schedules]
           .filter((schedule) => !["paid", "cancelled"].includes(String(schedule.status).toLowerCase()))
           .filter((schedule) => Boolean(schedule.due_date))
+          .filter((schedule) => {
+            const paidAgainstSchedule = enrollmentPayments
+              .filter((payment) => payment.payment_schedule_id === schedule.id)
+              .reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
+            return paidAgainstSchedule < Number(schedule.amount_due || 0);
+          })
           .sort((a, b) => a.due_date.localeCompare(b.due_date))[0] ?? null;
 
         return {
