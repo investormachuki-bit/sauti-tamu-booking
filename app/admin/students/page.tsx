@@ -2331,6 +2331,14 @@ export default function AdminStudentsPage() {
             selectedStudent
           }
 
+          nextPayment={(() => {
+            const record = findRecord(selectedStudent.student.id);
+            return [...(record?.schedules ?? [])]
+              .filter((schedule) => !["paid", "cancelled"].includes(String(schedule.status).toLowerCase()))
+              .filter((schedule) => Boolean(schedule.due_date))
+              .sort((a, b) => a.due_date.localeCompare(b.due_date))[0] ?? null;
+          })()}
+
           onClose={() =>
             setSelectedStudent(
               null
