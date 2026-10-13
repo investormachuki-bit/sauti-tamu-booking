@@ -278,7 +278,7 @@ export default function EditStudentModal({
           <section>
 
             <p className="st-eyebrow">
-              STUDENT PHOTO
+              STUDENT PHOTO *
             </p>
 
             <div className="mt-3 flex items-center gap-4">
@@ -317,7 +317,8 @@ export default function EditStudentModal({
 
                   <input
                     type="file"
-                    accept="image/*"
+                    accept="image/jpeg,image/png,image/webp"
+                    required={!currentPhoto}
                     className="hidden"
                     onChange={
                       handlePhotoChange
@@ -403,11 +404,12 @@ export default function EditStudentModal({
                 <div>
 
                   <label className="st-label">
-                    Email
+                    Email *
                   </label>
 
                   <input
                     type="email"
+                    required
                     value={
                       studentEmail
                     }
