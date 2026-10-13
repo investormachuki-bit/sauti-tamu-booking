@@ -201,6 +201,7 @@ export default function AddStudentModal({
 
                 <input
                   type="text"
+                  required
                   value={studentName}
                   onChange={(event) =>
                     setStudentName(event.target.value)
@@ -698,7 +699,7 @@ export default function AddStudentModal({
 
                       <input
                         type="date"
-                        required={remainingAfterInitial > 0 && numericNextPayment > 0}
+                        required={remainingAfterInitial > 0}
                         value={nextPaymentDueDate}
                         onChange={(event) =>
                           setNextPaymentDueDate(event.target.value)
