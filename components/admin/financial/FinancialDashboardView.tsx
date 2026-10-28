@@ -74,24 +74,6 @@ function formatPercentage(
   return `${Number(value).toFixed(1)}%`;
 }
 
-function formatMonthLabel(
-  monthStart: string
-) {
-  const date = new Date(
-    `${monthStart}T00:00:00+03:00`
-  );
-
-  if (Number.isNaN(date.getTime())) {
-    return monthStart;
-  }
-
-  return new Intl.DateTimeFormat("en-KE", {
-    timeZone: NAIROBI_TIME_ZONE,
-    month: "long",
-    year: "numeric",
-  }).format(date);
-}
-
 function getExpenseTotal(
   expenses: FinancialExpenseBreakdown[]
 ) {
