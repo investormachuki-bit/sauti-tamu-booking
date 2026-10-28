@@ -19,6 +19,7 @@ import type {
   FinancialDashboardData,
   FinancialExpenseBreakdown,
   FinancialInvestment,
+  FinancialObligationPayment,
 } from "@/lib/financial-service";
 
 /* =====================================================
@@ -772,6 +773,13 @@ function FinancialObligations({
   );
 }
 
+function RecentObligationPayments({ payments }: { payments: FinancialObligationPayment[] }) {
+  return <DashboardCard>
+    <div className="border-b border-blue-100 px-5 py-3"><h2 className="m-0 text-[16px] font-extrabold text-blue-900">Recent Obligation Payments</h2><p className="mt-1 mb-0 text-[9px] text-slate-500">Recorded payments with date, method and reference</p></div>
+    {payments.length === 0 ? <div className="p-5 text-center text-[10px] text-slate-500">No obligation payments have been recorded yet.</div> : <div className="overflow-x-auto"><table className="w-full min-w-[620px] text-left text-[9px]"><thead className="bg-slate-50 text-slate-600"><tr><th className="px-4 py-3">Date</th><th className="px-4 py-3">Obligation</th><th className="px-4 py-3">Method</th><th className="px-4 py-3">Reference</th><th className="px-4 py-3 text-right">Amount Paid</th></tr></thead><tbody>{payments.map((payment) => <tr key={payment.id} className="border-t border-slate-100"><td className="px-4 py-3">{payment.payment_date}</td><td className="px-4 py-3 font-semibold">{payment.obligation_name}</td><td className="px-4 py-3 capitalize">{payment.payment_method}</td><td className="px-4 py-3">{payment.reference || "—"}</td><td className="px-4 py-3 text-right font-bold">{formatCurrency(payment.amount)}</td></tr>)}</tbody></table></div>}
+  </DashboardCard>;
+}
+
 function InvestmentPortfolio({ investments, outstanding }: { investments: FinancialInvestment[]; outstanding: number }) {
   const contributed = investments.reduce((sum, item) => sum + item.contribution_amount, 0);
   const currentValue = investments.reduce((sum, item) => sum + item.current_value, 0);
@@ -1220,7 +1228,11 @@ export default function FinancialDashboardView({
         ) : null}
       </section>
 
-      <section className="mt-3 w-full">
+            <section className="mt-3 w-full">
+        {dashboard ? <RecentObligationPayments payments={dashboard.obligationPayments || []} /> : null}
+      </section>
+
+<section className="mt-3 w-full">
         {dashboard ? <InvestmentPortfolio investments={dashboard.investments || []} outstanding={(dashboard.obligations || []).reduce((sum, item) => sum + Number(item.outstanding_balance || 0), 0)} /> : null}
       </section>
 
