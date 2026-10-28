@@ -1,6 +1,8 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
+
+import { supabase } from "@/lib/supabase";
 
 import {
   ArrowDownRight,
@@ -18,6 +20,8 @@ import {
 import type {
   FinancialDashboardData,
   FinancialExpenseBreakdown,
+  FinancialInvestment,
+  FinancialObligationPayment,
 } from "@/lib/financial-service";
 
 /* =====================================================
@@ -33,6 +37,7 @@ type FinancialDashboardViewProps = {
   onRefresh?: () => void;
   onPreviousMonth?: () => void;
   onNextMonth?: () => void;
+  onMonthChange?: (month: string) => void;
 };
 
 /* =====================================================
@@ -71,24 +76,6 @@ function formatPercentage(
   }
 
   return `${Number(value).toFixed(1)}%`;
-}
-
-function formatMonthLabel(
-  monthStart: string
-) {
-  const date = new Date(
-    `${monthStart}T00:00:00+03:00`
-  );
-
-  if (Number.isNaN(date.getTime())) {
-    return monthStart;
-  }
-
-  return new Intl.DateTimeFormat("en-KE", {
-    timeZone: NAIROBI_TIME_ZONE,
-    month: "long",
-    year: "numeric",
-  }).format(date);
 }
 
 function getExpenseTotal(
@@ -788,6 +775,114 @@ function FinancialObligations({
   );
 }
 
+function RecentObligationPayments({ payments }: { payments: FinancialObligationPayment[] }) {
+  return <DashboardCard>
+    <div className="border-b border-blue-100 px-5 py-3"><h2 className="m-0 text-[16px] font-extrabold text-blue-900">Recent Obligation Payments</h2><p className="mt-1 mb-0 text-[9px] text-slate-500">Recorded payments with date, method and reference</p></div>
+    {payments.length === 0 ? <div className="p-5 text-center text-[10px] text-slate-500">No obligation payments have been recorded yet.</div> : <div className="overflow-x-auto"><table className="w-full min-w-[620px] text-left text-[9px]"><thead className="bg-slate-50 text-slate-600"><tr><th className="px-4 py-3">Date</th><th className="px-4 py-3">Obligation</th><th className="px-4 py-3">Method</th><th className="px-4 py-3">Reference</th><th className="px-4 py-3 text-right">Amount Paid</th></tr></thead><tbody>{payments.map((payment) => <tr key={payment.id} className="border-t border-slate-100"><td className="px-4 py-3">{payment.payment_date}</td><td className="px-4 py-3 font-semibold">{payment.obligation_name}</td><td className="px-4 py-3 capitalize">{payment.payment_method}</td><td className="px-4 py-3">{payment.reference || "—"}</td><td className="px-4 py-3 text-right font-bold">{formatCurrency(payment.amount)}</td></tr>)}</tbody></table></div>}
+  </DashboardCard>;
+}
+
+function InvestmentPortfolio({ investments, outstanding }: { investments: FinancialInvestment[]; outstanding: number }) {
+  const contributed = investments.reduce((sum, item) => sum + item.contribution_amount, 0);
+  const currentValue = investments.reduce((sum, item) => sum + item.current_value, 0);
+  const expectedAnnualReturn = investments.reduce((sum, item) => sum + (item.expected_annual_return === null ? 0 : item.current_value * item.expected_annual_return / 100), 0);
+  return <div className="grid grid-cols-1 gap-3 xl:grid-cols-[minmax(0,2fr)_minmax(260px,1fr)]">
+    <DashboardCard>
+      <div className="border-b border-blue-100 px-5 py-3"><h2 className="m-0 text-[16px] font-extrabold text-blue-900">Investment Portfolio</h2><p className="mt-1 mb-0 text-[9px] text-slate-500">Institutions, contribution progress, expected returns and due dates</p></div>
+      <div className="grid grid-cols-3 divide-x divide-blue-100 border-b border-blue-100">
+        <div className="px-4 py-3"><p className="m-0 text-[8px] font-bold text-slate-500">Contributed</p><p className="mt-1 mb-0 text-[15px] font-extrabold">{formatCurrency(contributed)}</p></div>
+        <div className="px-4 py-3"><p className="m-0 text-[8px] font-bold text-slate-500">Current Value</p><p className="mt-1 mb-0 text-[15px] font-extrabold text-emerald-700">{formatCurrency(currentValue)}</p></div>
+        <div className="px-4 py-3"><p className="m-0 text-[8px] font-bold text-slate-500">Expected Annual Return</p><p className="mt-1 mb-0 text-[15px] font-extrabold text-blue-700">{formatCurrency(expectedAnnualReturn)}</p></div>
+      </div>
+      {investments.length === 0 ? <p className="p-5 text-center text-[10px] text-slate-500">No active investments recorded yet.</p> : <div className="overflow-x-auto"><table className="w-full min-w-[650px] text-left text-[9px]"><thead className="bg-slate-50 text-slate-600"><tr><th className="px-4 py-3">Institution / Investment</th><th className="px-4 py-3">Frequency</th><th className="px-4 py-3 text-right">Contributed</th><th className="px-4 py-3 text-right">Current value</th><th className="px-4 py-3">Due date</th></tr></thead><tbody>{investments.map((item) => <tr key={item.id} className="border-t border-slate-100"><td className="px-4 py-3"><p className="m-0 font-bold">{item.institution}</p><p className="mt-1 mb-0 text-slate-500">{item.investment_type}</p></td><td className="px-4 py-3">{item.contribution_frequency}</td><td className="px-4 py-3 text-right">{formatCurrency(item.contribution_amount)}</td><td className="px-4 py-3 text-right">{formatCurrency(item.current_value)}</td><td className="px-4 py-3">{item.next_due_date || "—"}</td></tr>)}</tbody></table></div>}
+    </DashboardCard>
+    <DashboardCard><div className="border-b border-blue-100 px-5 py-3"><h2 className="m-0 text-[16px] font-extrabold text-blue-900">Net Worth Snapshot</h2><p className="mt-1 mb-0 text-[9px] text-slate-500">Based on recorded financial data</p></div><div className="space-y-4 p-5"><div><p className="m-0 text-[9px] font-semibold text-slate-500">Tracked investment assets</p><p className="mt-1 mb-0 text-[20px] font-extrabold text-emerald-700">{formatCurrency(currentValue)}</p></div><div><p className="m-0 text-[9px] font-semibold text-slate-500">Outstanding obligations</p><p className="mt-1 mb-0 text-[20px] font-extrabold text-red-600">{formatCurrency(outstanding)}</p></div><div><p className="m-0 text-[9px] font-semibold text-slate-500">Tracked net position (partial)</p><p className="mt-1 mb-0 text-[20px] font-extrabold text-slate-900">{formatCurrency(currentValue - outstanding)}</p></div><p className="m-0 rounded-lg bg-amber-50 p-3 text-[9px] leading-relaxed text-amber-900">Partial estimate only: cash and bank balances, and assets not recorded here, are not included.</p></div></DashboardCard>
+  </div>;
+}
+
+function FinancialDashboardActions({ onRefresh }: { onRefresh?: () => void }) {
+  const [showInvestmentForm, setShowInvestmentForm] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const [institution, setInstitution] = useState("");
+  const [investmentType, setInvestmentType] = useState("Other");
+  const [contribution, setContribution] = useState("");
+  const [currentValue, setCurrentValue] = useState("");
+  const [frequency, setFrequency] = useState("Monthly");
+  const [startDate, setStartDate] = useState(new Date().toLocaleDateString("en-CA", { timeZone: "Africa/Nairobi" }));
+  const [dueDate, setDueDate] = useState("");
+  const [annualReturn, setAnnualReturn] = useState("");
+
+  async function saveInvestment() {
+    try {
+      setSaving(true);
+      setError("");
+      const contributionAmount = Number(contribution);
+      const value = currentValue === "" ? contributionAmount : Number(currentValue);
+      const returnRate = annualReturn === "" ? null : Number(annualReturn);
+      if (!institution.trim()) throw new Error("Enter the institution or investment name.");
+      if (!Number.isFinite(contributionAmount) || contributionAmount < 0) throw new Error("Enter a valid contribution amount.");
+      if (!Number.isFinite(value) || value < 0) throw new Error("Enter a valid current value.");
+      if (returnRate !== null && (!Number.isFinite(returnRate) || returnRate < 0 || returnRate > 1000)) throw new Error("Enter a valid expected annual return percentage.");
+      const { error: insertError } = await supabase.from("financial_investments").insert({
+        institution: institution.trim(),
+        investment_type: investmentType,
+        contribution_amount: contributionAmount,
+        current_value: value,
+        contribution_frequency: frequency,
+        start_date: startDate,
+        next_due_date: dueDate || null,
+        expected_annual_return: returnRate,
+        status: "active",
+      });
+      if (insertError) throw insertError;
+      setShowInvestmentForm(false);
+      setInstitution("");
+      setContribution("");
+      setCurrentValue("");
+      setDueDate("");
+      setAnnualReturn("");
+      onRefresh?.();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not save investment.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return <>
+    <DashboardCard>
+      <div className="flex flex-wrap items-center justify-between gap-3 p-4">
+        <div><h2 className="m-0 text-[12px] font-extrabold text-blue-900">Quick Actions</h2><p className="mt-1 mb-0 text-[9px] text-slate-500">Manage records or print the current monthly dashboard.</p></div>
+        <div className="flex flex-wrap gap-2">
+          <a href="/admin/expenses" className="inline-flex h-9 items-center rounded-lg border border-slate-200 bg-white px-3 text-[9px] font-bold text-slate-700 hover:bg-slate-50">Add Expense</a>
+          <button type="button" onClick={() => { setError(""); setShowInvestmentForm(true); }} className="inline-flex h-9 items-center rounded-lg border border-blue-200 bg-blue-50 px-3 text-[9px] font-bold text-blue-800 hover:bg-blue-100">Add Investment</button>
+          <a href="/admin/financial-obligations" className="inline-flex h-9 items-center rounded-lg border border-slate-200 bg-white px-3 text-[9px] font-bold text-slate-700 hover:bg-slate-50">Add Obligation</a>
+          <a href="/admin/payment-schedule" className="inline-flex h-9 items-center rounded-lg border border-slate-200 bg-white px-3 text-[9px] font-bold text-slate-700 hover:bg-slate-50">View Payment Schedule</a>
+          <button type="button" onClick={() => window.print()} className="inline-flex h-9 items-center rounded-lg bg-blue-900 px-3 text-[9px] font-bold text-white hover:bg-blue-800">Generate Report</button>
+        </div>
+      </div>
+    </DashboardCard>
+    {showInvestmentForm ? <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4">
+      <div role="dialog" aria-modal="true" aria-labelledby="investment-form-title" className="max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-2xl bg-white p-5 shadow-2xl">
+        <div className="flex items-start justify-between gap-3"><div><h2 id="investment-form-title" className="m-0 text-[17px] font-extrabold text-blue-950">Add Investment</h2><p className="mt-1 mb-0 text-[10px] text-slate-500">Record a portfolio asset and its current valuation.</p></div><button type="button" onClick={() => setShowInvestmentForm(false)} disabled={saving} className="rounded-lg border border-slate-200 px-3 py-1 text-sm">×</button></div>
+        {error ? <p className="mt-3 rounded-lg bg-red-50 p-3 text-[10px] text-red-700">{error}</p> : null}
+        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <label className="text-[10px] font-bold text-slate-600 sm:col-span-2">Institution / investment name<input value={institution} onChange={e => setInstitution(e.target.value)} required className="mt-1 h-10 w-full rounded-lg border border-slate-200 px-3 text-[12px] font-normal" placeholder="e.g. SACCO or fixed deposit" /></label>
+          <label className="text-[10px] font-bold text-slate-600">Investment type<select value={investmentType} onChange={e => setInvestmentType(e.target.value)} className="mt-1 h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-[12px] font-normal"><option>Other</option><option>SACCO</option><option>Fixed Deposit</option><option>Shares</option><option>Bonds</option><option>Money Market Fund</option><option>Property</option></select></label>
+          <label className="text-[10px] font-bold text-slate-600">Contribution frequency<select value={frequency} onChange={e => setFrequency(e.target.value)} className="mt-1 h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-[12px] font-normal"><option>One-time</option><option>Weekly</option><option>Monthly</option><option>Quarterly</option><option>Annually</option></select></label>
+          <label className="text-[10px] font-bold text-slate-600">Total contributed (KSh)<input type="number" min="0" step="0.01" value={contribution} onChange={e => setContribution(e.target.value)} required className="mt-1 h-10 w-full rounded-lg border border-slate-200 px-3 text-[12px] font-normal" /></label>
+          <label className="text-[10px] font-bold text-slate-600">Current value (KSh)<input type="number" min="0" step="0.01" value={currentValue} onChange={e => setCurrentValue(e.target.value)} placeholder="Defaults to contribution" className="mt-1 h-10 w-full rounded-lg border border-slate-200 px-3 text-[12px] font-normal" /></label>
+          <label className="text-[10px] font-bold text-slate-600">Start date<input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} required className="mt-1 h-10 w-full rounded-lg border border-slate-200 px-3 text-[12px] font-normal" /></label>
+          <label className="text-[10px] font-bold text-slate-600">Next due date<input type="date" value={dueDate} onChange={e => setDueDate(e.target.value)} className="mt-1 h-10 w-full rounded-lg border border-slate-200 px-3 text-[12px] font-normal" /></label>
+          <label className="text-[10px] font-bold text-slate-600 sm:col-span-2">Expected annual return (%)<input type="number" min="0" max="1000" step="0.01" value={annualReturn} onChange={e => setAnnualReturn(e.target.value)} className="mt-1 h-10 w-full rounded-lg border border-slate-200 px-3 text-[12px] font-normal" placeholder="Optional" /></label>
+        </div>
+        <div className="mt-5 flex justify-end gap-2 border-t border-slate-100 pt-4"><button type="button" onClick={() => setShowInvestmentForm(false)} disabled={saving} className="h-9 rounded-lg border border-slate-200 px-4 text-[10px] font-bold">Cancel</button><button type="button" onClick={saveInvestment} disabled={saving} className="h-9 rounded-lg bg-blue-900 px-4 text-[10px] font-bold text-white disabled:opacity-50">{saving ? "Saving…" : "Save Investment"}</button></div>
+      </div>
+    </div> : null}
+  </>;
+}
+
 /* =====================================================
    MAIN DASHBOARD
 ===================================================== */
@@ -801,6 +896,7 @@ export default function FinancialDashboardView({
   onRefresh,
   onPreviousMonth,
   onNextMonth,
+  onMonthChange,
 }: FinancialDashboardViewProps) {
   const summary =
     dashboard?.summary;
@@ -928,16 +1024,19 @@ export default function FinancialDashboardView({
             ← Previous
           </button>
 
-          <div className="inline-flex h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-[9px] font-medium text-slate-700">
-            <CalendarDays
-              size={13}
-              className="text-red-600"
+          <label className="inline-flex h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-[9px] font-medium text-slate-700">
+            <CalendarDays size={13} className="text-blue-700" />
+            <span className="sr-only">Select dashboard month</span>
+            <input
+              type="month"
+              value={monthStart.slice(0, 7)}
+              onChange={(event) => {
+                if (event.target.value) onMonthChange?.(`${event.target.value}-01`);
+              }}
+              aria-label="Select dashboard month"
+              className="min-w-0 bg-transparent text-[10px] font-semibold outline-none"
             />
-
-            {formatMonthLabel(
-              monthStart
-            )}
-          </div>
+          </label>
 
           <button
             type="button"
@@ -1212,6 +1311,16 @@ export default function FinancialDashboardView({
             }
           />
         ) : null}
+      </section>
+
+            <section className="mt-3 w-full">
+        {dashboard ? <RecentObligationPayments payments={dashboard.obligationPayments || []} /> : null}
+      </section>
+
+      <section className="mt-3 w-full"><FinancialDashboardActions onRefresh={onRefresh} /></section>
+
+<section className="mt-3 w-full">
+        {dashboard ? <InvestmentPortfolio investments={dashboard.investments || []} outstanding={(dashboard.obligations || []).reduce((sum, item) => sum + Number(item.outstanding_balance || 0), 0)} /> : null}
       </section>
 
       {/* =================================================
