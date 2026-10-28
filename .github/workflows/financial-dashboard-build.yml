@@ -13,7 +13,7 @@ on:
       - "package-lock.json"
       - ".github/workflows/financial-dashboard-build.yml"
   push:
-    branches: [feature/financial-dashboard-rebuild]
+    branches: [feature/financial-dashboard-rebuild, financial-dashboard-main-aligned]
 
 jobs:
   build:
