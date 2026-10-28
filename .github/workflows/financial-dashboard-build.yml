@@ -26,14 +26,13 @@ jobs:
         with:
           node-version: 20
       - name: Install dependencies
-        run: npm install
+        run: |
+          set -o pipefail
+          npm install 2>&1 | tee install-output.txt
       - name: Build Next.js application
         run: |
-          set +e
+          set -o pipefail
           npm run build 2>&1 | tee build-output.txt
-          build_status=${PIPESTATUS[0]}
-          echo "BUILD_EXIT_CODE=${build_status}" | tee -a build-output.txt
-          exit "${build_status}"
         env:
           NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
           NEXT_PUBLIC_SUPABASE_ANON_KEY: build-check-placeholder
@@ -41,6 +40,8 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: financial-dashboard-build-diagnostics
-          path: build-output.txt
+          name: financial-dashboard-diagnostics
+          path: |
+            install-output.txt
+            build-output.txt
           if-no-files-found: ignore
