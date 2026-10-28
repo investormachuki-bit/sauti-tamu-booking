@@ -18,6 +18,7 @@ import {
 import type {
   FinancialDashboardData,
   FinancialExpenseBreakdown,
+  FinancialInvestment,
 } from "@/lib/financial-service";
 
 /* =====================================================
