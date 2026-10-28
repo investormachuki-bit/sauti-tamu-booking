@@ -33,6 +33,7 @@ type FinancialDashboardViewProps = {
   onRefresh?: () => void;
   onPreviousMonth?: () => void;
   onNextMonth?: () => void;
+  onMonthChange?: (month: string) => void;
 };
 
 /* =====================================================
@@ -819,6 +820,7 @@ export default function FinancialDashboardView({
   onRefresh,
   onPreviousMonth,
   onNextMonth,
+  onMonthChange,
 }: FinancialDashboardViewProps) {
   const summary =
     dashboard?.summary;
@@ -946,16 +948,19 @@ export default function FinancialDashboardView({
             ← Previous
           </button>
 
-          <div className="inline-flex h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-[9px] font-medium text-slate-700">
-            <CalendarDays
-              size={13}
-              className="text-red-600"
+          <label className="inline-flex h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-[9px] font-medium text-slate-700">
+            <CalendarDays size={13} className="text-blue-700" />
+            <span className="sr-only">Select dashboard month</span>
+            <input
+              type="month"
+              value={monthStart.slice(0, 7)}
+              onChange={(event) => {
+                if (event.target.value) onMonthChange?.(`${event.target.value}-01`);
+              }}
+              aria-label="Select dashboard month"
+              className="min-w-0 bg-transparent text-[10px] font-semibold outline-none"
             />
-
-            {formatMonthLabel(
-              monthStart
-            )}
-          </div>
+          </label>
 
           <button
             type="button"
