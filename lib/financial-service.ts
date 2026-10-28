@@ -124,8 +124,36 @@ export type FinancialObligation = {
   updated_at: string;
 };
 
+export type FinancialObligationPayment = {
+  id: string;
+  obligation_id: string;
+  obligation_name: string;
+  payment_date: string;
+  amount: number;
+  payment_method: string;
+  reference: string | null;
+};
+
+export type FinancialInvestment = {
+  id: string;
+  institution: string;
+  investment_type: string;
+  contribution_amount: number;
+  current_value: number;
+  contribution_frequency: string;
+  start_date: string;
+  next_due_date: string | null;
+  expected_annual_return: number | null;
+  status: string;
+  notes: string | null;
+};
+
 export type FinancialDashboardData = {
   settings: FinancialSettings;
+
+  investments: FinancialInvestment[];
+
+  obligationPayments: FinancialObligationPayment[];
 
   summary:
     | FinancialMonthlySummary
@@ -849,6 +877,58 @@ export async function loadActiveFinancialObligations(): Promise<
 }
 
 /* =====================================================
+   RECENT OBLIGATION PAYMENT HISTORY
+===================================================== */
+
+export async function loadRecentObligationPayments(): Promise<FinancialObligationPayment[]> {
+  const { data, error } = await supabase
+    .from("financial_obligation_payments")
+    .select("id, obligation_id, payment_date, amount, payment_method, reference, financial_obligations(name)")
+    .order("payment_date", { ascending: false })
+    .limit(10);
+
+  throwIfError(error);
+
+  return (data ?? []).map((row: any) => ({
+    id: row.id,
+    obligation_id: row.obligation_id,
+    obligation_name: row.financial_obligations?.name ?? "Financial obligation",
+    payment_date: row.payment_date,
+    amount: toNumber(row.amount),
+    payment_method: row.payment_method,
+    reference: row.reference ?? null,
+  }));
+}
+
+/* =====================================================
+   INVESTMENT PORTFOLIO
+===================================================== */
+
+export async function loadFinancialInvestments(): Promise<FinancialInvestment[]> {
+  const { data, error } = await supabase
+    .from("financial_investments")
+    .select("*")
+    .eq("status", "active")
+    .order("next_due_date", { ascending: true, nullsFirst: false });
+
+  throwIfError(error);
+
+  return (data ?? []).map((row) => ({
+    id: row.id,
+    institution: row.institution,
+    investment_type: row.investment_type,
+    contribution_amount: toNumber(row.contribution_amount),
+    current_value: toNumber(row.current_value),
+    contribution_frequency: row.contribution_frequency,
+    start_date: row.start_date,
+    next_due_date: row.next_due_date,
+    expected_annual_return: toNullableNumber(row.expected_annual_return),
+    status: row.status,
+    notes: row.notes,
+  }));
+}
+
+/* =====================================================
    COMPLETE FINANCIAL DASHBOARD
 ===================================================== */
 
@@ -862,6 +942,8 @@ export async function loadFinancialDashboard(
     activity,
     performance,
     obligations,
+    investments,
+    obligationPayments,
   ] = await Promise.all([
     loadFinancialSettings(),
 
@@ -882,6 +964,10 @@ export async function loadFinancialDashboard(
     ),
 
     loadActiveFinancialObligations(),
+
+    loadFinancialInvestments(),
+
+    loadRecentObligationPayments(),
   ]);
 
   /* ===================================================
@@ -1045,6 +1131,10 @@ export async function loadFinancialDashboard(
 
   return {
     settings,
+
+    investments,
+
+    obligationPayments,
 
     summary:
       effectiveSummary,
