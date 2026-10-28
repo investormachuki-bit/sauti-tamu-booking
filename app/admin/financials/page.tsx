@@ -153,6 +153,7 @@ export default function FinancialDashboardPage() {
         handlePreviousMonth
       }
       onNextMonth={handleNextMonth}
+      onMonthChange={setMonthStart}
     />
   );
 }

@@ -1,0 +1,47 @@
+name: Financial dashboard build check
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "app/admin/financials/**"
+      - "app/admin/financial-obligations/**"
+      - "components/admin/financial/**"
+      - "lib/financial-service.ts"
+      - "supabase/migrations/**"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/financial-dashboard-build.yml"
+  push:
+    branches: [feature/financial-dashboard-rebuild, financial-dashboard-main-aligned]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install dependencies
+        run: |
+          set -o pipefail
+          npm install 2>&1 | tee install-output.txt
+      - name: Build Next.js application
+        run: |
+          set -o pipefail
+          npm run build 2>&1 | tee build-output.txt
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: build-check-placeholder
+      - name: Upload build diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: financial-dashboard-diagnostics
+          path: |
+            install-output.txt
+            build-output.txt
+          if-no-files-found: ignore
