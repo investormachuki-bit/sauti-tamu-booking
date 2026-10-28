@@ -1,6 +1,8 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
+
+import { supabase } from "@/lib/supabase";
 
 import {
   ArrowDownRight,
@@ -798,6 +800,89 @@ function InvestmentPortfolio({ investments, outstanding }: { investments: Financ
   </div>;
 }
 
+function FinancialDashboardActions({ onRefresh }: { onRefresh?: () => void }) {
+  const [showInvestmentForm, setShowInvestmentForm] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const [institution, setInstitution] = useState("");
+  const [investmentType, setInvestmentType] = useState("Other");
+  const [contribution, setContribution] = useState("");
+  const [currentValue, setCurrentValue] = useState("");
+  const [frequency, setFrequency] = useState("Monthly");
+  const [startDate, setStartDate] = useState(new Date().toLocaleDateString("en-CA", { timeZone: "Africa/Nairobi" }));
+  const [dueDate, setDueDate] = useState("");
+  const [annualReturn, setAnnualReturn] = useState("");
+
+  async function saveInvestment() {
+    try {
+      setSaving(true);
+      setError("");
+      const contributionAmount = Number(contribution);
+      const value = currentValue === "" ? contributionAmount : Number(currentValue);
+      const returnRate = annualReturn === "" ? null : Number(annualReturn);
+      if (!institution.trim()) throw new Error("Enter the institution or investment name.");
+      if (!Number.isFinite(contributionAmount) || contributionAmount < 0) throw new Error("Enter a valid contribution amount.");
+      if (!Number.isFinite(value) || value < 0) throw new Error("Enter a valid current value.");
+      if (returnRate !== null && (!Number.isFinite(returnRate) || returnRate < 0 || returnRate > 1000)) throw new Error("Enter a valid expected annual return percentage.");
+      const { error: insertError } = await supabase.from("financial_investments").insert({
+        institution: institution.trim(),
+        investment_type: investmentType,
+        contribution_amount: contributionAmount,
+        current_value: value,
+        contribution_frequency: frequency,
+        start_date: startDate,
+        next_due_date: dueDate || null,
+        expected_annual_return: returnRate,
+        status: "active",
+      });
+      if (insertError) throw insertError;
+      setShowInvestmentForm(false);
+      setInstitution("");
+      setContribution("");
+      setCurrentValue("");
+      setDueDate("");
+      setAnnualReturn("");
+      onRefresh?.();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not save investment.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return <>
+    <DashboardCard>
+      <div className="flex flex-wrap items-center justify-between gap-3 p-4">
+        <div><h2 className="m-0 text-[12px] font-extrabold text-blue-900">Quick Actions</h2><p className="mt-1 mb-0 text-[9px] text-slate-500">Manage records or print the current monthly dashboard.</p></div>
+        <div className="flex flex-wrap gap-2">
+          <a href="/admin/expenses" className="inline-flex h-9 items-center rounded-lg border border-slate-200 bg-white px-3 text-[9px] font-bold text-slate-700 hover:bg-slate-50">Add Expense</a>
+          <button type="button" onClick={() => { setError(""); setShowInvestmentForm(true); }} className="inline-flex h-9 items-center rounded-lg border border-blue-200 bg-blue-50 px-3 text-[9px] font-bold text-blue-800 hover:bg-blue-100">Add Investment</button>
+          <a href="/admin/financial-obligations" className="inline-flex h-9 items-center rounded-lg border border-slate-200 bg-white px-3 text-[9px] font-bold text-slate-700 hover:bg-slate-50">Add Obligation</a>
+          <a href="/admin/payment-schedule" className="inline-flex h-9 items-center rounded-lg border border-slate-200 bg-white px-3 text-[9px] font-bold text-slate-700 hover:bg-slate-50">View Payment Schedule</a>
+          <button type="button" onClick={() => window.print()} className="inline-flex h-9 items-center rounded-lg bg-blue-900 px-3 text-[9px] font-bold text-white hover:bg-blue-800">Generate Report</button>
+        </div>
+      </div>
+    </DashboardCard>
+    {showInvestmentForm ? <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4">
+      <div role="dialog" aria-modal="true" aria-labelledby="investment-form-title" className="max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-2xl bg-white p-5 shadow-2xl">
+        <div className="flex items-start justify-between gap-3"><div><h2 id="investment-form-title" className="m-0 text-[17px] font-extrabold text-blue-950">Add Investment</h2><p className="mt-1 mb-0 text-[10px] text-slate-500">Record a portfolio asset and its current valuation.</p></div><button type="button" onClick={() => setShowInvestmentForm(false)} disabled={saving} className="rounded-lg border border-slate-200 px-3 py-1 text-sm">×</button></div>
+        {error ? <p className="mt-3 rounded-lg bg-red-50 p-3 text-[10px] text-red-700">{error}</p> : null}
+        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <label className="text-[10px] font-bold text-slate-600 sm:col-span-2">Institution / investment name<input value={institution} onChange={e => setInstitution(e.target.value)} required className="mt-1 h-10 w-full rounded-lg border border-slate-200 px-3 text-[12px] font-normal" placeholder="e.g. SACCO or fixed deposit" /></label>
+          <label className="text-[10px] font-bold text-slate-600">Investment type<select value={investmentType} onChange={e => setInvestmentType(e.target.value)} className="mt-1 h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-[12px] font-normal"><option>Other</option><option>SACCO</option><option>Fixed Deposit</option><option>Shares</option><option>Bonds</option><option>Money Market Fund</option><option>Property</option></select></label>
+          <label className="text-[10px] font-bold text-slate-600">Contribution frequency<select value={frequency} onChange={e => setFrequency(e.target.value)} className="mt-1 h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-[12px] font-normal"><option>One-time</option><option>Weekly</option><option>Monthly</option><option>Quarterly</option><option>Annually</option></select></label>
+          <label className="text-[10px] font-bold text-slate-600">Total contributed (KSh)<input type="number" min="0" step="0.01" value={contribution} onChange={e => setContribution(e.target.value)} required className="mt-1 h-10 w-full rounded-lg border border-slate-200 px-3 text-[12px] font-normal" /></label>
+          <label className="text-[10px] font-bold text-slate-600">Current value (KSh)<input type="number" min="0" step="0.01" value={currentValue} onChange={e => setCurrentValue(e.target.value)} placeholder="Defaults to contribution" className="mt-1 h-10 w-full rounded-lg border border-slate-200 px-3 text-[12px] font-normal" /></label>
+          <label className="text-[10px] font-bold text-slate-600">Start date<input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} required className="mt-1 h-10 w-full rounded-lg border border-slate-200 px-3 text-[12px] font-normal" /></label>
+          <label className="text-[10px] font-bold text-slate-600">Next due date<input type="date" value={dueDate} onChange={e => setDueDate(e.target.value)} className="mt-1 h-10 w-full rounded-lg border border-slate-200 px-3 text-[12px] font-normal" /></label>
+          <label className="text-[10px] font-bold text-slate-600 sm:col-span-2">Expected annual return (%)<input type="number" min="0" max="1000" step="0.01" value={annualReturn} onChange={e => setAnnualReturn(e.target.value)} className="mt-1 h-10 w-full rounded-lg border border-slate-200 px-3 text-[12px] font-normal" placeholder="Optional" /></label>
+        </div>
+        <div className="mt-5 flex justify-end gap-2 border-t border-slate-100 pt-4"><button type="button" onClick={() => setShowInvestmentForm(false)} disabled={saving} className="h-9 rounded-lg border border-slate-200 px-4 text-[10px] font-bold">Cancel</button><button type="button" onClick={saveInvestment} disabled={saving} className="h-9 rounded-lg bg-blue-900 px-4 text-[10px] font-bold text-white disabled:opacity-50">{saving ? "Saving…" : "Save Investment"}</button></div>
+      </div>
+    </div> : null}
+  </>;
+}
+
 /* =====================================================
    MAIN DASHBOARD
 ===================================================== */
@@ -1231,6 +1316,8 @@ export default function FinancialDashboardView({
             <section className="mt-3 w-full">
         {dashboard ? <RecentObligationPayments payments={dashboard.obligationPayments || []} /> : null}
       </section>
+
+      <section className="mt-3 w-full"><FinancialDashboardActions onRefresh={onRefresh} /></section>
 
 <section className="mt-3 w-full">
         {dashboard ? <InvestmentPortfolio investments={dashboard.investments || []} outstanding={(dashboard.obligations || []).reduce((sum, item) => sum + Number(item.outstanding_balance || 0), 0)} /> : null}
