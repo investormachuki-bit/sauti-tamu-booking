@@ -688,6 +688,9 @@ export default function FinancialObligationsPage() {
   const [obligationPaymentMethod, setObligationPaymentMethod] =
     useState<PaymentMethod>("mpesa");
 
+  const [obligationPaymentDate, setObligationPaymentDate] =
+    useState(getTodayKey);
+
   const [obligationPaymentReference, setObligationPaymentReference] =
     useState("");
 
@@ -929,6 +932,7 @@ export default function FinancialObligationsPage() {
     setPayingObligation(obligation);
     setObligationPaymentAmount("");
     setObligationPaymentMethod("mpesa");
+    setObligationPaymentDate(getTodayKey());
     setObligationPaymentReference("");
   }
 
@@ -936,6 +940,7 @@ export default function FinancialObligationsPage() {
     if (paying) return;
     setPayingObligation(null);
     setObligationPaymentAmount("");
+    setObligationPaymentDate(getTodayKey());
     setObligationPaymentReference("");
   }
 
@@ -947,69 +952,36 @@ export default function FinancialObligationsPage() {
       setActionError("");
 
       const paymentAmount = Number(obligationPaymentAmount);
-
       if (!Number.isFinite(paymentAmount) || paymentAmount <= 0) {
         throw new Error("Please enter a valid payment amount.");
       }
-
       if (paymentAmount > payingObligation.outstanding_balance) {
         throw new Error("Payment cannot exceed the outstanding obligation balance.");
       }
+      if (!obligationPaymentDate) {
+        throw new Error("Please select the payment date.");
+      }
 
-      const newBalance = Math.max(
-        payingObligation.outstanding_balance - paymentAmount,
-        0
+      // The database function performs the expense insert, balance reduction,
+      // and payment-history insert in one transaction.
+      const { error: paymentError } = await supabase.rpc(
+        "record_financial_obligation_payment",
+        {
+          p_obligation_id: payingObligation.id,
+          p_amount: paymentAmount,
+          p_payment_date: obligationPaymentDate,
+          p_payment_method: obligationPaymentMethod,
+          p_reference: obligationPaymentReference.trim() || null,
+          p_notes: "Recorded from Financial Obligations payment modal.",
+          p_idempotency_key: crypto.randomUUID(),
+        }
       );
 
-      const now = new Date().toISOString();
-
-      const { data: updatedRows, error: updateError } = await supabase
-        .from("financial_obligations")
-        .update({
-          outstanding_balance: newBalance,
-          status: newBalance === 0 ? "completed" : payingObligation.status,
-          updated_at: now,
-        })
-        .eq("id", payingObligation.id)
-        .select("*");
-
-      if (updateError) throw updateError;
-      if (!updatedRows || updatedRows.length === 0) {
-        throw new Error("The obligation balance could not be updated.");
-      }
-
-      const { error: expenseError } = await supabase
-        .from("expenses")
-        .insert({
-          expense_date: getTodayKey(),
-          category: "Financial Obligations",
-          description: `Payment — ${payingObligation.name}`,
-          amount: paymentAmount,
-          payment_method: obligationPaymentMethod,
-          reference: obligationPaymentReference.trim() || null,
-          vendor: payingObligation.name,
-          notes: "Automatically created from Financial Obligations payment.",
-          created_at: now,
-          updated_at: now,
-        });
-
-      if (expenseError) {
-        await supabase
-          .from("financial_obligations")
-          .update({
-            outstanding_balance: payingObligation.outstanding_balance,
-            status: payingObligation.status,
-            updated_at: new Date().toISOString(),
-          })
-          .eq("id", payingObligation.id);
-
-        throw new Error(
-          `The obligation was not marked as paid because the corresponding expense could not be created: ${expenseError.message}`
-        );
-      }
+      if (paymentError) throw paymentError;
 
       setPayingObligation(null);
       setObligationPaymentAmount("");
+      setObligationPaymentDate(getTodayKey());
       setObligationPaymentReference("");
       await loadObligations(true);
     } catch (err) {
@@ -2008,6 +1980,19 @@ export default function FinancialObligationsPage() {
                   <option value="card">Card</option>
                   <option value="other">Other</option>
                 </select>
+              </label>
+
+              <label>
+                <span className="block text-[9px] font-bold uppercase tracking-[0.08em] text-[var(--st-gray)]">
+                  Payment Date
+                </span>
+                <input
+                  type="date"
+                  value={obligationPaymentDate}
+                  max={getTodayKey()}
+                  onChange={(event) => setObligationPaymentDate(event.target.value)}
+                  className="mt-2 h-10 w-full rounded-xl border border-[var(--st-border)] px-3 text-[11px] outline-none focus:border-[var(--st-red)]"
+                />
               </label>
 
               <label>
