@@ -594,6 +594,11 @@ export async function POST(request: NextRequest) {
         .eq("id", booking.booking_id)
         .single();
 
+    let smsResult: Awaited<ReturnType<typeof sendAirTouchSms>> = {
+      success: false,
+      error: "SMS not attempted",
+    };
+
     if (detailsError || !bookingDetails) {
       console.error("Booking details error:", detailsError);
 
@@ -630,10 +635,6 @@ export async function POST(request: NextRequest) {
       : "";
     const smsMessage =
       `Hello ${cleanName}, your Sauti Tamu trial lesson is confirmed for ${lessonDateText}${lessonTimeText ? ` at ${lessonTimeText}` : ""}. We look forward to welcoming you. For enquiries, contact Sauti Tamu Piano Center.`;
-    let smsResult: Awaited<ReturnType<typeof sendAirTouchSms>> = {
-      success: false,
-      error: "SMS not attempted",
-    };
     try {
       smsResult = await sendAirTouchSms(cleanWhatsapp, smsMessage);
       if (!smsResult.success) {
