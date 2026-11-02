@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { Resend } from "resend";
 import { supabaseServer } from "@/lib/supabase-server";
 import { renderSautiTamuEmail } from "@/lib/email-template-renderer";
+import { sendAirTouchSms } from "@/lib/airtouch";
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 const NAIROBI_TIME_ZONE = "Africa/Nairobi";
@@ -600,6 +601,7 @@ export async function POST(request: NextRequest) {
         success: true,
         bookingCreated: true,
         confirmationSent: false,
+        smsSent: smsResult.success,
         adminNotificationSent: false,
         manychatSynced: false,
         followUpsCreated: 0,
@@ -618,6 +620,61 @@ export async function POST(request: NextRequest) {
 
     if (lessonSlotError) {
       console.error("Lesson slot details error:", lessonSlotError);
+    }
+
+    const lessonDateText = lessonSlot?.starts_at
+      ? formatDate(lessonSlot.starts_at)
+      : "your selected date";
+    const lessonTimeText = lessonSlot?.starts_at
+      ? formatTime(lessonSlot.starts_at)
+      : "";
+    const smsMessage =
+      `Hello ${cleanName}, your Sauti Tamu trial lesson is confirmed for ${lessonDateText}${lessonTimeText ? ` at ${lessonTimeText}` : ""}. We look forward to welcoming you. For enquiries, contact Sauti Tamu Piano Center.`;
+    let smsResult: Awaited<ReturnType<typeof sendAirTouchSms>> = {
+      success: false,
+      error: "SMS not attempted",
+    };
+    try {
+      smsResult = await sendAirTouchSms(cleanWhatsapp, smsMessage);
+      if (!smsResult.success) {
+        console.error("AirTouch booking confirmation SMS failed:", smsResult.error);
+      }
+    } catch (smsError) {
+      console.error("AirTouch booking confirmation SMS error:", smsError);
+    }
+
+    // Queue independent SMS reminders. Existing email reminder tasks are untouched.
+    if (lessonSlot?.starts_at) {
+      const reminderOffsets = [
+        ["trial_reminder_7d", 7 * 24 * 60],
+        ["trial_reminder_3d", 3 * 24 * 60],
+        ["trial_reminder_24h", 24 * 60],
+        ["trial_reminder_6h", 6 * 60],
+        ["trial_reminder_1h", 60],
+      ] as const;
+      const startsAtMs = new Date(lessonSlot.starts_at).getTime();
+      const nowMs = Date.now();
+      const smsTasks = reminderOffsets
+        .map(([task_type, minutes]) => ({
+          lead_id: bookingDetails.lead_id,
+          booking_id: booking.booking_id,
+          task_type,
+          due_at: new Date(startsAtMs - minutes * 60_000).toISOString(),
+          status: "pending",
+          channel: "sms",
+          message_template: task_type,
+          sent_at: null,
+          completed_at: null,
+        }))
+        .filter((task) => new Date(task.due_at).getTime() > nowMs);
+      if (smsTasks.length) {
+        const { error: queueError } = await supabaseServer
+          .from("follow_up_tasks")
+          .insert(smsTasks);
+        if (queueError) {
+          console.error("Could not queue AirTouch SMS reminders:", queueError);
+        }
+      }
     }
 
     const rendered = await renderSautiTamuEmail(
@@ -717,6 +774,8 @@ export async function POST(request: NextRequest) {
       success: true,
       bookingCreated: true,
       confirmationSent: true,
+      smsSent: smsResult.success,
+      smsError: smsResult.success ? undefined : smsResult.error,
       adminNotificationSent: Boolean(
         adminEmailResult && !adminEmailResult.error,
       ),
