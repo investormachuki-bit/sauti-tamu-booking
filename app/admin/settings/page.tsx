@@ -663,7 +663,12 @@ export default function SettingsPage() {
       });
       const result = await response.json();
       if (!response.ok || !result.success) {
-        throw new Error(result.error || "AirTouch could not send the test SMS.");
+        setTestSmsResult({
+          success: false,
+          message: result.error || "AirTouch could not send the test SMS.",
+          providerResponse: result.providerResponse,
+        });
+        return;
       }
       setTestSmsResult({
         success: true,
