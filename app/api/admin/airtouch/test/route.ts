@@ -33,7 +33,11 @@ export async function POST(request: NextRequest) {
 
     const result = await sendAirTouchSms(phone, message);
     if (!result.success) {
-      console.error("AirTouch test SMS failed:", result.error, result.status);
+      console.error("AirTouch test SMS failed:", {
+        error: result.error,
+        status: result.status,
+        providerResponse: result.response,
+      });
       return NextResponse.json({
         success: false,
         error: result.error || "AirTouch rejected the test message.",
