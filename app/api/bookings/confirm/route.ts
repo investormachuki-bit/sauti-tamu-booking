@@ -643,6 +643,40 @@ export async function POST(request: NextRequest) {
       console.error("AirTouch booking confirmation SMS error:", smsError);
     }
 
+    // Queue independent SMS reminders. Existing email reminder tasks are untouched.
+    if (lessonSlot?.starts_at) {
+      const reminderOffsets = [
+        ["trial_reminder_7d", 7 * 24 * 60],
+        ["trial_reminder_3d", 3 * 24 * 60],
+        ["trial_reminder_24h", 24 * 60],
+        ["trial_reminder_6h", 6 * 60],
+        ["trial_reminder_1h", 60],
+      ] as const;
+      const startsAtMs = new Date(lessonSlot.starts_at).getTime();
+      const nowMs = Date.now();
+      const smsTasks = reminderOffsets
+        .map(([task_type, minutes]) => ({
+          lead_id: bookingDetails.lead_id,
+          booking_id: booking.booking_id,
+          task_type,
+          due_at: new Date(startsAtMs - minutes * 60_000).toISOString(),
+          status: "pending",
+          channel: "sms",
+          message_template: task_type,
+          sent_at: null,
+          completed_at: null,
+        }))
+        .filter((task) => new Date(task.due_at).getTime() > nowMs);
+      if (smsTasks.length) {
+        const { error: queueError } = await supabaseServer
+          .from("follow_up_tasks")
+          .insert(smsTasks);
+        if (queueError) {
+          console.error("Could not queue AirTouch SMS reminders:", queueError);
+        }
+      }
+    }
+
     const rendered = await renderSautiTamuEmail(
       "booking_confirmation",
       {
