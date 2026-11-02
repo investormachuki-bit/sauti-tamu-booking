@@ -8,7 +8,7 @@ export type AirTouchResult = {
 };
 
 export function normalizeKenyanMsisdn(value: string): string {
-  const digits = value.replace(/\\D/g, "");
+  const digits = value.replace(/\D/g, "");
   if (digits.startsWith("00")) return digits.slice(2);
   if (digits.startsWith("254")) return digits;
   if (digits.startsWith("0")) return `254${digits.slice(1)}`;
@@ -33,7 +33,7 @@ export async function sendAirTouchSms(
   }
 
   const recipient = normalizeKenyanMsisdn(msisdn);
-  if (!/^254\\d{9}$/.test(recipient)) {
+  if (!/^254\d{9}$/.test(recipient)) {
     return { success: false, error: "Invalid Kenyan mobile number." };
   }
 
@@ -53,7 +53,7 @@ export async function sendAirTouchSms(
       signal: AbortSignal.timeout(15000),
     });
     const body = (await response.text()).slice(0, 1000);
-    const rejected = /\\b(error|failed|failure|invalid|denied)\\b/i.test(body);
+    const rejected = /\b(error|failed|failure|invalid|denied)\b/i.test(body);
 
     return {
       success: response.ok && !rejected,
