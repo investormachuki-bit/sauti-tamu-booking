@@ -52,7 +52,11 @@ export async function sendAirTouchSms(
       cache: "no-store",
       signal: AbortSignal.timeout(15000),
     });
-    const body = (await response.text()).slice(0, 1000);
+    const rawBody = (await response.text()).slice(0, 1000);
+    // Avoid ever returning configured credentials if the provider echoes request data.
+    const body = rawBody
+      .replaceAll(username, "[redacted]")
+      .replaceAll(password, "[redacted]");
     const rejected = /\b(error|failed|failure|invalid|denied)\b/i.test(body);
 
     return {
