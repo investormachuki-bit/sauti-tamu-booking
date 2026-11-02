@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { MessageSquare, Send, Users, CheckCircle2, AlertCircle, RefreshCw, Search, Plus, Trash2, Save, Upload, History, FileText } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 
-type Recipient = { phone: string; name: string; source?: string };
+type Recipient = { phone: string; name: string; source?: string; status?: string; instrument?: string; trialStatus?: string };
 type Template = { id: string; name: string; category: string; message: string };
 type Log = { id: string; recipient_name: string | null; recipient_phone: string; message: string; status: string; provider_status: string | null; created_at: string };
 
@@ -14,7 +14,10 @@ export default function AdminSmsPage() {
   const [message, setMessage] = useState("");
   const [audience, setAudience] = useState("manual");
   const [leadStatus, setLeadStatus] = useState("all");
+  const [studentStatus, setStudentStatus] = useState("all");
   const [instrument, setInstrument] = useState("all");
+  const [trialStatus, setTrialStatus] = useState("all");
+  const [selectedPhones, setSelectedPhones] = useState<string[]>([]);
   const [search, setSearch] = useState("");
   const [templates, setTemplates] = useState<Template[]>([]);
   const [logs, setLogs] = useState<Log[]>([]);
@@ -48,26 +51,24 @@ export default function AdminSmsPage() {
   async function loadAudience() {
     setError(""); setNotice("");
     try {
-      if (audience === "manual") { setRecipients(parseManual(manualNumbers)); return; }
-      if (audience === "leads" || audience === "all") {
-        const q = supabase.from("leads").select("id,full_name,whatsapp_number,status").not("whatsapp_number","is",null);
-        if (leadStatus !== "all") q.eq("status", leadStatus);
-        const { data, error } = await q;
-        if (error) throw error;
-        const leads = (data || []).map(x => ({ phone:x.whatsapp_number, name:x.full_name, source:"Lead" }));
-        if (audience === "leads") { setRecipients(dedupe(leads)); return; }
-        const { data: students, error: studentError } = await supabase.from("students").select("id,full_name,whatsapp_number,status").not("whatsapp_number","is",null);
-        if (studentError) throw studentError;
-        setRecipients(dedupe([...leads,...(students || []).map(x=>({phone:x.whatsapp_number,name:x.full_name,source:"Student"}))]));
-        return;
-      }
-      const { data, error } = await supabase.from("students").select("id,full_name,whatsapp_number,status").not("whatsapp_number","is",null);
-      if (error) throw error;
-      const filtered = (data || []).filter(x => x.whatsapp_number);
-      setRecipients(dedupe(filtered.map(x=>({phone:x.whatsapp_number,name:x.full_name,source:"Student"}))));
-    } catch (e) { setError(e instanceof Error ? e.message : "Could not load contacts."); }
+      if (audience === "manual") { const loaded=parseManual(manualNumbers); setRecipients(loaded); setSelectedPhones(loaded.map(x=>x.phone)); return; }
+      const [lr,sr,er,br] = await Promise.all([
+        (audience==="leads"||audience==="all") ? supabase.from("leads").select("id,full_name,whatsapp_number,status").not("whatsapp_number","is",null) : Promise.resolve({data:[],error:null}),
+        (audience==="students"||audience==="all") ? supabase.from("students").select("id,lead_id,full_name,whatsapp_number,status").not("whatsapp_number","is",null) : Promise.resolve({data:[],error:null}),
+        (audience==="students"||audience==="all") ? supabase.from("student_enrollments").select("id,student_id,instrument,status,created_at") : Promise.resolve({data:[],error:null}),
+        supabase.from("bookings").select("id,lead_id,instrument,status,created_at,attended_at,completed_at")
+      ]);
+      if(lr.error) throw lr.error; if(sr.error) throw sr.error; if(er.error) throw er.error; if(br.error) throw br.error;
+      const latest = (rows:any[], key:string) => { const m=new Map(); [...rows].sort((a,b)=>new Date(b.created_at).getTime()-new Date(a.created_at).getTime()).forEach(x=>{if(x[key]&&!m.has(x[key]))m.set(x[key],x);}); return m; };
+      const eb=latest(er.data||[],"student_id"); const bb=latest(br.data||[],"lead_id");
+      const trial = (b:any) => !b ? "not_booked" : (b.status==="completed"||b.attended_at||b.completed_at) ? "attended" : b.status==="no_show" ? "no_show" : b.status==="cancelled" ? "cancelled" : b.status==="rescheduled" ? "rescheduled" : "booked";
+      const leads=(lr.data||[]).map((x:any)=>{const b=bb.get(x.id);return {phone:x.whatsapp_number,name:x.full_name,source:"Lead",status:x.status,instrument:b?.instrument||"",trialStatus:trial(b)};}).filter((x:any)=>(leadStatus==="all"||x.status===leadStatus)&&(instrument==="all"||x.instrument===instrument)&&(trialStatus==="all"||x.trialStatus===trialStatus));
+      const students=(sr.data||[]).map((x:any)=>{const e=eb.get(x.id);const b=x.lead_id?bb.get(x.lead_id):null;return {phone:x.whatsapp_number,name:x.full_name,source:"Student",status:x.status,instrument:e?.instrument||"",trialStatus:trial(b)};}).filter((x:any)=>(studentStatus==="all"||x.status===studentStatus)&&(instrument==="all"||x.instrument===instrument)&&(trialStatus==="all"||x.trialStatus===trialStatus));
+      const loaded=dedupe(audience==="leads"?leads:audience==="students"?students:[...leads,...students]);
+      setRecipients(loaded); setSelectedPhones(loaded.map((x:any)=>x.phone));
+      setNotice("Loaded "+loaded.length+" contacts matching your filters. All are selected; untick any contacts you want to exclude.");
+    } catch(e) { setError(e instanceof Error ? e.message : "Could not load contacts."); }
   }
-
   function parseManual(value: string): Recipient[] {
     return dedupe(value.split(/[\s,;]+/).map(phone=>phone.trim()).filter(Boolean).map(phone=>({phone,name:""})));
   }
@@ -76,7 +77,7 @@ export default function AdminSmsPage() {
     for (const r of list) { const key = r.phone.replace(/\D/g,""); if (key) map.set(key,r); }
     return [...map.values()];
   }
-  function addManual() { setRecipients(current=>dedupe([...current,...parseManual(manualNumbers)])); setManualNumbers(""); }
+  function addManual() { const added=parseManual(manualNumbers); setRecipients(current=>dedupe([...current,...added])); setSelectedPhones(current=>Array.from(new Set([...current,...added.map(x=>x.phone)]))); setManualNumbers(""); }
   function importCsv(file?: File) {
     if (!file) return;
     const reader = new FileReader();
@@ -84,21 +85,25 @@ export default function AdminSmsPage() {
       const rows = String(reader.result || "").split(/\r?\n/).slice(1);
       const parsed = rows.map(row=>{ const cols=row.split(","); return { name:(cols[0]||"").trim(), phone:(cols[1]||"").trim(), source:"CSV" }; }).filter(x=>x.phone);
       setRecipients(current=>dedupe([...current,...parsed]));
+      setSelectedPhones(current=>Array.from(new Set([...current,...parsed.map(x=>x.phone)])));
       setNotice(`Imported ${parsed.length} contact rows. Review the recipient list before sending.`);
     };
     reader.readAsText(file);
   }
   const visibleRecipients = useMemo(()=>recipients.filter(r=>(r.name+" "+r.phone).toLowerCase().includes(search.toLowerCase())),[recipients,search]);
+  const selectedRecipients = recipients.filter(r=>selectedPhones.includes(r.phone));
+  const visibleSelected = visibleRecipients.filter(r=>selectedPhones.includes(r.phone));
+  const allVisibleSelected = visibleRecipients.length>0 && visibleSelected.length===visibleRecipients.length;
   const segments = Math.max(1, Math.ceil(message.length / (message.length <= 160 ? 160 : 153)));
-  const estimatedSegments = recipients.length * segments;
+  const estimatedSegments = selectedRecipients.length * segments;
 
   async function send() {
-    if (!recipients.length || !message.trim()) { setError("Add recipients and write a message first."); return; }
-    if (recipients.length > 100) { setError("Please send in batches of 100 recipients or fewer."); return; }
-    if (!window.confirm(`Send this SMS to ${recipients.length} unique recipients? Estimated SMS segments: ${estimatedSegments}.`)) return;
+    if (!selectedRecipients.length || !message.trim()) { setError("Select recipients and write a message first."); return; }
+    if (selectedRecipients.length > 100) { setError("Please send in batches of 100 recipients or fewer."); return; }
+    if (!window.confirm(`Send this SMS to ${selectedRecipients.length} selected unique recipients? Estimated SMS segments: ${estimatedSegments}.`)) return;
     setSending(true); setError(""); setNotice(""); setResults(null);
     try {
-      const data = await request("/", { action:"send", recipients, message });
+      const data = await request("/", { action:"send", recipients:selectedRecipients, message });
       setResults({total:data.total,accepted:data.accepted,failed:data.failed});
       setNotice(`Sending completed: ${data.accepted} accepted, ${data.failed} failed.`);
       await load();
@@ -136,7 +141,9 @@ export default function AdminSmsPage() {
         <select className="mb-4 h-11 w-full rounded-xl border border-gray-200 px-3 text-sm" value={audience} onChange={e=>setAudience(e.target.value)}>
           <option value="manual">Manual numbers</option><option value="leads">Leads</option><option value="students">Students</option><option value="all">Leads + Students</option>
         </select>
-        {(audience==="leads"||audience==="all") && <div className="mb-4"><label className="mb-2 block text-xs font-semibold">Lead status</label><select className="h-10 w-full rounded-xl border border-gray-200 px-3 text-sm" value={leadStatus} onChange={e=>setLeadStatus(e.target.value)}><option value="all">All statuses</option><option value="new">New</option><option value="contacted">Contacted</option><option value="registered">Registered</option></select></div>}
+        {(audience==="leads"||audience==="all") && <div className="mb-3"><label className="mb-2 block text-xs font-semibold">Lead status</label><select className="h-10 w-full rounded-xl border border-gray-200 px-3 text-sm" value={leadStatus} onChange={e=>setLeadStatus(e.target.value)}><option value="all">All statuses</option>{["new","booked","attended","follow_up","interested","registered","not_now","not_interested","no_show"].map(x=><option key={x} value={x}>{x.replaceAll("_"," ")}</option>)}</select></div>}
+        {(audience==="students"||audience==="all") && <div className="mb-3"><label className="mb-2 block text-xs font-semibold">Student status</label><select className="h-10 w-full rounded-xl border border-gray-200 px-3 text-sm" value={studentStatus} onChange={e=>setStudentStatus(e.target.value)}><option value="all">All student statuses</option>{["active","registered","completed","paused","inactive"].map(x=><option key={x} value={x}>{x.replaceAll("_"," ")}</option>)}</select></div>}
+        {audience!=="manual" && <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-2"><div><label className="mb-2 block text-xs font-semibold">Instrument</label><select className="h-10 w-full rounded-xl border border-gray-200 px-3 text-sm" value={instrument} onChange={e=>setInstrument(e.target.value)}><option value="all">All instruments</option><option value="piano">Piano</option><option value="guitar">Guitar</option></select></div><div><label className="mb-2 block text-xs font-semibold">Trial status</label><select className="h-10 w-full rounded-xl border border-gray-200 px-3 text-sm" value={trialStatus} onChange={e=>setTrialStatus(e.target.value)}><option value="all">All trial statuses</option><option value="not_booked">No trial booking</option><option value="booked">Booked / confirmed</option><option value="attended">Attended</option><option value="no_show">Missed / no-show</option><option value="cancelled">Cancelled</option><option value="rescheduled">Rescheduled</option></select></div></div>}
         <div className="mb-4 flex flex-wrap gap-2">
           <button className="st-button st-button-secondary" onClick={loadAudience}><Users size={15}/> Load audience</button>
           <label className="st-button st-button-secondary cursor-pointer"><Upload size={15}/> Import CSV<input type="file" accept=".csv,text/csv" className="hidden" onChange={e=>importCsv(e.target.files?.[0])}/></label>
@@ -144,15 +151,15 @@ export default function AdminSmsPage() {
         <label className="mb-2 block text-xs font-semibold">Add numbers manually</label>
         <textarea className="mb-2 min-h-24 w-full rounded-xl border border-gray-200 p-3 text-sm" placeholder={"0712345678\n254712345678\n+254723456789"} value={manualNumbers} onChange={e=>setManualNumbers(e.target.value)} />
         <button className="st-button st-button-secondary mb-5" onClick={addManual}><Plus size={15}/> Add numbers to recipients</button>
-        <div className="mb-4 flex items-center justify-between"><label className="text-xs font-semibold">Recipients ({recipients.length})</label><button className="text-xs text-[var(--st-red)]" onClick={()=>setRecipients([])}>Clear all</button></div>
+        <div className="mb-2 flex items-center justify-between"><label className="text-xs font-semibold">Recipients ({recipients.length}) · {selectedRecipients.length} selected</label><button className="text-xs text-[var(--st-red)]" onClick={()=>{setRecipients([]);setSelectedPhones([]);}}>Clear all</button></div>{recipients.length>0 && <div className="mb-2 flex items-center justify-between rounded-lg bg-[var(--st-bg-soft)] px-3 py-2 text-xs"><label className="flex items-center gap-2 font-semibold"><input type="checkbox" checked={allVisibleSelected} onChange={e=>setSelectedPhones(current=>e.target.checked?Array.from(new Set([...current,...visibleRecipients.map(r=>r.phone)])):current.filter(p=>!visibleRecipients.some(r=>r.phone===p)))} /> Select all {visibleRecipients.length} shown</label><span className="text-gray-500">{selectedRecipients.length} selected total</span></div>
         <input className="mb-2 h-10 w-full rounded-xl border border-gray-200 px-3 text-sm" placeholder="Search recipient list..." value={search} onChange={e=>setSearch(e.target.value)}/>
         <div className="mb-5 max-h-48 overflow-auto rounded-xl border border-gray-100">
-          {visibleRecipients.length ? visibleRecipients.map((r,i)=><div className="flex items-center justify-between border-b border-gray-100 px-3 py-2 text-xs" key={r.phone+i}><span><b>{r.name||"Manual recipient"}</b><span className="ml-2 text-gray-500">{r.phone}</span></span><button onClick={()=>setRecipients(current=>current.filter(x=>x.phone!==r.phone))} aria-label="Remove recipient"><Trash2 size={14}/></button></div>) : <p className="p-4 text-xs text-gray-500">No recipients loaded.</p>}
+          {visibleRecipients.length ? visibleRecipients.map((r,i)=><div className="flex items-center justify-between gap-2 border-b border-gray-100 px-3 py-2 text-xs" key={r.phone+i}><label className="flex min-w-0 flex-1 items-center gap-2"><input type="checkbox" checked={selectedPhones.includes(r.phone)} onChange={e=>setSelectedPhones(current=>e.target.checked?[...current,r.phone]:current.filter(p=>p!==r.phone))}/><span className="min-w-0"><b>{r.name||"Manual recipient"}</b><span className="ml-2 text-gray-500">{r.phone}</span><span className="ml-2 text-[10px] text-gray-400">{[r.status,r.instrument,r.trialStatus].filter(Boolean).join(" · ")}</span></span></label><button onClick={()=>{setRecipients(current=>current.filter(x=>x.phone!==r.phone));setSelectedPhones(current=>current.filter(p=>p!==r.phone));}} aria-label="Remove recipient"><Trash2 size={14}/></button></div>) : <p className="p-4 text-xs text-gray-500">No recipients loaded.</p>}
         </div>
         <div className="mb-2 flex items-center justify-between"><label className="text-xs font-semibold">Message</label><span className="text-[10px] text-gray-500">{message.length}/480 characters</span></div>
         <textarea className="min-h-36 w-full rounded-xl border border-gray-200 p-3 text-sm leading-relaxed" maxLength={480} placeholder="Write your message. Use {{full_name}} to personalize..." value={message} onChange={e=>setMessage(e.target.value)}/>
         <p className="mt-2 text-[10px] text-gray-500">Estimated {segments} SMS segment(s) per recipient · {estimatedSegments} total segments. Standard GSM estimate; actual carrier billing may vary.</p>
-        <div className="mt-4 flex flex-wrap gap-2"><button className="st-button st-button-primary" disabled={sending||!recipients.length||!message.trim()} onClick={send}>{sending?<RefreshCw size={15} className="animate-spin"/>:<Send size={15}/>} {sending?"Sending...":"Review & Send"}</button><button className="st-button st-button-secondary" onClick={saveTemplate} disabled={savingTemplate||!message.trim()}><Save size={15}/> Save as template</button></div>
+        <div className="mt-4 flex flex-wrap gap-2"><button className="st-button st-button-primary" disabled={sending||!selectedRecipients.length||!message.trim()} onClick={send}>{sending?<RefreshCw size={15} className="animate-spin"/>:<Send size={15}/>} {sending?"Sending...":"Review & Send"}</button><button className="st-button st-button-secondary" onClick={saveTemplate} disabled={savingTemplate||!message.trim()}><Save size={15}/> Save as template</button></div>
       </section>
       <div className="space-y-5">
         <section className="st-card p-5"><div className="mb-4 flex items-center gap-2"><FileText size={18}/><h2 className="m-0 text-base font-semibold">Message templates</h2></div>
