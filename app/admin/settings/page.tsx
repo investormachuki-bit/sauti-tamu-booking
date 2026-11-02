@@ -638,6 +638,48 @@ export default function SettingsPage() {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
+  const [testSmsPhone, setTestSmsPhone] = useState("0796594295");
+  const [testSmsMessage, setTestSmsMessage] = useState("This is a test message from Sauti Tamu Piano Center. AirTouch SMS integration is working.");
+  const [sendingTestSms, setSendingTestSms] = useState(false);
+  const [testSmsResult, setTestSmsResult] = useState<{ success: boolean; message: string; providerResponse?: string } | null>(null);
+
+  async function sendTestSms() {
+    setSendingTestSms(true);
+    setTestSmsResult(null);
+    setMessage("");
+    setError("");
+    try {
+      const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError || !sessionData.session?.access_token) {
+        throw new Error("Your admin session has expired. Please sign in again.");
+      }
+      const response = await fetch("/api/admin/airtouch/test", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${sessionData.session.access_token}`,
+        },
+        body: JSON.stringify({ phone: testSmsPhone, message: testSmsMessage }),
+      });
+      const result = await response.json();
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || "AirTouch could not send the test SMS.");
+      }
+      setTestSmsResult({
+        success: true,
+        message: result.message || "AirTouch accepted the SMS request.",
+        providerResponse: result.providerResponse,
+      });
+    } catch (err) {
+      setTestSmsResult({
+        success: false,
+        message: err instanceof Error ? err.message : "Test SMS failed.",
+      });
+    } finally {
+      setSendingTestSms(false);
+    }
+  }
+
   /* =======================================================
      LOAD
   ======================================================= */
@@ -3350,6 +3392,64 @@ export default function SettingsPage() {
           </div>
         </Section>
 
+      </div>
+
+      {/* ===================================================
+          AIRTOUCH SMS TEST
+      =================================================== */}
+
+      <div className="mt-5">
+        <Section
+          icon={MessageCircle}
+          eyebrow="SMS GATEWAY"
+          title="AirTouch SMS test"
+          description="Send a one-off test message using the AirTouch credentials configured in Render. This does not create a booking or alter reminder tasks."
+        >
+          <div className="space-y-4 p-5 sm:p-6">
+            <Field label="Recipient mobile number" help="Kenyan mobile number, for example 0796594295.">
+              <Input
+                value={testSmsPhone}
+                onChange={(event) => setTestSmsPhone(event.target.value)}
+                placeholder="0796594295"
+                inputMode="tel"
+              />
+            </Field>
+            <Field label="Message">
+              <Textarea
+                rows={3}
+                value={testSmsMessage}
+                onChange={(event) => setTestSmsMessage(event.target.value)}
+                maxLength={480}
+                placeholder="Type your test message"
+              />
+            </Field>
+            <div className="flex flex-wrap items-center gap-3">
+              <button
+                type="button"
+                onClick={() => void sendTestSms()}
+                disabled={sendingTestSms || !testSmsPhone.trim() || !testSmsMessage.trim()}
+                className="inline-flex h-10 items-center gap-2 rounded-xl bg-[#c91f2b] px-4 text-[10px] font-bold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {sendingTestSms ? <Loader2 size={13} className="animate-spin" /> : <MessageCircle size={13} />}
+                {sendingTestSms ? "Sending..." : "Send Test SMS"}
+              </button>
+              <span className="text-[9px] text-[#999]">One SMS request per click. Carrier charges may apply.</span>
+            </div>
+            {testSmsResult && (
+              <div className={`rounded-xl border px-4 py-3 ${testSmsResult.success ? "border-[#cce8d4] bg-[#f1fbf4]" : "border-[#f0caca] bg-[#fff5f5]"}`}>
+                <p className={`text-[10px] font-bold ${testSmsResult.success ? "text-green-800" : "text-red-800"}`}>
+                  {testSmsResult.success ? "AirTouch accepted the request" : "SMS test failed"}
+                </p>
+                <p className={`mt-1 text-[9px] ${testSmsResult.success ? "text-green-700" : "text-red-700"}`}>
+                  {testSmsResult.message}
+                </p>
+                {testSmsResult.providerResponse && (
+                  <pre className="mt-2 max-h-24 overflow-auto whitespace-pre-wrap break-all rounded-lg bg-black/5 p-2 text-[8px] text-[#555]">{testSmsResult.providerResponse}</pre>
+                )}
+              </div>
+            )}
+          </div>
+        </Section>
       </div>
 
       {/* ===================================================
