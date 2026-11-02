@@ -13,6 +13,7 @@ import {
   Receipt,
   Landmark,
   CalendarClock,
+  MessageSquare,
 } from "lucide-react";
 
 interface SidebarProps {
@@ -58,6 +59,11 @@ const navigation = [
         label: "Follow-ups",
         href: "/admin/followups",
         icon: Clock3,
+      },
+      {
+        label: "SMS Centre",
+        href: "/admin/sms",
+        icon: MessageSquare,
       },
     ],
   },
