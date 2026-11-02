@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { Resend } from "resend";
 import { supabaseServer } from "@/lib/supabase-server";
 import { renderSautiTamuEmail } from "@/lib/email-template-renderer";
+import { sendAirTouchSms } from "@/lib/airtouch";
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 const NAIROBI_TIME_ZONE = "Africa/Nairobi";
@@ -600,6 +601,7 @@ export async function POST(request: NextRequest) {
         success: true,
         bookingCreated: true,
         confirmationSent: false,
+        smsSent: smsResult.success,
         adminNotificationSent: false,
         manychatSynced: false,
         followUpsCreated: 0,
@@ -618,6 +620,27 @@ export async function POST(request: NextRequest) {
 
     if (lessonSlotError) {
       console.error("Lesson slot details error:", lessonSlotError);
+    }
+
+    const lessonDateText = lessonSlot?.starts_at
+      ? formatDate(lessonSlot.starts_at)
+      : "your selected date";
+    const lessonTimeText = lessonSlot?.starts_at
+      ? formatTime(lessonSlot.starts_at)
+      : "";
+    const smsMessage =
+      `Hello ${cleanName}, your Sauti Tamu trial lesson is confirmed for ${lessonDateText}${lessonTimeText ? ` at ${lessonTimeText}` : ""}. We look forward to welcoming you. For enquiries, contact Sauti Tamu Piano Center.`;
+    let smsResult: Awaited<ReturnType<typeof sendAirTouchSms>> = {
+      success: false,
+      error: "SMS not attempted",
+    };
+    try {
+      smsResult = await sendAirTouchSms(cleanWhatsapp, smsMessage);
+      if (!smsResult.success) {
+        console.error("AirTouch booking confirmation SMS failed:", smsResult.error);
+      }
+    } catch (smsError) {
+      console.error("AirTouch booking confirmation SMS error:", smsError);
     }
 
     const rendered = await renderSautiTamuEmail(
@@ -717,6 +740,8 @@ export async function POST(request: NextRequest) {
       success: true,
       bookingCreated: true,
       confirmationSent: true,
+      smsSent: smsResult.success,
+      smsError: smsResult.success ? undefined : smsResult.error,
       adminNotificationSent: Boolean(
         adminEmailResult && !adminEmailResult.error,
       ),
