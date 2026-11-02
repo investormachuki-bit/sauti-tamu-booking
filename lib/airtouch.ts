@@ -1,4 +1,5 @@
 import "server-only";
+import { createHash } from "node:crypto";
 
 export type AirTouchResult = {
   success: boolean;
@@ -23,12 +24,12 @@ export async function sendAirTouchSms(
   const baseUrl = process.env.AIRTOUCH_API_URL;
   const issn = process.env.AIRTOUCH_ISSN || "SAUTI_TAMU";
   const username = process.env.AIRTOUCH_USERNAME;
-  const password = process.env.AIRTOUCH_PASSWORD;
+  const apiKey = process.env.AIRTOUCH_API_KEY;
 
-  if (!baseUrl || !username || !password) {
+  if (!baseUrl || !username || !apiKey) {
     return {
       success: false,
-      error: "AirTouch is not configured. Set AIRTOUCH_API_URL, AIRTOUCH_USERNAME and AIRTOUCH_PASSWORD.",
+      error: "AirTouch is not configured. Set AIRTOUCH_API_URL, AIRTOUCH_ISSN, AIRTOUCH_USERNAME and AIRTOUCH_API_KEY.",
     };
   }
 
@@ -37,34 +38,55 @@ export async function sendAirTouchSms(
     return { success: false, error: "Invalid Kenyan mobile number." };
   }
 
-  const url = new URL(baseUrl);
-  url.search = new URLSearchParams({
-    issn,
-    msisdn: recipient,
-    text: message,
-    username,
-    password,
-  }).toString();
+  // AirTouch documentation specifies MD5(API key), hexadecimal, as the password.
+  const passwordHash = createHash("md5").update(apiKey, "utf8").digest("hex");
 
   try {
-    const response = await fetch(url.toString(), {
-      method: "GET",
+    const response = await fetch(baseUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
       cache: "no-store",
       signal: AbortSignal.timeout(15000),
+      body: JSON.stringify({
+        issn,
+        msisdn: Number(recipient),
+        text: message,
+        username,
+        password: passwordHash,
+      }),
     });
+
     const rawBody = (await response.text()).slice(0, 1000);
-    // Avoid ever returning configured credentials if the provider echoes request data.
+    // Redact secrets if the provider echoes request data in its response.
     const body = rawBody
       .replaceAll(username, "[redacted]")
-      .replaceAll(password, "[redacted]");
-    const rejected = /\b(error|failed|failure|invalid|denied)\b/i.test(body);
+      .replaceAll(apiKey, "[redacted]")
+      .replaceAll(passwordHash, "[redacted]");
 
+    let providerCode: string | undefined;
+    let providerDescription: string | undefined;
+    try {
+      const parsed = JSON.parse(rawBody) as {
+        status_code?: string | number;
+        status_desc?: string;
+      };
+      providerCode = parsed.status_code == null ? undefined : String(parsed.status_code);
+      providerDescription = parsed.status_desc;
+    } catch {
+      // Keep the raw, redacted provider response for diagnostics.
+    }
+
+    const accepted = response.ok && providerCode === "1000";
     return {
-      success: response.ok && !rejected,
+      success: accepted,
       status: response.status,
       response: body,
-      ...(!response.ok || rejected
-        ? { error: `AirTouch rejected the SMS request (HTTP ${response.status}).` }
+      ...(!accepted
+        ? {
+            error: providerCode
+              ? `AirTouch rejected the SMS (code ${providerCode}${providerDescription ? `: ${providerDescription}` : ""}).`
+              : `AirTouch returned an unexpected response (HTTP ${response.status}).`,
+          }
         : {}),
     };
   } catch (error) {
