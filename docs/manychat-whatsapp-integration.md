@@ -44,6 +44,10 @@ If your ManyChat workspace does not expose its tag list directly in the request 
 
 Only set `sms_marketing_opt_in` to `true` after the subscriber has explicitly agreed to receive SMS marketing. WhatsApp opt-in is not SMS consent. When a later request explicitly sends `false`, the saved SMS marketing consent is revoked. If the field is omitted, an existing consent decision is preserved.
 
+## Admin contact management page
+
+The admin sidebar includes a standalone **ManyChat Contacts** page at `/admin/manychat-contacts`. It provides contact totals, search by name/phone/ManyChat ID/tag, tag filtering, consent filtering, last-sync timestamps, and call/WhatsApp actions. It reads through an authenticated server API and does not expose the service-role key in the browser.
+
 ## SMS Centre behavior
 
 - A separate **ManyChat WhatsApp contacts** audience is available.
