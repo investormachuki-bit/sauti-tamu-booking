@@ -71,7 +71,8 @@ export async function POST(request: NextRequest) {
     const fullName = String(contact.full_name ?? contact.name ?? [firstName, lastName].filter(Boolean).join(" ")).trim().slice(0, 240) || null;
     const tags = cleanTags(contact.tags);
     const whatsappOptedIn = contact.whatsapp_opted_in === true || contact.opted_in_for_whatsapp === true;
-    const explicitSmsOptIn = contact.sms_marketing_opt_in === true;
+    const hasSmsConsentField = Object.prototype.hasOwnProperty.call(contact, "sms_marketing_opt_in");
+    const explicitSmsOptIn = hasSmsConsentField && contact.sms_marketing_opt_in === true;
 
     const { data: existing, error: existingError } = await supabaseServer
       .from("manychat_whatsapp_contacts")
@@ -81,10 +82,12 @@ export async function POST(request: NextRequest) {
     if (existingError) throw existingError;
 
     const now = new Date().toISOString();
-    const consentAt = explicitSmsOptIn
-      ? String(contact.sms_consent_at || existing?.sms_consent_at || now)
-      : existing?.sms_consent_at || null;
-    const smsOptIn = explicitSmsOptIn || existing?.sms_marketing_opt_in === true;
+    const smsOptIn = hasSmsConsentField
+      ? contact.sms_marketing_opt_in === true
+      : existing?.sms_marketing_opt_in === true;
+    const consentAt = smsOptIn
+      ? String(explicitSmsOptIn ? (contact.sms_consent_at || existing?.sms_consent_at || now) : (existing?.sms_consent_at || now))
+      : null;
 
     const record = {
       manychat_contact_id: contactId,
@@ -96,9 +99,11 @@ export async function POST(request: NextRequest) {
       whatsapp_opted_in: whatsappOptedIn,
       sms_marketing_opt_in: smsOptIn,
       sms_consent_at: smsOptIn ? consentAt : null,
-      sms_consent_source: explicitSmsOptIn
-        ? String(contact.sms_consent_source || "ManyChat explicit SMS consent").slice(0, 160)
-        : existing?.sms_consent_source || null,
+      sms_consent_source: !smsOptIn
+        ? null
+        : explicitSmsOptIn
+          ? String(contact.sms_consent_source || "ManyChat explicit SMS consent").slice(0, 160)
+          : existing?.sms_consent_source || "Previously recorded SMS consent",
       raw_payload: payload,
       first_seen_at: existing?.first_seen_at || now,
       last_seen_at: now,
