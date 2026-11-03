@@ -14,6 +14,7 @@ import {
   Landmark,
   CalendarClock,
   MessageSquare,
+  ContactRound,
 } from "lucide-react";
 
 interface SidebarProps {
@@ -59,6 +60,11 @@ const navigation = [
         label: "Follow-ups",
         href: "/admin/followups",
         icon: Clock3,
+      },
+      {
+        label: "ManyChat Contacts",
+        href: "/admin/manychat-contacts",
+        icon: ContactRound,
       },
       {
         label: "SMS Centre",
