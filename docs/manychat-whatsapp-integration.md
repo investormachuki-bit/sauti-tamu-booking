@@ -19,7 +19,7 @@ Do not put this secret in client-side code, a public URL, or a repository file.
 In the WhatsApp automation, add an **External Request** action using:
 
 - Method: `POST`
-- URL: `https://<your-sauti-tamu-domain>/api/integrations/manychat/whatsapp`
+- URL: `https://sauti-tamu-booking.onrender.com/api/integrations/manychat/whatsapp`
 - Header: `x-manychat-secret: <the same MANYCHAT_WEBHOOK_SECRET>`
 - Content-Type: `application/json`
 
