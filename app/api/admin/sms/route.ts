@@ -15,12 +15,20 @@ async function authenticate(request: NextRequest) {
 export async function GET(request: NextRequest) {
   const user = await authenticate(request);
   if (!user) return NextResponse.json({ error: "Authentication required." }, { status: 401 });
-  const [logs, templates] = await Promise.all([
+  const [logs, templates, manychatContacts] = await Promise.all([
     supabaseServer.from("sms_messages").select("*").order("created_at", { ascending: false }).limit(300),
     supabaseServer.from("sms_templates").select("*").order("name"),
+    supabaseServer.from("manychat_whatsapp_contacts").select("id,manychat_contact_id,phone_e164,first_name,last_name,full_name,tags,whatsapp_opted_in,sms_marketing_opt_in,sms_consent_at,synced_at").order("synced_at", { ascending: false }).limit(5000),
   ]);
-  if (logs.error || templates.error) return NextResponse.json({ error: "Could not load SMS records." }, { status: 500 });
-  return NextResponse.json({ logs: logs.data || [], templates: templates.data || [] });
+  if (logs.error || templates.error || manychatContacts.error) {
+    console.error("SMS Centre load failed:", logs.error || templates.error || manychatContacts.error);
+    return NextResponse.json({ error: "Could not load SMS records and audiences. Confirm the latest database migration has been applied." }, { status: 500 });
+  }
+  return NextResponse.json({
+    logs: logs.data || [],
+    templates: templates.data || [],
+    manychatContacts: manychatContacts.data || [],
+  });
 }
 
 export async function POST(request: NextRequest) {
