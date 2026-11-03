@@ -18,12 +18,12 @@ function validSecret(received: string | null, expected: string) {
 }
 
 function normalizeWhatsAppNumber(value: string): string | null {
-  const digits = value.replace(/\\D/g, "");
+  const digits = value.replace(/\D/g, "");
   if (!digits) return null;
   const normalized = digits.startsWith("254") || digits.startsWith("0") || digits.length === 9
     ? normalizeKenyanMsisdn(digits)
     : digits;
-  if (!/^\\d{8,15}$/.test(normalized)) return null;
+  if (!/^\d{8,15}$/.test(normalized)) return null;
   return `+${normalized}`;
 }
 
@@ -104,7 +104,7 @@ export async function POST(request: NextRequest) {
         : explicitSmsOptIn
           ? String(contact.sms_consent_source || "ManyChat explicit SMS consent").slice(0, 160)
           : existing?.sms_consent_source || "Previously recorded SMS consent",
-      raw_payload: payload,
+      raw_payload: { contact_id: contactId, whatsapp_id: phone, tags, whatsapp_opted_in: whatsappOptedIn, sms_marketing_opt_in: smsOptIn },
       first_seen_at: existing?.first_seen_at || now,
       last_seen_at: now,
       synced_at: now,
