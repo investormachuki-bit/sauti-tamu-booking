@@ -19,7 +19,7 @@ create table if not exists public.manychat_whatsapp_contacts (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   constraint manychat_whatsapp_contacts_phone_check
-    check (phone_e164 ~ '^\\+[1-9][0-9]{7,14}$')
+    check (phone_e164 ~ '^\+[1-9][0-9]{7,14}$')
 );
 
 create index if not exists manychat_whatsapp_contacts_phone_idx
