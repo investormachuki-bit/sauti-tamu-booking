@@ -4,7 +4,8 @@ import { useEffect, useMemo, useState } from "react";
 import { MessageSquare, Send, Users, CheckCircle2, AlertCircle, RefreshCw, Search, Plus, Trash2, Save, Upload, History, FileText } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 
-type Recipient = { phone: string; name: string; source?: string; status?: string; instrument?: string; trialStatus?: string };
+type Recipient = { phone: string; name: string; source?: string; status?: string; instrument?: string; trialStatus?: string; tags?: string[]; smsMarketingOptIn?: boolean };
+type ManyChatContact = { id: string; manychat_contact_id: string; phone_e164: string; first_name: string | null; last_name: string | null; full_name: string | null; tags: string[]; whatsapp_opted_in: boolean; sms_marketing_opt_in: boolean; sms_consent_at: string | null; synced_at: string };
 type Template = { id: string; name: string; category: string; message: string };
 type Log = { id: string; recipient_name: string | null; recipient_phone: string; message: string; status: string; provider_status: string | null; created_at: string };
 
@@ -18,6 +19,8 @@ export default function AdminSmsPage() {
   const [studentInstrument, setStudentInstrument] = useState("all");
   const [trialInstrument, setTrialInstrument] = useState("all");
   const [trialStatus, setTrialStatus] = useState("all");
+  const [manychatTag, setManychatTag] = useState("all");
+  const [manychatContacts, setManychatContacts] = useState<ManyChatContact[]>([]);
   const [selectedPhones, setSelectedPhones] = useState<string[]>([]);
   const [search, setSearch] = useState("");
   const [templates, setTemplates] = useState<Template[]>([]);
@@ -53,6 +56,26 @@ export default function AdminSmsPage() {
     setError(""); setNotice("");
     try {
       if (audience === "manual") { const loaded=parseManual(manualNumbers); setRecipients(loaded); setSelectedPhones(loaded.map(x=>x.phone)); return; }
+      if (audience === "manychat") {
+        const data = await request("/");
+        const contacts: ManyChatContact[] = data.manychatContacts || [];
+        setManychatContacts(contacts);
+        const eligible = contacts.filter(contact =>
+          contact.sms_marketing_opt_in === true &&
+          (manychatTag === "all" || (contact.tags || []).includes(manychatTag))
+        );
+        const loaded = dedupe(eligible.map(contact => ({
+          phone: contact.phone_e164,
+          name: contact.full_name || [contact.first_name, contact.last_name].filter(Boolean).join(" ") || "",
+          source: "ManyChat WhatsApp",
+          tags: contact.tags || [],
+          smsMarketingOptIn: true,
+        })));
+        setRecipients(loaded);
+        setSelectedPhones(loaded.map(contact => contact.phone));
+        setNotice(`Loaded ${loaded.length} SMS-opted-in contacts from ${contacts.length} synced ManyChat WhatsApp contacts. Contacts without explicit SMS consent are excluded.`);
+        return;
+      }
       const [lr,sr,er,br] = await Promise.all([
         (audience==="leads"||audience==="all"||audience==="trials") ? supabase.from("leads").select("id,full_name,whatsapp_number,status").not("whatsapp_number","is",null) : Promise.resolve({data:[],error:null}),
         (audience==="students"||audience==="all") ? supabase.from("students").select("id,lead_id,full_name,whatsapp_number,status").not("whatsapp_number","is",null) : Promise.resolve({data:[],error:null}),
@@ -141,8 +164,17 @@ export default function AdminSmsPage() {
         <div className="mb-5 flex items-center gap-3"><div className="rounded-full bg-[var(--st-bg-soft)] p-3 text-[var(--st-red)]"><Send size={18}/></div><div><h2 className="m-0 text-base font-semibold">Compose SMS</h2><p className="mt-1 mb-0 text-xs text-[var(--st-gray)]">Personalized bulk messaging and manual recipients.</p></div></div>
         <label className="mb-2 block text-xs font-semibold">Recipient source</label>
         <select className="mb-4 h-11 w-full rounded-xl border border-gray-200 px-3 text-sm" value={audience} onChange={e=>setAudience(e.target.value)}>
-          <option value="manual">Manual numbers</option><option value="leads">Leads</option><option value="students">Students</option><option value="trials">Trials</option><option value="all">All audiences</option>
+          <option value="manual">Manual numbers</option><option value="leads">Leads</option><option value="students">Students</option><option value="trials">Trials</option><option value="all">All audiences</option><option value="manychat">ManyChat WhatsApp contacts</option>
         </select>
+        {audience==="manychat" && <div className="mb-4 rounded-xl border border-emerald-100 bg-emerald-50/50 p-3">
+          <div className="mb-2 flex items-center justify-between gap-2"><p className="m-0 text-xs font-semibold">ManyChat WhatsApp audience</p><span className="text-[10px] text-gray-500">{manychatContacts.length} synced · {manychatContacts.filter(c=>c.sms_marketing_opt_in).length} SMS opted in</span></div>
+          <label className="mb-2 block text-xs font-semibold">Filter by ManyChat tag</label>
+          <select className="h-10 w-full rounded-xl border border-gray-200 px-3 text-sm" value={manychatTag} onChange={e=>setManychatTag(e.target.value)}>
+            <option value="all">All tags</option>
+            {[...new Set(manychatContacts.flatMap(contact=>contact.tags||[]))].sort().map(tag=><option key={tag} value={tag}>{tag}</option>)}
+          </select>
+          <p className="mt-2 mb-0 text-[10px] text-gray-600">Only contacts with explicit SMS marketing consent can be loaded for campaign sending. WhatsApp opt-in alone is not SMS consent.</p>
+        </div>}
         {(audience==="leads"||audience==="all") && <div className="mb-3"><label className="mb-2 block text-xs font-semibold">Lead status</label><select className="h-10 w-full rounded-xl border border-gray-200 px-3 text-sm" value={leadStatus} onChange={e=>setLeadStatus(e.target.value)}><option value="all">All statuses</option>{["new","booked","attended","follow_up","interested","registered","not_now","not_interested","no_show"].map(x=><option key={x} value={x}>{x.replaceAll("_"," ")}</option>)}</select></div>}
         {(audience==="students"||audience==="all") && <div className="mb-3"><label className="mb-2 block text-xs font-semibold">Student status</label><select className="h-10 w-full rounded-xl border border-gray-200 px-3 text-sm" value={studentStatus} onChange={e=>setStudentStatus(e.target.value)}><option value="all">All student statuses</option>{["active","registered","completed","paused","inactive"].map(x=><option key={x} value={x}>{x.replaceAll("_"," ")}</option>)}</select></div>}
         {(audience==="students"||audience==="all") && <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-2"><div><label className="mb-2 block text-xs font-semibold">Student instrument</label><select className="h-10 w-full rounded-xl border border-gray-200 px-3 text-sm" value={studentInstrument} onChange={e=>setStudentInstrument(e.target.value)}><option value="all">All instruments</option><option value="piano">Piano</option><option value="guitar">Guitar</option></select></div></div>}\n        {(audience==="trials"||audience==="all") && <div className="mb-4 rounded-xl border border-gray-100 p-3"><p className="mb-2 text-xs font-semibold">Trial filters</p><div className="grid grid-cols-1 gap-3 sm:grid-cols-2"><div><label className="mb-2 block text-xs font-semibold">Trial instrument</label><select className="h-10 w-full rounded-xl border border-gray-200 px-3 text-sm" value={trialInstrument} onChange={e=>setTrialInstrument(e.target.value)}><option value="all">All instruments</option><option value="piano">Piano</option><option value="guitar">Guitar</option></select></div><div><label className="mb-2 block text-xs font-semibold">Trial status</label><select className="h-10 w-full rounded-xl border border-gray-200 px-3 text-sm" value={trialStatus} onChange={e=>setTrialStatus(e.target.value)}><option value="all">All trial statuses</option><option value="not_booked">No trial booking</option><option value="booked">Booked / confirmed</option><option value="attended">Attended</option><option value="no_show">Missed / no-show</option><option value="cancelled">Cancelled</option><option value="rescheduled">Rescheduled</option></select></div></div></div>}
@@ -156,7 +188,7 @@ export default function AdminSmsPage() {
         <div className="mb-2 flex items-center justify-between"><label className="text-xs font-semibold">Recipients ({recipients.length}) · {selectedRecipients.length} selected</label><button className="text-xs text-[var(--st-red)]" onClick={()=>{setRecipients([]);setSelectedPhones([]);}}>Clear all</button></div>{recipients.length>0 && <div className="mb-2 flex items-center justify-between rounded-lg bg-[var(--st-bg-soft)] px-3 py-2 text-xs"><label className="flex items-center gap-2 font-semibold"><input type="checkbox" checked={allVisibleSelected} onChange={e=>setSelectedPhones(current=>e.target.checked?Array.from(new Set([...current,...visibleRecipients.map(r=>r.phone)])):current.filter(p=>!visibleRecipients.some(r=>r.phone===p)))} /> Select all {visibleRecipients.length} shown</label><span className="text-gray-500">{selectedRecipients.length} selected total</span></div>}
         <input className="mb-2 h-10 w-full rounded-xl border border-gray-200 px-3 text-sm" placeholder="Search recipient list..." value={search} onChange={e=>setSearch(e.target.value)}/>
         <div className="mb-5 max-h-48 overflow-auto rounded-xl border border-gray-100">
-          {visibleRecipients.length ? visibleRecipients.map((r,i)=><div className="flex items-center justify-between gap-2 border-b border-gray-100 px-3 py-2 text-xs" key={r.phone+i}><label className="flex min-w-0 flex-1 items-center gap-2"><input type="checkbox" checked={selectedPhones.includes(r.phone)} onChange={e=>setSelectedPhones(current=>e.target.checked?[...current,r.phone]:current.filter(p=>p!==r.phone))}/><span className="min-w-0"><b>{r.name||"Manual recipient"}</b><span className="ml-2 text-gray-500">{r.phone}</span><span className="ml-2 text-[10px] text-gray-400">{[r.status,r.instrument,r.trialStatus].filter(Boolean).join(" · ")}</span></span></label><button onClick={()=>{setRecipients(current=>current.filter(x=>x.phone!==r.phone));setSelectedPhones(current=>current.filter(p=>p!==r.phone));}} aria-label="Remove recipient"><Trash2 size={14}/></button></div>) : <p className="p-4 text-xs text-gray-500">No recipients loaded.</p>}
+          {visibleRecipients.length ? visibleRecipients.map((r,i)=><div className="flex items-center justify-between gap-2 border-b border-gray-100 px-3 py-2 text-xs" key={r.phone+i}><label className="flex min-w-0 flex-1 items-center gap-2"><input type="checkbox" checked={selectedPhones.includes(r.phone)} onChange={e=>setSelectedPhones(current=>e.target.checked?[...current,r.phone]:current.filter(p=>p!==r.phone))}/><span className="min-w-0"><b>{r.name||"Manual recipient"}</b><span className="ml-2 text-gray-500">{r.phone}</span><span className="ml-2 text-[10px] text-gray-400">{[r.status,r.instrument,r.trialStatus,...(r.tags||[])].filter(Boolean).join(" · ")}</span></span></label><button onClick={()=>{setRecipients(current=>current.filter(x=>x.phone!==r.phone));setSelectedPhones(current=>current.filter(p=>p!==r.phone));}} aria-label="Remove recipient"><Trash2 size={14}/></button></div>) : <p className="p-4 text-xs text-gray-500">No recipients loaded.</p>}
         </div>
         <div className="mb-2 flex items-center justify-between"><label className="text-xs font-semibold">Message</label><span className="text-[10px] text-gray-500">{message.length}/480 characters</span></div>
         <textarea className="min-h-36 w-full rounded-xl border border-gray-200 p-3 text-sm leading-relaxed" maxLength={480} placeholder="Write your message. Use {{full_name}} to personalize..." value={message} onChange={e=>setMessage(e.target.value)}/>
