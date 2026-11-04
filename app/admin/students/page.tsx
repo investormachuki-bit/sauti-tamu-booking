@@ -1136,6 +1136,14 @@ export default function AdminStudentsPage() {
           );
         }
 
+        if (student.whatsapp_number) {
+          try {
+            await sendPaymentSmsNotification(student.id, initialPaymentRecord.id);
+          } catch (smsError) {
+            console.error("Automatic initial payment SMS failed:", smsError);
+          }
+        }
+
         if (student.email) {
           try {
             const paymentRecord =
@@ -1727,6 +1735,14 @@ export default function AdminStudentsPage() {
         throw new Error("The payment was saved but could not be reloaded for receipt generation.");
       }
 
+      if (paymentStudent.student.whatsapp_number) {
+        try {
+          await sendPaymentSmsNotification(paymentStudent.student.id, savedPayment.id);
+        } catch (smsError) {
+          console.error("Automatic payment SMS failed:", smsError);
+        }
+      }
+
       if (paymentStudent.student.email) {
         try {
           const savedPaymentRecord = savedPayment as Payment;
@@ -1979,6 +1995,31 @@ export default function AdminStudentsPage() {
         error
       );
     }
+  }
+
+  async function sendPaymentSmsNotification(
+    studentId: string,
+    paymentId: string
+  ) {
+    const { supabase } = await import("../../../lib/supabase");
+    const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+    if (sessionError) throw sessionError;
+    const accessToken = sessionData.session?.access_token;
+    if (!accessToken) throw new Error("Your admin session has expired. Please sign in again.");
+
+    const response = await fetch("/api/payments/notify-sms", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify({ studentId, paymentId }),
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok || !result.success) {
+      throw new Error(result.error || "Payment SMS notification could not be sent.");
+    }
+    return result;
   }
 
   async function sendReceiptEmail(
