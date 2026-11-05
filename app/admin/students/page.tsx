@@ -1735,12 +1735,20 @@ export default function AdminStudentsPage() {
         throw new Error("The payment was saved but could not be reloaded for receipt generation.");
       }
 
-      if (paymentStudent.student.whatsapp_number) {
-        try {
-          await sendPaymentSmsNotification(paymentStudent.student.id, savedPayment.id);
-        } catch (smsError) {
-          console.error("Automatic payment SMS failed:", smsError);
+      let paymentSmsWarning: string | null = null;
+      try {
+        const smsResult = await sendPaymentSmsNotification(
+          paymentStudent.student.id,
+          savedPayment.id
+        );
+        if (!smsResult.smsSent) {
+          paymentSmsWarning = smsResult.reason || "No mobile number is saved for this student.";
         }
+      } catch (smsError) {
+        paymentSmsWarning = smsError instanceof Error
+          ? smsError.message
+          : "Payment confirmation SMS could not be sent.";
+        console.error("Automatic payment SMS failed:", smsError);
       }
 
       if (paymentStudent.student.email) {
@@ -1775,6 +1783,14 @@ export default function AdminStudentsPage() {
       await refreshStudents(
         true
       );
+
+      if (paymentSmsWarning) {
+        alert(
+          `Payment was saved, but the SMS confirmation was not sent: ${paymentSmsWarning}`
+        );
+      } else {
+        alert("Payment saved and SMS confirmation sent successfully.");
+      }
     } catch (err) {
       console.error(
         "Record payment error:",
