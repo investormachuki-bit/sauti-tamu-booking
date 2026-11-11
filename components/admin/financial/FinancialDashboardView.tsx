@@ -330,11 +330,11 @@ function ExpenseBreakdown({
 
           <div>
             <h2 className="m-0 text-[16px] font-extrabold leading-none text-blue-900">
-              Expense Breakdown
+              Operating Expenses
             </h2>
 
             <p className="mt-1 mb-0 text-[9px] text-slate-500">
-              Where the money is being spent
+              Monthly operating costs by category
             </p>
           </div>
         </div>
@@ -1194,6 +1194,43 @@ export default function FinancialDashboardView({
       </section>
 
       {/* =================================================
+          BUSINESS PERFORMANCE
+          FULL WIDTH — UNCHANGED
+      ================================================= */}
+
+      <section className="mt-3 w-full">
+        {dashboard ? (
+          <PerformanceMetrics
+            dashboard={
+              dashboard
+            }
+          />
+        ) : (
+          <DashboardCard>
+            <div className="p-8 text-center text-[9px] text-slate-500">
+              Financial dashboard
+              data is unavailable.
+            </div>
+          </DashboardCard>
+        )}
+      </section>
+
+      {/* =================================================
+          STUDENT ACTIVITY
+          FULL WIDTH — MOVED BELOW PERFORMANCE
+      ================================================= */}
+
+      <section className="mt-3 w-full">
+        {dashboard ? (
+          <StudentActivity
+            dashboard={
+              dashboard
+            }
+          />
+        ) : null}
+      </section>
+
+      {/* =================================================
           EXPENSE BREAKDOWN
           FULL WIDTH
       ================================================= */}
@@ -1263,43 +1300,6 @@ export default function FinancialDashboardView({
             }
           />
         </DashboardCard>
-      </section>
-
-      {/* =================================================
-          STUDENT ACTIVITY
-          FULL WIDTH — MOVED BELOW PERFORMANCE
-      ================================================= */}
-
-      <section className="mt-3 w-full">
-        {dashboard ? (
-          <StudentActivity
-            dashboard={
-              dashboard
-            }
-          />
-        ) : null}
-      </section>
-
-      {/* =================================================
-          BUSINESS PERFORMANCE
-          FULL WIDTH — UNCHANGED
-      ================================================= */}
-
-      <section className="mt-3 w-full">
-        {dashboard ? (
-          <PerformanceMetrics
-            dashboard={
-              dashboard
-            }
-          />
-        ) : (
-          <DashboardCard>
-            <div className="p-8 text-center text-[9px] text-slate-500">
-              Financial dashboard
-              data is unavailable.
-            </div>
-          </DashboardCard>
-        )}
       </section>
 
       {/* =================================================
