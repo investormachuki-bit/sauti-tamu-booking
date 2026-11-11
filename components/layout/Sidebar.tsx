@@ -15,6 +15,8 @@ import {
   CalendarClock,
   MessageSquare,
   ContactRound,
+  BriefcaseBusiness,
+  FileBarChart,
 } from "lucide-react";
 
 interface SidebarProps {
@@ -95,6 +97,16 @@ const navigation = [
         label: "Financial Obligations",
         href: "/admin/financial-obligations",
         icon: Landmark,
+      },
+      {
+        label: "Investment Portfolio",
+        href: "/admin/investments",
+        icon: BriefcaseBusiness,
+      },
+      {
+        label: "Reports",
+        href: "/admin/reports",
+        icon: FileBarChart,
       },
     ],
   },
