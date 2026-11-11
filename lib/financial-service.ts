@@ -983,7 +983,6 @@ export async function loadFinancialDashboard(
   const [
     settings,
     summary,
-    expenses,
     expenseRecords,
     activity,
     performance,
@@ -994,10 +993,6 @@ export async function loadFinancialDashboard(
     loadFinancialSettings(),
 
     loadFinancialMonthlySummary(
-      monthStart
-    ),
-
-    loadFinancialExpenseBreakdown(
       monthStart
     ),
 
@@ -1019,6 +1014,31 @@ export async function loadFinancialDashboard(
 
     loadRecentObligationPayments(),
   ]);
+
+  const expenseTotalsByCategory = new Map<string, number>();
+  for (const expense of expenseRecords) {
+    const category = expense.category || "Uncategorised";
+    expenseTotalsByCategory.set(
+      category,
+      (expenseTotalsByCategory.get(category) ?? 0) + expense.amount
+    );
+  }
+  const monthlyExpenseTotal = expenseRecords.reduce(
+    (total, expense) => total + expense.amount,
+    0
+  );
+  const expenses: FinancialExpenseBreakdown[] = Array.from(
+    expenseTotalsByCategory.entries()
+  )
+    .map(([category, amount]) => ({
+      month_start: monthStart,
+      category,
+      amount,
+      percentage: monthlyExpenseTotal > 0
+        ? (amount / monthlyExpenseTotal) * 100
+        : 0,
+    }))
+    .sort((a, b) => b.amount - a.amount);
 
   /* ===================================================
      SAFE BUSINESS DEFAULTS
