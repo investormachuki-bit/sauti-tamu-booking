@@ -183,7 +183,7 @@ export type FinancialDashboardData = {
 
   investments: FinancialInvestment[];
 
-  investmentPayments: FinancialInvestmentPayment[];\n\n  investmentPayments: FinancialInvestmentPayment[];
+  investmentPayments: FinancialInvestmentPayment[];
 
   obligationPayments: FinancialObligationPayment[];
 
