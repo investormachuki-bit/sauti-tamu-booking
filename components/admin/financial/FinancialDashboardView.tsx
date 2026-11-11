@@ -1194,6 +1194,21 @@ export default function FinancialDashboardView({
       </section>
 
       {/* =================================================
+          STUDENT ACTIVITY
+          FULL WIDTH — MOVED BELOW PERFORMANCE
+      ================================================= */}
+
+      <section className="mt-3 w-full">
+        {dashboard ? (
+          <StudentActivity
+            dashboard={
+              dashboard
+            }
+          />
+        ) : null}
+      </section>
+
+      {/* =================================================
           BUSINESS PERFORMANCE
           FULL WIDTH — UNCHANGED
       ================================================= */}
@@ -1213,21 +1228,6 @@ export default function FinancialDashboardView({
             </div>
           </DashboardCard>
         )}
-      </section>
-
-      {/* =================================================
-          STUDENT ACTIVITY
-          FULL WIDTH — MOVED BELOW PERFORMANCE
-      ================================================= */}
-
-      <section className="mt-3 w-full">
-        {dashboard ? (
-          <StudentActivity
-            dashboard={
-              dashboard
-            }
-          />
-        ) : null}
       </section>
 
       {/* =================================================
