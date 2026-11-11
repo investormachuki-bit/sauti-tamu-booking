@@ -966,90 +966,16 @@ export async function deletePayment( paymentId: string, studentId: string, enrol
 
 /* ===================================================== COMPLETE STUDENT ===================================================== */
 
-export async function completeStudent( studentId: string, enrollmentId: string ): Promise<void> {
-  if (!studentId) {
-    throw new Error(
-      "Student ID is required."
-    );
-  }
+export async function completeStudent(studentId: string, enrollmentId: string): Promise<void> {
+  if (!studentId) throw new Error("Student ID is required.");
+  if (!enrollmentId) throw new Error("Enrollment ID is required.");
 
-  if (!enrollmentId) {
-    throw new Error(
-      "Enrollment ID is required."
-    );
-  }
+  const { error } = await supabase.rpc("complete_student_lifecycle", {
+    p_student_id: studentId,
+    p_enrollment_id: enrollmentId,
+  });
 
-  /* * Verify that the enrollment belongs to the student. * The dashboard passes the exact enrollment displayed * on the student's completion card. */
-  const {
-    data: enrollment,
-    error: enrollmentLookupError,
-  } = await supabase
-    .from("student_enrollments")
-    .select("id, student_id, status")
-    .eq("id", enrollmentId)
-    .eq("student_id", studentId)
-    .maybeSingle();
-
-  if (enrollmentLookupError) {
-    throw enrollmentLookupError;
-  }
-
-  if (!enrollment) {
-    throw new Error(
-      "The selected enrollment could not be found for this student."
-    );
-  }
-
-  /* * Read the current student status so we can restore it * if the enrollment update fails. */
-  const {
-    data: currentStudent,
-    error: studentLookupError,
-  } = await supabase
-    .from("students")
-    .select("id, status")
-    .eq("id", studentId)
-    .single();
-
-  if (studentLookupError) {
-    throw studentLookupError;
-  }
-
-  /* * Complete the exact student record. */
-  const {
-    error: studentUpdateError,
-  } = await supabase
-    .from("students")
-    .update({
-      status: "completed",
-    })
-    .eq("id", studentId);
-
-  if (studentUpdateError) {
-    throw studentUpdateError;
-  }
-
-  /* * Complete the exact enrollment shown on the card. */
-  const {
-    error: enrollmentUpdateError,
-  } = await supabase
-    .from("student_enrollments")
-    .update({
-      status: "completed",
-    })
-    .eq("id", enrollmentId)
-    .eq("student_id", studentId);
-
-  if (enrollmentUpdateError) {
-    /* * Roll the student status back if the enrollment update fails, * preventing the two records from becoming inconsistent. */
-    await supabase
-      .from("students")
-      .update({
-        status: currentStudent.status,
-      })
-      .eq("id", studentId);
-
-    throw enrollmentUpdateError;
-  }
+  if (error) throw error;
 }
 
 /* ===================================================== UPDATE NEXT PAYMENT SCHEDULE ===================================================== */
