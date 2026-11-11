@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
-import { ArrowLeft, Edit3, Plus, RefreshCw, Search, Trash2, WalletCards, X } from "lucide-react";
+import { Edit3, Plus, RefreshCw, Search, Trash2, WalletCards, X } from "lucide-react";
 
 type Investment = {
   id: string; institution: string; investment_type: string; contribution_amount: number;
@@ -117,7 +117,7 @@ export default function InvestmentPortfolioPage() {
         <label className="text-[10px] font-bold text-slate-600">Status<select className={inputClass} value={form.status} onChange={e=>setForm({...form,status:e.target.value})}>{["active","paused","completed","cancelled"].map(x=><option key={x} value={x}>{x[0].toUpperCase()+x.slice(1)}</option>)}</select></label>
         <label className="text-[10px] font-bold text-slate-600 sm:col-span-2 lg:col-span-3">Notes<textarea rows={2} className="mt-1 w-full rounded-lg border border-slate-200 p-3 text-[11px] font-normal" value={form.notes ?? ""} onChange={e=>setForm({...form,notes:e.target.value})}/></label>
       </div>
-      <div className="mt-4 flex justify-end gap-2"><button onClick={()=>{setEditing(null);setForm(blank());}} className="rounded-lg border border-slate-200 px-4 py-2 text-[11px] font-semibold">Cancel</button><button disabled={saving} onClick={()=>void save()} className="rounded-lg bg-blue-900 px-4 py-2 text-[11px] font-bold text-white disabled:opacity-50">{saving ? "Saving..." : editing ? "Save Changes" : "Create Investment"}</button></div>
+      <div className="mt-4 flex justify-end gap-2"><button onClick={()=>{setEditing(null);setForm(blank());setShowForm(false);}} className="rounded-lg border border-slate-200 px-4 py-2 text-[11px] font-semibold">Cancel</button><button disabled={saving} onClick={()=>void save()} className="rounded-lg bg-blue-900 px-4 py-2 text-[11px] font-bold text-white disabled:opacity-50">{saving ? "Saving..." : editing ? "Save Changes" : "Create Investment"}</button></div>
     </section> : null}
     <section className="overflow-hidden rounded-xl border border-slate-200 bg-white">
       <div className="flex items-center justify-between border-b border-slate-100 p-4"><h2 className="m-0 text-[13px] font-bold text-slate-900">Investment Register</h2><span className="text-[10px] text-slate-500">{visible.length} records</span></div>
