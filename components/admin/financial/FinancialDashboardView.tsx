@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 
 import { supabase } from "@/lib/supabase";
 import FinancialPaymentRegisters from "./FinancialPaymentRegisters";
@@ -834,6 +834,11 @@ function RecentObligationPayments({ payments }: { payments: FinancialObligationP
 
 function InvestmentPortfolio({ investments, payments, outstanding, onRefresh }: { investments: FinancialInvestment[]; payments: FinancialInvestmentPayment[]; outstanding: number; onRefresh?: () => void }) {
   const [activeInvestment, setActiveInvestment] = useState<FinancialInvestment | null>(null);
+  const [documents, setDocuments] = useState<Record<string, { name: string; path: string; created_at?: string }[]>>({});
+  const [selectedDocuments, setSelectedDocuments] = useState<Record<string, string>>({});
+  const [uploadingInvestment, setUploadingInvestment] = useState<string | null>(null);
+  const [documentError, setDocumentError] = useState("");
+  const [documentBusy, setDocumentBusy] = useState(false);
   const [amount, setAmount] = useState("");
   const [paymentDate, setPaymentDate] = useState(new Date().toLocaleDateString("en-CA", { timeZone: "Africa/Nairobi" }));
   const [paymentMethod, setPaymentMethod] = useState("mpesa");
@@ -847,6 +852,76 @@ function InvestmentPortfolio({ investments, payments, outstanding, onRefresh }: 
   const currentValue = investments.reduce((sum, item) => sum + item.current_value, 0);
   const expectedAnnualReturn = investments.reduce((sum, item) => sum + (item.expected_annual_return === null ? 0 : item.current_value * item.expected_annual_return / 100), 0);
   const totalBalance = investments.reduce((sum, item) => sum + Math.max(item.target_amount - item.contribution_amount - (paidByInvestment.get(item.id) ?? 0), 0), 0);
+
+  async function loadDocuments(investment: FinancialInvestment) {
+    const { data, error: listError } = await supabase.storage.from("investment-documents").list(investment.id, { limit: 100, sortBy: { column: "created_at", order: "desc" } });
+    if (listError) throw listError;
+    const files = (data ?? []).filter(file => file.name && file.id).map(file => ({ name: file.name, path: `${investment.id}/${file.name}`, created_at: file.created_at }));
+    setDocuments(current => ({ ...current, [investment.id]: files }));
+    setSelectedDocuments(current => ({ ...current, [investment.id]: current[investment.id] && files.some(file => file.path === current[investment.id]) ? current[investment.id] : files[0]?.path || "" }));
+  }
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadAll() {
+      const results = await Promise.all(investments.map(async investment => {
+        const { data, error: listError } = await supabase.storage.from("investment-documents").list(investment.id, { limit: 100, sortBy: { column: "created_at", order: "desc" } });
+        if (listError) return { id: investment.id, files: [] as { name: string; path: string; created_at?: string }[] };
+        return { id: investment.id, files: (data ?? []).filter(file => file.name && file.id).map(file => ({ name: file.name, path: `${investment.id}/${file.name}`, created_at: file.created_at })) };
+      }));
+      if (!cancelled) setDocuments(Object.fromEntries(results.map(result => [result.id, result.files])));
+    }
+    loadAll();
+    return () => { cancelled = true; };
+  }, [investments]);
+
+  async function uploadDocument(investment: FinancialInvestment, file?: File) {
+    if (!file) return;
+    try {
+      setUploadingInvestment(investment.id); setDocumentError("");
+      const safeName = file.name.normalize("NFKD").replace(/[^a-zA-Z0-9._-]+/g, "_").replace(/^\.+/, "");
+      const path = `${investment.id}/${Date.now()}_${safeName || "document"}`;
+      const { error: uploadError } = await supabase.storage.from("investment-documents").upload(path, file, { contentType: file.type || "application/octet-stream", upsert: false });
+      if (uploadError) throw uploadError;
+      await loadDocuments(investment);
+    } catch (err) {
+      setDocumentError(err instanceof Error ? err.message : "Could not upload this document.");
+    } finally { setUploadingInvestment(null); }
+  }
+
+  async function viewSelectedDocument(investment: FinancialInvestment) {
+    const path = selectedDocuments[investment.id];
+    if (!path) return;
+    const previewWindow = window.open("about:blank", "_blank");
+    try {
+      setDocumentBusy(true); setDocumentError("");
+      const { data, error: urlError } = await supabase.storage.from("investment-documents").createSignedUrl(path, 60);
+      if (urlError) throw urlError;
+      if (previewWindow) previewWindow.location.href = data.signedUrl;
+      else setDocumentError("Your browser blocked the preview window. Allow pop-ups and try again.");
+    } catch (err) {
+      previewWindow?.close();
+      setDocumentError(err instanceof Error ? err.message : "Could not open this document.");
+    } finally { setDocumentBusy(false); }
+  }
+
+  async function downloadSelectedDocument(investment: FinancialInvestment) {
+    const path = selectedDocuments[investment.id];
+    if (!path) return;
+    try {
+      setDocumentBusy(true); setDocumentError("");
+      const { data, error: downloadError } = await supabase.storage.from("investment-documents").download(path);
+      if (downloadError) throw downloadError;
+      const url = URL.createObjectURL(data);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = path.split("/").pop() || "investment-document";
+      document.body.appendChild(anchor); anchor.click(); anchor.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) { setDocumentError(err instanceof Error ? err.message : "Could not download this document."); }
+    finally { setDocumentBusy(false); }
+  }
+
   async function recordInvestmentPayment() {
     if (!activeInvestment) return;
     const value = Number(amount);
@@ -857,19 +932,15 @@ function InvestmentPortfolio({ investments, payments, outstanding, onRefresh }: 
     try {
       setSaving(true); setError("");
       const { error: insertError } = await supabase.from("financial_investment_payments").insert({
-        investment_id: activeInvestment.id,
-        payment_date: paymentDate,
-        amount: value,
-        payment_method: paymentMethod,
-        reference: reference.trim() || null,
+        investment_id: activeInvestment.id, payment_date: paymentDate, amount: value,
+        payment_method: paymentMethod, reference: reference.trim() || null,
       });
       if (insertError) throw insertError;
-      setActiveInvestment(null); setAmount(""); setReference("");
-      onRefresh?.();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not record investment contribution.");
-    } finally { setSaving(false); }
+      setActiveInvestment(null); setAmount(""); setReference(""); onRefresh?.();
+    } catch (err) { setError(err instanceof Error ? err.message : "Could not record investment contribution."); }
+    finally { setSaving(false); }
   }
+
   return <div className="grid grid-cols-1 gap-3">
     <DashboardCard>
       <div className="border-b border-teal-200 bg-gradient-to-r from-teal-100 via-cyan-50 to-white px-5 py-3"><h2 className="m-0 text-[16px] font-extrabold text-teal-900">Investment Portfolio</h2><p className="mt-1 mb-0 text-[9px] text-slate-500">Track each investment target, contributions paid, remaining balance, expected returns and due dates</p></div>
@@ -878,25 +949,26 @@ function InvestmentPortfolio({ investments, payments, outstanding, onRefresh }: 
         <div className="px-4 py-3"><p className="m-0 text-[8px] font-bold text-slate-500">Current Portfolio Value</p><p className="mt-1 mb-0 text-[15px] font-extrabold text-emerald-700">{formatCurrency(currentValue)}</p></div>
         <div className="px-4 py-3"><p className="m-0 text-[8px] font-bold text-slate-500">Expected Annual Return</p><p className="mt-1 mb-0 text-[15px] font-extrabold text-blue-700">{formatCurrency(expectedAnnualReturn)}</p></div>
       </div>
-      {investments.length === 0 ? <p className="p-5 text-center text-[10px] text-slate-500">No active investments recorded yet.</p> : <div className="overflow-x-auto"><table className="w-full min-w-[1250px] text-left text-[9px]"><thead className="bg-teal-50 text-teal-950"><tr><th className="px-3 py-2">Action</th><th className="px-3 py-2">#</th><th className="px-3 py-2">Item</th><th className="px-3 py-2">Institution</th><th className="px-3 py-2">Frequency</th><th className="px-3 py-2 text-right">Expected Return (p.a.)</th><th className="px-3 py-2 text-right">Amount (KSh)</th><th className="px-3 py-2 text-right">% of Total</th><th className="px-3 py-2 text-right">Amount Paid (KSh)</th><th className="px-3 py-2 text-right">Balance (KSh)</th><th className="px-3 py-2">% Paid</th><th className="px-3 py-2">Due Date</th><th className="px-3 py-2">Documents</th></tr></thead><tbody>{investments.map((item, index) => {
+      {documentError ? <p className="m-0 border-b border-red-100 bg-red-50 px-4 py-2 text-[9px] text-red-700">{documentError}</p> : null}
+      {investments.length === 0 ? <p className="p-5 text-center text-[10px] text-slate-500">No active investments recorded yet.</p> : <div className="overflow-x-auto"><table className="w-full min-w-[1450px] text-left text-[9px]"><thead className="bg-teal-50 text-teal-950"><tr><th className="px-3 py-2">Action</th><th className="px-3 py-2">#</th><th className="px-3 py-2">Item</th><th className="px-3 py-2">Institution</th><th className="px-3 py-2">Frequency</th><th className="px-3 py-2 text-right">Expected Return (p.a.)</th><th className="px-3 py-2 text-right">Amount (KSh)</th><th className="px-3 py-2 text-right">% of Total</th><th className="px-3 py-2 text-right">Amount Paid (KSh)</th><th className="px-3 py-2 text-right">Balance (KSh)</th><th className="px-3 py-2">% Paid</th><th className="px-3 py-2">Due Date</th><th className="px-3 py-2">Documents</th></tr></thead><tbody>{investments.map((item, index) => {
         const paid = item.contribution_amount + (paidByInvestment.get(item.id) ?? 0);
         const balance = Math.max(item.target_amount - paid, 0);
         const percentage = item.target_amount > 0 ? Math.min((paid / item.target_amount) * 100, 100) : 0;
         const share = totalAmount > 0 ? (item.target_amount / totalAmount) * 100 : 0;
+        const files = documents[item.id] || [];
         return <tr key={item.id} className="border-t border-teal-100 hover:bg-teal-50/40">
           <td className="px-3 py-2"><button type="button" onClick={() => { setActiveInvestment(item); setAmount(""); setError(""); }} disabled={balance <= 0} className="rounded-md bg-teal-700 px-3 py-1.5 text-[8px] font-bold text-white hover:bg-teal-800 disabled:cursor-not-allowed disabled:opacity-40">Invest</button></td>
-          <td className="px-3 py-2 text-slate-500">{index + 1}</td>
-          <td className="px-3 py-2 font-semibold text-slate-800">{item.investment_type || "Investment"}</td>
-          <td className="px-3 py-2 font-semibold text-slate-800">{item.institution}</td>
-          <td className="px-3 py-2">{item.contribution_frequency}</td>
-          <td className="px-3 py-2 text-right">{item.expected_annual_return === null ? "—" : `${formatPercentage(item.expected_annual_return)}`}</td>
-          <td className="px-3 py-2 text-right font-semibold">{formatCurrency(item.target_amount)}</td>
-          <td className="px-3 py-2 text-right">{formatPercentage(share)}</td>
-          <td className="px-3 py-2 text-right font-semibold text-emerald-700">{formatCurrency(paid)}</td>
-          <td className="px-3 py-2 text-right font-semibold">{formatCurrency(balance)}</td>
+          <td className="px-3 py-2 text-slate-500">{index + 1}</td><td className="px-3 py-2 font-semibold text-slate-800">{item.investment_type || "Investment"}</td>
+          <td className="px-3 py-2 font-semibold text-slate-800">{item.institution}</td><td className="px-3 py-2">{item.contribution_frequency}</td>
+          <td className="px-3 py-2 text-right">{item.expected_annual_return === null ? "—" : formatPercentage(item.expected_annual_return)}</td>
+          <td className="px-3 py-2 text-right font-semibold">{formatCurrency(item.target_amount)}</td><td className="px-3 py-2 text-right">{formatPercentage(share)}</td>
+          <td className="px-3 py-2 text-right font-semibold text-emerald-700">{formatCurrency(paid)}</td><td className="px-3 py-2 text-right font-semibold">{formatCurrency(balance)}</td>
           <td className="min-w-[105px] px-3 py-2"><div className="h-2 overflow-hidden rounded-full bg-slate-200"><div className="h-full rounded-full bg-emerald-600" style={{ width: `${percentage}%` }} /></div><span className="mt-1 block text-[8px]">{formatPercentage(percentage)}</span></td>
           <td className="whitespace-nowrap px-3 py-2">{item.next_due_date || "—"}</td>
-          <td className="px-3 py-2"><span className="text-slate-400">—</span></td>
+          <td className="px-3 py-2"><div className="flex min-w-[250px] flex-col gap-1.5">
+            <label className="inline-flex w-fit cursor-pointer items-center rounded bg-slate-800 px-2 py-1 text-[8px] font-bold text-white hover:bg-slate-700">{uploadingInvestment === item.id ? "Uploading…" : "Upload"}<input type="file" className="hidden" disabled={uploadingInvestment === item.id} onChange={e => { const file = e.target.files?.[0]; void uploadDocument(item, file); e.currentTarget.value = ""; }} /></label>
+            {files.length ? <><select aria-label={`Select document for ${item.institution}`} value={selectedDocuments[item.id] || ""} onChange={e => setSelectedDocuments(current => ({ ...current, [item.id]: e.target.value }))} className="h-7 w-full rounded border border-slate-200 bg-white px-1 text-[8px]">{files.map(file => <option key={file.path} value={file.path}>{file.name}</option>)}</select><div className="flex gap-1"><button type="button" disabled={documentBusy} onClick={() => void viewSelectedDocument(item)} className="rounded border border-teal-200 px-2 py-1 text-[8px] font-semibold text-teal-800 disabled:opacity-50">View</button><button type="button" disabled={documentBusy} onClick={() => void downloadSelectedDocument(item)} className="rounded border border-blue-200 px-2 py-1 text-[8px] font-semibold text-blue-800 disabled:opacity-50">Download</button><span className="self-center text-[8px] text-slate-500">{files.length} file{files.length === 1 ? "" : "s"}</span></div></> : <span className="text-[8px] text-slate-400">No documents uploaded</span>}
+          </div></td>
         </tr>;
       })}</tbody><tfoot className="border-t-2 border-teal-200 bg-teal-50 font-extrabold"><tr><td className="px-3 py-3" colSpan={6}>Total Investments</td><td className="px-3 py-3 text-right">{formatCurrency(totalAmount)}</td><td className="px-3 py-3 text-right">100%</td><td className="px-3 py-3 text-right text-emerald-700">{formatCurrency(totalPaid)}</td><td className="px-3 py-3 text-right">{formatCurrency(totalBalance)}</td><td className="px-3 py-3">{formatPercentage(totalAmount > 0 ? totalPaid / totalAmount * 100 : 0)}</td><td colSpan={2} /></tr></tfoot></table></div>}
     </DashboardCard>
@@ -904,7 +976,6 @@ function InvestmentPortfolio({ investments, payments, outstanding, onRefresh }: 
     {activeInvestment ? <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4"><div role="dialog" aria-modal="true" aria-labelledby="investment-payment-title" className="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl"><div className="flex items-start justify-between gap-3"><div><h2 id="investment-payment-title" className="m-0 text-[16px] font-extrabold text-teal-950">Record Investment Contribution</h2><p className="mt-1 mb-0 text-[10px] text-slate-500">{activeInvestment.investment_type} · {activeInvestment.institution}</p></div><button type="button" onClick={() => setActiveInvestment(null)} disabled={saving} className="rounded-lg border border-slate-200 px-3 py-1">×</button></div><div className="mt-3 rounded-lg bg-teal-50 p-3 text-[10px]"><div className="flex justify-between"><span>Investment target</span><strong>{formatCurrency(activeInvestment.target_amount)}</strong></div><div className="mt-1 flex justify-between"><span>Already paid</span><strong>{formatCurrency(activeInvestment.contribution_amount + (paidByInvestment.get(activeInvestment.id) ?? 0))}</strong></div><div className="mt-1 flex justify-between"><span>Remaining balance</span><strong>{formatCurrency(Math.max(activeInvestment.target_amount - activeInvestment.contribution_amount - (paidByInvestment.get(activeInvestment.id) ?? 0), 0))}</strong></div></div>{error ? <p className="mt-3 rounded-lg bg-red-50 p-3 text-[10px] text-red-700">{error}</p> : null}<div className="mt-3 grid grid-cols-1 gap-3"><label className="text-[10px] font-bold text-slate-600">Amount to invest (KSh)<input type="number" min="0.01" max={Math.max(activeInvestment.target_amount - activeInvestment.contribution_amount - (paidByInvestment.get(activeInvestment.id) ?? 0), 0)} step="0.01" value={amount} onChange={e => setAmount(e.target.value)} className="mt-1 h-10 w-full rounded-lg border border-slate-200 px-3 text-[12px] font-normal" /></label><label className="text-[10px] font-bold text-slate-600">Payment date<input type="date" value={paymentDate} onChange={e => setPaymentDate(e.target.value)} className="mt-1 h-10 w-full rounded-lg border border-slate-200 px-3 text-[12px] font-normal" /></label><label className="text-[10px] font-bold text-slate-600">Payment method<select value={paymentMethod} onChange={e => setPaymentMethod(e.target.value)} className="mt-1 h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-[12px] font-normal"><option value="mpesa">M-Pesa</option><option value="bank">Bank</option><option value="cash">Cash</option><option value="card">Card</option><option value="other">Other</option></select></label><label className="text-[10px] font-bold text-slate-600">Reference (optional)<input value={reference} onChange={e => setReference(e.target.value)} className="mt-1 h-10 w-full rounded-lg border border-slate-200 px-3 text-[12px] font-normal" /></label></div><div className="mt-5 flex justify-end gap-2 border-t border-slate-100 pt-4"><button type="button" onClick={() => setActiveInvestment(null)} disabled={saving} className="h-9 rounded-lg border border-slate-200 px-4 text-[10px] font-bold">Cancel</button><button type="button" onClick={recordInvestmentPayment} disabled={saving} className="h-9 rounded-lg bg-teal-700 px-4 text-[10px] font-bold text-white disabled:opacity-50">{saving ? "Saving…" : "Record Contribution"}</button></div></div></div> : null}
   </div>;
 }
-
 function FinancialDashboardActions({ onRefresh }: { onRefresh?: () => void }) {
   const [showInvestmentForm, setShowInvestmentForm] = useState(false);
   const [saving, setSaving] = useState(false);
