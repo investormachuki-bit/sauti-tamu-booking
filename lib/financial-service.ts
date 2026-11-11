@@ -155,7 +155,7 @@ export type FinancialObligationPayment = {
   reference: string | null;
 };
 
-export type FinancialInvestmentPayment = {\n  id: string;\n  investment_id: string;\n  payment_date: string;\n  amount: number;\n  payment_method: string;\n  reference: string | null;\n};\n\nexport type FinancialInvestmentPayment = {
+export type FinancialInvestmentPayment = {
   id: string;
   investment_id: string;
   payment_date: string;
