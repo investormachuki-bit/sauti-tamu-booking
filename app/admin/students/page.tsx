@@ -632,12 +632,7 @@ export default function AdminStudentsPage() {
     const activeStudents =
       students.filter(
         (record) =>
-          (
-            record.enrollment
-              ?.status ??
-            record.student.status
-          ).toLowerCase() ===
-          "active"
+          (record.student.status).toLowerCase() === "active"
       ).length;
 
     const totalOutstanding =
@@ -718,10 +713,7 @@ export default function AdminStudentsPage() {
             "all"
           ) {
             const currentStatus =
-              (
-                enrollment?.status ??
-                student.status
-              ).toLowerCase();
+              student.status.toLowerCase();
 
             if (
               currentStatus !==
