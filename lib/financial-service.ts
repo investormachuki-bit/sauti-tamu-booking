@@ -155,7 +155,7 @@ export type FinancialObligationPayment = {
   reference: string | null;
 };
 
-export type FinancialInvestment = {
+export type FinancialInvestmentPayment = {\n  id: string;\n  investment_id: string;\n  payment_date: string;\n  amount: number;\n  payment_method: string;\n  reference: string | null;\n};\n\nexport type FinancialInvestment = {
   id: string;
   institution: string;
   investment_type: string;
@@ -172,7 +172,7 @@ export type FinancialInvestment = {
 export type FinancialDashboardData = {
   settings: FinancialSettings;
 
-  investments: FinancialInvestment[];
+  investments: FinancialInvestment[];\n\n  investmentPayments: FinancialInvestmentPayment[];
 
   obligationPayments: FinancialObligationPayment[];
 
