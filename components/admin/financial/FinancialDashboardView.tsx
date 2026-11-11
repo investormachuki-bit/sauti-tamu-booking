@@ -3,6 +3,7 @@
 import { useState, type ReactNode } from "react";
 
 import { supabase } from "@/lib/supabase";
+import FinancialPaymentRegisters from "./FinancialPaymentRegisters";
 
 import {
   ArrowDownRight,
@@ -1301,10 +1302,16 @@ export default function FinancialDashboardView({
       ================================================= */}
 
       <section className="mt-3 w-full">
-        <ExpenseBreakdown
-          expenses={dashboard?.expenses || []}
-          records={dashboard?.expenseRecords || []}
-        />
+        {dashboard ? (
+          <FinancialPaymentRegisters
+            expenses={dashboard.expenseRecords || []}
+            expensePayments={dashboard.expensePayments || []}
+            obligations={dashboard.obligations || []}
+            onRefresh={onRefresh}
+          />
+        ) : (
+          <DashboardCard><div className="p-6 text-center text-[10px] text-slate-500">Financial registers are loading.</div></DashboardCard>
+        )}
       </section>
 
       {/* =================================================
@@ -1369,20 +1376,6 @@ export default function FinancialDashboardView({
           FINANCIAL OBLIGATIONS
           FULL WIDTH — MOVED BELOW STUDENT ACTIVITY
       ================================================= */}
-
-      <section className="mt-3 w-full">
-        {dashboard ? (
-          <FinancialObligations
-            dashboard={
-              dashboard
-            }
-          />
-        ) : null}
-      </section>
-
-            <section className="mt-3 w-full">
-        {dashboard ? <RecentObligationPayments payments={dashboard.obligationPayments || []} /> : null}
-      </section>
 
       <section className="mt-3 w-full"><FinancialDashboardActions onRefresh={onRefresh} /></section>
 
