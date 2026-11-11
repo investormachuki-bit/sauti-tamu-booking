@@ -856,7 +856,7 @@ function InvestmentPortfolio({ investments, payments, outstanding, onRefresh }: 
   async function loadDocuments(investment: FinancialInvestment) {
     const { data, error: listError } = await supabase.storage.from("investment-documents").list(investment.id, { limit: 100, sortBy: { column: "created_at", order: "desc" } });
     if (listError) throw listError;
-    const files = (data ?? []).filter(file => file.name && file.id).map(file => ({ name: file.name, path: `${investment.id}/${file.name}`, created_at: file.created_at }));
+    const files = (data ?? []).filter(file => file.name && file.id).map(file => ({ name: file.name, path: `${investment.id}/${file.name}`, created_at: file.created_at ?? undefined }));
     setDocuments(current => ({ ...current, [investment.id]: files }));
     setSelectedDocuments(current => ({ ...current, [investment.id]: current[investment.id] && files.some(file => file.path === current[investment.id]) ? current[investment.id] : files[0]?.path || "" }));
   }
