@@ -97,18 +97,8 @@ export default function ManyChatContactsPage() {
 
   function exportToExcel() {
     const columns: Array<{ label: string; value: (contact: Contact) => string }> = [
-      { label: "ManyChat Contact ID", value: c => c.manychat_contact_id || "" },
-      { label: "Full Name", value: c => c.full_name || [c.first_name, c.last_name].filter(Boolean).join(" ") },
-      { label: "First Name", value: c => c.first_name || "" },
-      { label: "Last Name", value: c => c.last_name || "" },
+      { label: "Name", value: c => c.full_name || [c.first_name, c.last_name].filter(Boolean).join(" ") || "Unnamed contact" },
       { label: "WhatsApp Number", value: c => c.phone_e164 || "" },
-      { label: "ManyChat Tags", value: c => (c.tags || []).join(", ") },
-      { label: "WhatsApp Opted In", value: c => c.whatsapp_opted_in ? "Yes" : "No" },
-      { label: "SMS Marketing Opted In", value: c => c.sms_marketing_opt_in ? "Yes" : "No" },
-      { label: "SMS Consent Date", value: c => c.sms_consent_at || "" },
-      { label: "First Seen", value: c => c.first_seen_at || "" },
-      { label: "Last Seen", value: c => c.last_seen_at || "" },
-      { label: "Last Synced", value: c => c.synced_at || "" },
     ];
     const xmlEscape = (value: string) => value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&apos;");
     const rowXml = (values: string[]) => `<Row>${values.map(value => `<Cell><Data ss:Type="String">${xmlEscape(value)}</Data></Cell>`).join("")}</Row>`;
