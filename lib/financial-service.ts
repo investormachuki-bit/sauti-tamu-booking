@@ -155,11 +155,21 @@ export type FinancialObligationPayment = {
   reference: string | null;
 };
 
+export type FinancialInvestmentPayment = {
+  id: string;
+  investment_id: string;
+  payment_date: string;
+  amount: number;
+  payment_method: string;
+  reference: string | null;
+};
+
 export type FinancialInvestment = {
   id: string;
   institution: string;
   investment_type: string;
   contribution_amount: number;
+  target_amount: number;
   current_value: number;
   contribution_frequency: string;
   start_date: string;
@@ -173,6 +183,8 @@ export type FinancialDashboardData = {
   settings: FinancialSettings;
 
   investments: FinancialInvestment[];
+
+  investmentPayments: FinancialInvestmentPayment[];
 
   obligationPayments: FinancialObligationPayment[];
 
@@ -972,6 +984,22 @@ export async function loadRecentObligationPayments(): Promise<FinancialObligatio
   }));
 }
 
+export async function loadFinancialInvestmentPayments(): Promise<FinancialInvestmentPayment[]> {
+  const { data, error } = await supabase
+    .from("financial_investment_payments")
+    .select("id, investment_id, payment_date, amount, payment_method, reference")
+    .order("payment_date", { ascending: false });
+  throwIfError(error);
+  return (data ?? []).map((row) => ({
+    id: row.id,
+    investment_id: row.investment_id,
+    payment_date: row.payment_date,
+    amount: toNumber(row.amount),
+    payment_method: row.payment_method,
+    reference: row.reference ?? null,
+  }));
+}
+
 /* =====================================================
    INVESTMENT PORTFOLIO
 ===================================================== */
@@ -990,6 +1018,7 @@ export async function loadFinancialInvestments(): Promise<FinancialInvestment[]>
     institution: row.institution,
     investment_type: row.investment_type,
     contribution_amount: toNumber(row.contribution_amount),
+    target_amount: toNumber(row.target_amount ?? row.contribution_amount),
     current_value: toNumber(row.current_value),
     contribution_frequency: row.contribution_frequency,
     start_date: row.start_date,
@@ -1016,6 +1045,7 @@ export async function loadFinancialDashboard(
     performance,
     obligations,
     investments,
+    investmentPayments,
     obligationPayments,
   ] = await Promise.all([
     loadFinancialSettings(),
@@ -1041,6 +1071,8 @@ export async function loadFinancialDashboard(
     loadActiveFinancialObligations(),
 
     loadFinancialInvestments(),
+
+    loadFinancialInvestmentPayments(),
 
     loadRecentObligationPayments(),
   ]);
@@ -1233,6 +1265,8 @@ export async function loadFinancialDashboard(
     settings,
 
     investments,
+
+    investmentPayments,
 
     obligationPayments,
 
