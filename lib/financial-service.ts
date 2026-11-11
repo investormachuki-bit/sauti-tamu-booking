@@ -169,6 +169,7 @@ export type FinancialInvestment = {
   institution: string;
   investment_type: string;
   contribution_amount: number;
+  target_amount: number;
   current_value: number;
   contribution_frequency: string;
   start_date: string;
@@ -1017,6 +1018,7 @@ export async function loadFinancialInvestments(): Promise<FinancialInvestment[]>
     institution: row.institution,
     investment_type: row.investment_type,
     contribution_amount: toNumber(row.contribution_amount),
+    target_amount: toNumber(row.target_amount ?? row.contribution_amount),
     current_value: toNumber(row.current_value),
     contribution_frequency: row.contribution_frequency,
     start_date: row.start_date,
