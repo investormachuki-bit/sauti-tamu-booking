@@ -35,15 +35,19 @@ export default function FinancialReportsPage() {
         supabase.from("financial_expense_payments").select("*"),
         supabase.from("financial_obligation_payments").select("*"),
         supabase.from("financial_investment_payments").select("*"),
+        supabase.from("payments").select("*"),
+        supabase.from("student_enrollments").select("*"),
       ]);
-      for(const result of [e,o,i,ep,op,ip]) if(result.error) throw result.error;
+      for(const result of [e,o,i,ep,op,ip,pay,enroll]) if(result.error) throw result.error;
       const result:ReportRow[]=[];
       for(const x of e.data??[]) result.push({id:x.id,date:x.expense_date,type:"Expense",name:x.description,category:x.category,amount:Number(x.amount??0),status:"Recorded",details:[x.vendor,x.payment_method,x.reference,x.notes].filter(Boolean).join(" • ")});
       for(const x of o.data??[]) result.push({id:x.id,date:x.next_due_date??x.start_date??"",type:"Obligation",name:x.name,category:x.category,amount:Number(x.outstanding_balance??0),status:x.status,details:`Scheduled ${x.amount} • ${x.frequency} • Due ${x.next_due_date??"not set"} • ${x.notes??""}`});
       for(const x of i.data??[]) result.push({id:x.id,date:x.start_date??"",type:"Investment",name:x.institution,category:x.investment_type,amount:Number(x.current_value??0),status:x.status,details:`Target ${x.target_amount??0} • Initially contributed ${x.contribution_amount??0} • ${x.contribution_frequency} • ${x.notes??""}`});
       for(const x of ep.data??[]) result.push({id:x.id,date:x.payment_date,type:"Expense Payment",name:x.expense_id,category:x.payment_method,amount:Number(x.amount??0),status:"Paid",details:x.reference??""});
       for(const x of op.data??[]) result.push({id:x.id,date:x.payment_date,type:"Obligation Payment",name:x.obligation_id,category:x.payment_method,amount:Number(x.amount??0),status:"Paid",details:x.reference??""});
-      for(const x of ip.data??[]) result.push({id:x.id,date:x.payment_date,type:"Investment Contribution",name:x.investment_id,category:x.payment_method,amount:Number(x.amount??0),status:"Contributed",details:x.reference??""});\n      for(const x of pay.data??[]) result.push({id:x.id,date:x.payment_date,type:"Student Payment",name:x.student_id,category:x.payment_method,amount:Number(x.amount??0),status:"Received",details:[x.reference,x.notes].filter(Boolean).join(" • ")});\n      for(const x of enroll.data??[]) result.push({id:x.id,date:x.start_date??x.planned_start_date??"",type:"Enrollment Value",name:x.programme_name??x.instrument,category:x.instrument,status:x.status,amount:Number(x.total_fee??0),details:x.notes??""});
+      for(const x of ip.data??[]) result.push({id:x.id,date:x.payment_date,type:"Investment Contribution",name:x.investment_id,category:x.payment_method,amount:Number(x.amount??0),status:"Contributed",details:x.reference??""});
+      for(const x of pay.data??[]) result.push({id:x.id,date:x.payment_date,type:"Student Payment",name:x.student_id,category:x.payment_method,amount:Number(x.amount??0),status:"Received",details:[x.reference,x.notes].filter(Boolean).join(" • ")});
+      for(const x of enroll.data??[]) result.push({id:x.id,date:x.start_date??x.planned_start_date??"",type:"Enrollment Value",name:x.programme_name??x.instrument,category:x.instrument,status:x.status,amount:Number(x.total_fee??0),details:x.notes??""});
       setRows(result.sort((a,b)=>b.date.localeCompare(a.date)));
     } catch(e) { setError(e instanceof Error?e.message:"Unable to load report data."); }
     finally { setLoading(false); }
