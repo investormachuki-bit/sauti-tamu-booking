@@ -1040,7 +1040,7 @@ function FinancialDashboardActions({ onRefresh }: { onRefresh?: () => void }) {
           <button type="button" onClick={() => { setError(""); setShowInvestmentForm(true); }} className="inline-flex h-9 items-center rounded-lg border border-blue-200 bg-blue-50 px-3 text-[9px] font-bold text-blue-800 hover:bg-blue-100">Add Investment</button>
           <a href="/admin/financial-obligations" className="inline-flex h-9 items-center rounded-lg border border-slate-200 bg-white px-3 text-[9px] font-bold text-slate-700 hover:bg-slate-50">Add Obligation</a>
           <a href="/admin/payment-schedule" className="inline-flex h-9 items-center rounded-lg border border-slate-200 bg-white px-3 text-[9px] font-bold text-slate-700 hover:bg-slate-50">View Payment Schedule</a>
-          <a href="/admin/reports" className="inline-flex h-9 items-center rounded-lg bg-blue-900 px-3 text-[9px] font-bold text-white hover:bg-blue-800">Generate Report</a>
+          <a href="/admin/reports" className="inline-flex h-9 items-center rounded-lg bg-blue-700 px-3 text-[9px] font-bold text-white shadow-sm hover:bg-blue-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-700">Generate Report</a>
         </div>
       </div>
     </DashboardCard>
