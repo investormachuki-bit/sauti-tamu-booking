@@ -530,7 +530,7 @@ function PerformanceMetrics({
 
   return (
     <DashboardCard>
-      <div className="border-b border-yellow-200 bg-yellow-50/40 px-5 py-3">
+      <div className="border-b border-orange-200 bg-gradient-to-r from-orange-50 via-amber-50 to-white px-5 py-3">
         <div className="flex items-center gap-3">
           <BarChart3
             size={25}
@@ -786,9 +786,9 @@ function InvestmentPortfolio({ investments, outstanding }: { investments: Financ
   const contributed = investments.reduce((sum, item) => sum + item.contribution_amount, 0);
   const currentValue = investments.reduce((sum, item) => sum + item.current_value, 0);
   const expectedAnnualReturn = investments.reduce((sum, item) => sum + (item.expected_annual_return === null ? 0 : item.current_value * item.expected_annual_return / 100), 0);
-  return <div className="grid grid-cols-1 gap-3 xl:grid-cols-[minmax(0,2fr)_minmax(260px,1fr)]">
+  return <div className="grid grid-cols-1 gap-3">
     <DashboardCard>
-      <div className="border-b border-blue-100 px-5 py-3"><h2 className="m-0 text-[16px] font-extrabold text-blue-900">Investment Portfolio</h2><p className="mt-1 mb-0 text-[9px] text-slate-500">Institutions, contribution progress, expected returns and due dates</p></div>
+      <div className="border-b border-teal-200 bg-gradient-to-r from-teal-100 via-cyan-50 to-white px-5 py-3"><h2 className="m-0 text-[16px] font-extrabold text-teal-900">Investment Portfolio</h2><p className="mt-1 mb-0 text-[9px] text-slate-500">Institutions, contribution progress, expected returns and due dates</p></div>
       <div className="grid grid-cols-3 divide-x divide-blue-100 border-b border-blue-100">
         <div className="px-4 py-3"><p className="m-0 text-[8px] font-bold text-slate-500">Contributed</p><p className="mt-1 mb-0 text-[15px] font-extrabold">{formatCurrency(contributed)}</p></div>
         <div className="px-4 py-3"><p className="m-0 text-[8px] font-bold text-slate-500">Current Value</p><p className="mt-1 mb-0 text-[15px] font-extrabold text-emerald-700">{formatCurrency(currentValue)}</p></div>
@@ -796,7 +796,7 @@ function InvestmentPortfolio({ investments, outstanding }: { investments: Financ
       </div>
       {investments.length === 0 ? <p className="p-5 text-center text-[10px] text-slate-500">No active investments recorded yet.</p> : <div className="overflow-x-auto"><table className="w-full min-w-[650px] text-left text-[9px]"><thead className="bg-slate-50 text-slate-600"><tr><th className="px-4 py-3">Institution / Investment</th><th className="px-4 py-3">Frequency</th><th className="px-4 py-3 text-right">Contributed</th><th className="px-4 py-3 text-right">Current value</th><th className="px-4 py-3">Due date</th></tr></thead><tbody>{investments.map((item) => <tr key={item.id} className="border-t border-slate-100"><td className="px-4 py-3"><p className="m-0 font-bold">{item.institution}</p><p className="mt-1 mb-0 text-slate-500">{item.investment_type}</p></td><td className="px-4 py-3">{item.contribution_frequency}</td><td className="px-4 py-3 text-right">{formatCurrency(item.contribution_amount)}</td><td className="px-4 py-3 text-right">{formatCurrency(item.current_value)}</td><td className="px-4 py-3">{item.next_due_date || "—"}</td></tr>)}</tbody></table></div>}
     </DashboardCard>
-    <DashboardCard><div className="border-b border-blue-100 px-5 py-3"><h2 className="m-0 text-[16px] font-extrabold text-blue-900">Net Worth Snapshot</h2><p className="mt-1 mb-0 text-[9px] text-slate-500">Based on recorded financial data</p></div><div className="space-y-4 p-5"><div><p className="m-0 text-[9px] font-semibold text-slate-500">Tracked investment assets</p><p className="mt-1 mb-0 text-[20px] font-extrabold text-emerald-700">{formatCurrency(currentValue)}</p></div><div><p className="m-0 text-[9px] font-semibold text-slate-500">Outstanding obligations</p><p className="mt-1 mb-0 text-[20px] font-extrabold text-red-600">{formatCurrency(outstanding)}</p></div><div><p className="m-0 text-[9px] font-semibold text-slate-500">Tracked net position (partial)</p><p className="mt-1 mb-0 text-[20px] font-extrabold text-slate-900">{formatCurrency(currentValue - outstanding)}</p></div><p className="m-0 rounded-lg bg-amber-50 p-3 text-[9px] leading-relaxed text-amber-900">Partial estimate only: cash and bank balances, and assets not recorded here, are not included.</p></div></DashboardCard>
+    <DashboardCard><div className="border-b border-blue-200 bg-gradient-to-r from-blue-100 via-sky-50 to-white px-5 py-3"><h2 className="m-0 text-[16px] font-extrabold text-blue-900">Net Worth Snapshot</h2><p className="mt-1 mb-0 text-[9px] text-slate-500">Based on recorded financial data</p></div><div className="space-y-4 p-5"><div><p className="m-0 text-[9px] font-semibold text-slate-500">Tracked investment assets</p><p className="mt-1 mb-0 text-[20px] font-extrabold text-emerald-700">{formatCurrency(currentValue)}</p></div><div><p className="m-0 text-[9px] font-semibold text-slate-500">Outstanding obligations</p><p className="mt-1 mb-0 text-[20px] font-extrabold text-red-600">{formatCurrency(outstanding)}</p></div><div><p className="m-0 text-[9px] font-semibold text-slate-500">Tracked net position (partial)</p><p className="mt-1 mb-0 text-[20px] font-extrabold text-slate-900">{formatCurrency(currentValue - outstanding)}</p></div><p className="m-0 rounded-lg bg-amber-50 p-3 text-[9px] leading-relaxed text-amber-900">Partial estimate only: cash and bank balances, and assets not recorded here, are not included.</p></div></DashboardCard>
   </div>;
 }
 
@@ -1262,6 +1262,21 @@ export default function FinancialDashboardView({
       </section>
 
       {/* =================================================
+          STUDENT ACTIVITY
+          FULL WIDTH — MOVED BELOW PERFORMANCE
+      ================================================= */}
+
+      <section className="mt-3 w-full">
+        {dashboard ? (
+          <StudentActivity
+            dashboard={
+              dashboard
+            }
+          />
+        ) : null}
+      </section>
+
+      {/* =================================================
           BUSINESS PERFORMANCE
           FULL WIDTH — UNCHANGED
       ================================================= */}
@@ -1281,21 +1296,6 @@ export default function FinancialDashboardView({
             </div>
           </DashboardCard>
         )}
-      </section>
-
-      {/* =================================================
-          STUDENT ACTIVITY
-          FULL WIDTH — MOVED BELOW PERFORMANCE
-      ================================================= */}
-
-      <section className="mt-3 w-full">
-        {dashboard ? (
-          <StudentActivity
-            dashboard={
-              dashboard
-            }
-          />
-        ) : null}
       </section>
 
       {/* =================================================
