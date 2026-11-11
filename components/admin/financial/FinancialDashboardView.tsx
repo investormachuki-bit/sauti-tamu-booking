@@ -867,7 +867,7 @@ function InvestmentPortfolio({ investments, payments, outstanding, onRefresh }: 
       const results = await Promise.all(investments.map(async investment => {
         const { data, error: listError } = await supabase.storage.from("investment-documents").list(investment.id, { limit: 100, sortBy: { column: "created_at", order: "desc" } });
         if (listError) return { id: investment.id, files: [] as { name: string; path: string; created_at?: string }[] };
-        return { id: investment.id, files: (data ?? []).filter(file => file.name && file.id).map(file => ({ name: file.name, path: `${investment.id}/${file.name}`, created_at: file.created_at })) };
+        return { id: investment.id, files: (data ?? []).filter(file => file.name && file.id).map(file => ({ name: file.name, path: `${investment.id}/${file.name}`, created_at: file.created_at ?? undefined })) };
       }));
       if (!cancelled) setDocuments(Object.fromEntries(results.map(result => [result.id, result.files])));
     }
