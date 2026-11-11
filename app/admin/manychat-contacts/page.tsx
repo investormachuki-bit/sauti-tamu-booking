@@ -99,6 +99,7 @@ export default function ManyChatContactsPage() {
     const columns: Array<{ label: string; value: (contact: Contact) => string }> = [
       { label: "Name", value: c => c.full_name || [c.first_name, c.last_name].filter(Boolean).join(" ") || "Unnamed contact" },
       { label: "WhatsApp Number", value: c => c.phone_e164 || "" },
+      { label: "Date Joined", value: c => c.first_seen_at ? formatDate(c.first_seen_at) : "" },
     ];
     const xmlEscape = (value: string) => value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&apos;");
     const rowXml = (values: string[]) => `<Row>${values.map(value => `<Cell><Data ss:Type="String">${xmlEscape(value)}</Data></Cell>`).join("")}</Row>`;
