@@ -60,6 +60,15 @@ export type FinancialExpenseBreakdown = {
   percentage: number;
 };
 
+export type FinancialExpensePayment = {
+  id: string;
+  expense_id: string;
+  payment_date: string;
+  amount: number;
+  payment_method: string;
+  reference: string | null;
+};
+
 export type FinancialExpenseRecord = {
   id: string;
   expense_date: string;
@@ -174,6 +183,8 @@ export type FinancialDashboardData = {
   expenses: FinancialExpenseBreakdown[];
 
   expenseRecords: FinancialExpenseRecord[];
+
+  expensePayments: FinancialExpensePayment[];
 
   activity:
     | FinancialStudentActivity
@@ -474,6 +485,22 @@ export async function loadFinancialExpenseRecords(
     reference: row.reference ?? null,
     vendor: row.vendor ?? null,
     notes: row.notes ?? null,
+  }));
+}
+
+export async function loadFinancialExpensePayments(): Promise<FinancialExpensePayment[]> {
+  const { data, error } = await supabase
+    .from("financial_expense_payments")
+    .select("id, expense_id, payment_date, amount, payment_method, reference")
+    .order("payment_date", { ascending: false });
+  throwIfError(error);
+  return (data ?? []).map((row) => ({
+    id: row.id,
+    expense_id: row.expense_id,
+    payment_date: row.payment_date,
+    amount: toNumber(row.amount),
+    payment_method: row.payment_method,
+    reference: row.reference ?? null,
   }));
 }
 
@@ -984,6 +1011,7 @@ export async function loadFinancialDashboard(
     settings,
     summary,
     expenseRecords,
+    expensePayments,
     activity,
     performance,
     obligations,
@@ -999,6 +1027,8 @@ export async function loadFinancialDashboard(
     loadFinancialExpenseRecords(
       monthStart
     ),
+
+    loadFinancialExpensePayments(),
 
     loadFinancialStudentActivity(
       monthStart
@@ -1212,6 +1242,8 @@ export async function loadFinancialDashboard(
     expenses,
 
     expenseRecords,
+
+    expensePayments,
 
     activity,
 
