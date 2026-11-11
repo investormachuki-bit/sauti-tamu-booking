@@ -652,84 +652,63 @@ function StudentActivity({
 }: {
   dashboard: FinancialDashboardData;
 }) {
-  const activity =
-    dashboard.activity;
+  const activity = dashboard.activity;
+  const advertisingSpend = (dashboard.expenses || []).reduce((total, expense) => {
+    const category = String(expense.category || "").toLowerCase();
+    const isAdvertising = [
+      "facebook", "google ads", "google advertising", "instagram ads",
+      "tiktok ads", "advertising", "advertisement", "ad spend", "ads",
+    ].some((term) => category.includes(term));
+    return total + (isAdvertising ? Number(expense.amount || 0) : 0);
+  }, 0);
 
   const items = [
-    {
-      label: "Attended",
-      value: activity?.attended ?? 0,
-      icon: <Users size={13} />,
-      color: "text-blue-700",
-    },
-    {
-      label: "Booked",
-      value: activity?.booked ?? 0,
-      icon: <CalendarDays size={13} />,
-      color: "text-blue-700",
-    },
-    {
-      label: "Registered",
-      value: activity?.registered ?? 0,
-      icon: <Users size={13} />,
-      color: "text-emerald-700",
-    },
-    {
-      label: "Cancelled",
-      value: activity?.cancelled ?? 0,
-      icon: <ArrowDownRight size={13} />,
-      color: "text-red-600",
-    },
-    {
-      label: "Missed",
-      value: activity?.missed ?? 0,
-      icon: <ArrowDownRight size={13} />,
-      color: "text-purple-700",
-    },
+    { label: "Students Booked", target: 36, actual: activity?.booked ?? dashboard.summary?.bookings_count ?? 0, format: "number" as const },
+    { label: "Trial Attendance", target: 60, actual: activity?.attended ?? 0, format: "number" as const },
+    { label: "Enrollments", target: 36, actual: dashboard.performance?.registered_students ?? activity?.registered ?? 0, format: "number" as const },
+    { label: "Ad Spend (KSh)", target: 30000, actual: advertisingSpend, format: "currency" as const },
   ];
 
   return (
     <DashboardCard>
-      <div className="border-b border-sky-200 bg-gradient-to-r from-sky-100 via-blue-50 to-white px-5 py-3">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-sky-200 bg-gradient-to-r from-sky-100 via-blue-50 to-white px-5 py-3">
         <div className="flex items-center gap-3">
-          <Users
-            size={25}
-            className="text-blue-700"
-          />
-
-          <div>
-            <h2 className="m-0 text-[16px] font-extrabold leading-none text-blue-900">
-              Student Activity (This Month)
-            </h2>
-
-            <p className="mt-1 mb-0 text-[9px] text-slate-500">
-              Booking and student movement
-            </p>
-          </div>
+          <BarChart3 size={25} className="text-blue-700" />
+          <h2 className="m-0 text-[16px] font-extrabold leading-none text-blue-900">
+            STUDENT ACTIVITY &amp; MONTHLY TARGETS
+          </h2>
+        </div>
+        <div className="flex items-center gap-4 text-[9px] font-bold">
+          <span className="inline-flex items-center gap-1.5 text-blue-900"><span className="h-3 w-3 rounded-sm bg-blue-600" />Target</span>
+          <span className="inline-flex items-center gap-1.5 text-emerald-900"><span className="h-3 w-3 rounded-sm bg-emerald-700" />Actual</span>
+          <span className="text-slate-600">% Achievement</span>
         </div>
       </div>
 
-      <div className="grid grid-cols-2 divide-x divide-y divide-sky-100 sm:grid-cols-5 sm:divide-y-0">
-        {items.map((item) => (
-          <div key={item.label} className="min-w-0 px-3 py-4 text-center">
-            <div className={`flex items-center justify-center gap-1 text-[8px] font-bold ${item.color}`}>
-              {item.icon}<span className="truncate">{item.label}</span>
+      <div className="grid grid-cols-2 divide-x divide-sky-100 md:grid-cols-4">
+        {items.map((item) => {
+          const maxValue = Math.max(item.target, item.actual, 1);
+          const achievement = item.target > 0 ? (item.actual / item.target) * 100 : 0;
+          const display = (value: number) => item.format === "currency"
+            ? formatInteger(value)
+            : formatInteger(value);
+          return (
+            <div key={item.label} className="min-w-0 px-3 pb-3 pt-4 text-center">
+              <div className="flex h-[118px] items-end justify-center gap-3 border-b border-slate-200 px-2">
+                <div className="flex h-full w-1/3 flex-col items-center justify-end">
+                  <span className="mb-1 text-[10px] font-extrabold text-blue-800">{display(item.target)}</span>
+                  <div className="w-full max-w-[48px] rounded-t-sm bg-blue-600" style={{ height: `${Math.max((item.target / maxValue) * 78, 2)}px` }} />
+                </div>
+                <div className="flex h-full w-1/3 flex-col items-center justify-end">
+                  <span className="mb-1 text-[10px] font-extrabold text-emerald-800">{display(item.actual)}</span>
+                  <div className="w-full max-w-[48px] rounded-t-sm bg-emerald-700" style={{ height: `${Math.max((item.actual / maxValue) * 78, item.actual > 0 ? 2 : 0)}px` }} />
+                </div>
+              </div>
+              <p className="mt-2 mb-1 text-[9px] font-bold text-blue-950">{item.label}</p>
+              <p className="m-0 text-[10px] font-extrabold text-slate-700">{achievement.toFixed(0)}%</p>
             </div>
-            <p className="mt-3 mb-0 text-[22px] font-extrabold leading-none text-slate-900">{formatInteger(item.value)}</p>
-            <div className="mx-auto mt-3 h-1.5 max-w-[110px] overflow-hidden rounded-full bg-sky-100">
-              <div className="h-full rounded-full bg-sky-500" style={{ width: `${Math.min((item.value / Math.max(...items.map((entry) => entry.value), 1)) * 100, 100)}%` }} />
-            </div>
-          </div>
-        ))}
-      </div>
-      <div className="border-t border-sky-100 bg-sky-50/70 px-4 py-3">
-        <div className="flex flex-wrap items-center justify-between gap-2 text-[9px]">
-          <span className="font-semibold text-sky-900">Monthly booking target</span>
-          <span className="font-extrabold text-blue-800">{formatInteger(activity?.booked ?? 0)} / {formatInteger(dashboard.settings.monthly_booking_target)} bookings</span>
-        </div>
-        <div className="mt-2 h-2 overflow-hidden rounded-full bg-white">
-          <div className="h-full rounded-full bg-gradient-to-r from-blue-500 to-sky-400" style={{ width: `${Math.min(((activity?.booked ?? 0) / Math.max(dashboard.settings.monthly_booking_target, 1)) * 100, 100)}%` }} />
-        </div>
+          );
+        })}
       </div>
     </DashboardCard>
   );
