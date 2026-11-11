@@ -23,6 +23,7 @@ import type {
   FinancialExpenseBreakdown,
   FinancialExpenseRecord,
   FinancialInvestment,
+  FinancialInvestmentPayment,
   FinancialObligationPayment,
 } from "@/lib/financial-service";
 
@@ -1332,7 +1333,7 @@ export default function FinancialDashboardView({
       
 
 <section className="mt-3 w-full">
-        {dashboard ? <InvestmentPortfolio investments={dashboard.investments || []} outstanding={(dashboard.obligations || []).reduce((sum, item) => sum + Number(item.outstanding_balance || 0), 0)} /> : null}
+        {dashboard ? <InvestmentPortfolio investments={dashboard.investments || []} payments={dashboard.investmentPayments || []} outstanding={(dashboard.obligations || []).reduce((sum, item) => sum + Number(item.outstanding_balance || 0), 0)} onRefresh={onRefresh} /> : null}
       </section>
 
       <section className="mt-3 w-full">
