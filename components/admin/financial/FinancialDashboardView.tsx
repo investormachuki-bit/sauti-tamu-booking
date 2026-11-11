@@ -764,6 +764,12 @@ function FinancialObligations({
                     obligation.outstanding_balance
                   )}
                 </p>
+                <div className="mt-3 h-2 overflow-hidden rounded-full bg-blue-100">
+                  <div className="h-full rounded-full bg-gradient-to-r from-blue-500 to-sky-400" style={{ width: `${Math.min(Math.max(((obligation.amount - obligation.outstanding_balance) / Math.max(obligation.amount, 1)) * 100, 0), 100)}%` }} />
+                </div>
+                <p className="mt-1 mb-0 text-[7px] font-semibold text-slate-500">
+                  {formatPercentage(Math.min(Math.max(((obligation.amount - obligation.outstanding_balance) / Math.max(obligation.amount, 1)) * 100, 0), 100))} paid
+                </p>
               </div>
             )
           )}
