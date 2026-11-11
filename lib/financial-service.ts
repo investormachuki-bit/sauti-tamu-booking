@@ -1008,7 +1008,6 @@ export async function loadFinancialInvestments(): Promise<FinancialInvestment[]>
   const { data, error } = await supabase
     .from("financial_investments")
     .select("*")
-    .eq("status", "active")
     .order("next_due_date", { ascending: true, nullsFirst: false });
 
   throwIfError(error);
