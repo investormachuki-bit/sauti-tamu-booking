@@ -20,6 +20,7 @@ import {
 import type {
   FinancialDashboardData,
   FinancialExpenseBreakdown,
+  FinancialExpenseRecord,
   FinancialInvestment,
   FinancialObligationPayment,
 } from "@/lib/financial-service";
@@ -295,8 +296,10 @@ function TargetCard({
 
 function ExpenseBreakdown({
   expenses,
+  records,
 }: {
   expenses: FinancialExpenseBreakdown[];
+  records: FinancialExpenseRecord[];
 }) {
   const total = getExpenseTotal(expenses);
 
@@ -433,8 +436,70 @@ function ExpenseBreakdown({
           )}
         </div>
       </div>
+
+      <div className="border-t border-violet-100">
+        <div className="flex flex-wrap items-center justify-between gap-2 bg-violet-50/60 px-5 py-3">
+          <div>
+            <h3 className="m-0 text-[11px] font-extrabold text-violet-950">Expense Transactions</h3>
+            <p className="mt-1 mb-0 text-[8px] text-slate-500">Actual records saved in Expense Management for the selected month</p>
+          </div>
+          <span className="rounded-full bg-white px-3 py-1 text-[8px] font-bold text-violet-800">{formatInteger(records.length)} records</span>
+        </div>
+        {records.length === 0 ? (
+          <div className="p-5 text-center text-[9px] text-slate-500">No individual expense transactions recorded for this month.</div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[760px] text-left text-[9px]">
+              <thead className="bg-slate-50 text-slate-600">
+                <tr>
+                  <th className="px-4 py-3">Date</th>
+                  <th className="px-4 py-3">Expense / Category</th>
+                  <th className="px-4 py-3">Vendor / Payee</th>
+                  <th className="px-4 py-3">Method</th>
+                  <th className="px-4 py-3">Reference</th>
+                  <th className="px-4 py-3 text-right">Amount</th>
+                </tr>
+              </thead>
+              <tbody>
+                {records.map((record) => (
+                  <tr key={record.id} className="border-t border-slate-100 align-top hover:bg-violet-50/40">
+                    <td className="whitespace-nowrap px-4 py-3 text-slate-600">{formatExpenseDate(record.expense_date)}</td>
+                    <td className="px-4 py-3">
+                      <p className="m-0 font-bold text-slate-900">{record.description}</p>
+                      <p className="mt-1 mb-0 text-[8px] text-slate-500">{record.category}</p>
+                      {record.notes ? <p className="mt-1 mb-0 max-w-[260px] text-[8px] text-slate-500">{record.notes}</p> : null}
+                    </td>
+                    <td className="px-4 py-3 text-slate-700">{record.vendor || "—"}</td>
+                    <td className="px-4 py-3 capitalize text-slate-700">{record.payment_method === "mpesa" ? "M-Pesa" : record.payment_method || "—"}</td>
+                    <td className="px-4 py-3 text-slate-600">{record.reference || "—"}</td>
+                    <td className="whitespace-nowrap px-4 py-3 text-right font-extrabold text-slate-900">{formatCurrency(record.amount)}</td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot className="border-t-2 border-violet-100 bg-violet-50/50">
+                <tr>
+                  <td colSpan={5} className="px-4 py-3 text-right font-extrabold text-violet-950">Monthly expense total</td>
+                  <td className="whitespace-nowrap px-4 py-3 text-right font-extrabold text-red-700">{formatCurrency(records.reduce((sum, record) => sum + record.amount, 0))}</td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        )}
+      </div>
     </DashboardCard>
   );
+}
+
+function formatExpenseDate(value: string) {
+  if (!value) return "—";
+  const date = new Date(`${value}T00:00:00+03:00`);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat("en-KE", {
+    timeZone: NAIROBI_TIME_ZONE,
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  }).format(date);
 }
 
 /* =====================================================
@@ -1237,10 +1302,8 @@ export default function FinancialDashboardView({
 
       <section className="mt-3 w-full">
         <ExpenseBreakdown
-          expenses={
-            dashboard?.expenses ||
-            []
-          }
+          expenses={dashboard?.expenses || []}
+          records={dashboard?.expenseRecords || []}
         />
       </section>
 
