@@ -60,6 +60,18 @@ export type FinancialExpenseBreakdown = {
   percentage: number;
 };
 
+export type FinancialExpenseRecord = {
+  id: string;
+  expense_date: string;
+  category: string;
+  description: string;
+  amount: number;
+  payment_method: string;
+  reference: string | null;
+  vendor: string | null;
+  notes: string | null;
+};
+
 export type FinancialStudentActivity = {
   month_start: string;
 
@@ -160,6 +172,8 @@ export type FinancialDashboardData = {
     | null;
 
   expenses: FinancialExpenseBreakdown[];
+
+  expenseRecords: FinancialExpenseRecord[];
 
   activity:
     | FinancialStudentActivity
@@ -429,6 +443,37 @@ export async function loadFinancialExpenseBreakdown(
       toNumber(
         row.percentage
       ),
+  }));
+}
+
+export async function loadFinancialExpenseRecords(
+  monthStart: string
+): Promise<FinancialExpenseRecord[]> {
+  const [year, month] = monthStart.split("-").map(Number);
+  const nextMonth = new Date(Date.UTC(year, month, 1))
+    .toISOString()
+    .slice(0, 10);
+
+  const { data, error } = await supabase
+    .from("expenses")
+    .select("id, expense_date, category, description, amount, payment_method, reference, vendor, notes")
+    .gte("expense_date", monthStart)
+    .lt("expense_date", nextMonth)
+    .order("expense_date", { ascending: false })
+    .order("created_at", { ascending: false });
+
+  throwIfError(error);
+
+  return (data ?? []).map((row) => ({
+    id: row.id,
+    expense_date: row.expense_date,
+    category: row.category,
+    description: row.description,
+    amount: toNumber(row.amount),
+    payment_method: row.payment_method,
+    reference: row.reference ?? null,
+    vendor: row.vendor ?? null,
+    notes: row.notes ?? null,
   }));
 }
 
@@ -938,7 +983,7 @@ export async function loadFinancialDashboard(
   const [
     settings,
     summary,
-    expenses,
+    expenseRecords,
     activity,
     performance,
     obligations,
@@ -951,7 +996,7 @@ export async function loadFinancialDashboard(
       monthStart
     ),
 
-    loadFinancialExpenseBreakdown(
+    loadFinancialExpenseRecords(
       monthStart
     ),
 
@@ -969,6 +1014,31 @@ export async function loadFinancialDashboard(
 
     loadRecentObligationPayments(),
   ]);
+
+  const expenseTotalsByCategory = new Map<string, number>();
+  for (const expense of expenseRecords) {
+    const category = expense.category || "Uncategorised";
+    expenseTotalsByCategory.set(
+      category,
+      (expenseTotalsByCategory.get(category) ?? 0) + expense.amount
+    );
+  }
+  const monthlyExpenseTotal = expenseRecords.reduce(
+    (total, expense) => total + expense.amount,
+    0
+  );
+  const expenses: FinancialExpenseBreakdown[] = Array.from(
+    expenseTotalsByCategory.entries()
+  )
+    .map(([category, amount]) => ({
+      month_start: monthStart,
+      category,
+      amount,
+      percentage: monthlyExpenseTotal > 0
+        ? (amount / monthlyExpenseTotal) * 100
+        : 0,
+    }))
+    .sort((a, b) => b.amount - a.amount);
 
   /* ===================================================
      SAFE BUSINESS DEFAULTS
@@ -1140,6 +1210,8 @@ export async function loadFinancialDashboard(
       effectiveSummary,
 
     expenses,
+
+    expenseRecords,
 
     activity,
 

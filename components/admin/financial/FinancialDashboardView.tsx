@@ -20,6 +20,7 @@ import {
 import type {
   FinancialDashboardData,
   FinancialExpenseBreakdown,
+  FinancialExpenseRecord,
   FinancialInvestment,
   FinancialObligationPayment,
 } from "@/lib/financial-service";
@@ -295,8 +296,10 @@ function TargetCard({
 
 function ExpenseBreakdown({
   expenses,
+  records,
 }: {
   expenses: FinancialExpenseBreakdown[];
+  records: FinancialExpenseRecord[];
 }) {
   const total = getExpenseTotal(expenses);
 
@@ -321,7 +324,7 @@ function ExpenseBreakdown({
 
   return (
     <DashboardCard className="h-full">
-      <div className="border-b border-blue-100 px-5 py-3">
+      <div className="border-b border-violet-200 bg-gradient-to-r from-violet-100 via-purple-50 to-white px-5 py-3">
         <div className="flex items-center gap-3">
           <BarChart3
             size={24}
@@ -330,20 +333,20 @@ function ExpenseBreakdown({
 
           <div>
             <h2 className="m-0 text-[16px] font-extrabold leading-none text-blue-900">
-              Expense Breakdown
+              Operating Expenses
             </h2>
 
             <p className="mt-1 mb-0 text-[9px] text-slate-500">
-              Where the money is being spent
+              Monthly operating costs by category
             </p>
           </div>
         </div>
       </div>
 
-      <div className="grid min-h-[285px] grid-cols-[220px_minmax(0,1fr)] gap-5 p-4">
+      <div className="grid min-h-[250px] grid-cols-1 gap-4 p-4 sm:grid-cols-[190px_minmax(0,1fr)]">
         <div className="flex items-center justify-center">
           <div
-            className="relative flex h-[205px] w-[205px] items-center justify-center rounded-full"
+            className="relative flex h-[175px] w-[175px] items-center justify-center rounded-full"
             style={{
               background:
                 getExpenseGradient(
@@ -351,7 +354,7 @@ function ExpenseBreakdown({
                 ),
             }}
           >
-            <div className="flex h-[112px] w-[112px] flex-col items-center justify-center rounded-full bg-white shadow-sm">
+            <div className="flex h-[104px] w-[104px] flex-col items-center justify-center rounded-full bg-white shadow-sm">
               <span className="text-[8px] font-bold uppercase tracking-[0.12em] text-slate-500">
                 Total Expenses
               </span>
@@ -433,8 +436,70 @@ function ExpenseBreakdown({
           )}
         </div>
       </div>
+
+      <div className="border-t border-violet-100">
+        <div className="flex flex-wrap items-center justify-between gap-2 bg-violet-50/60 px-5 py-3">
+          <div>
+            <h3 className="m-0 text-[11px] font-extrabold text-violet-950">Expense Transactions</h3>
+            <p className="mt-1 mb-0 text-[8px] text-slate-500">Actual records saved in Expense Management for the selected month</p>
+          </div>
+          <span className="rounded-full bg-white px-3 py-1 text-[8px] font-bold text-violet-800">{formatInteger(records.length)} records</span>
+        </div>
+        {records.length === 0 ? (
+          <div className="p-5 text-center text-[9px] text-slate-500">No individual expense transactions recorded for this month.</div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[760px] text-left text-[9px]">
+              <thead className="bg-slate-50 text-slate-600">
+                <tr>
+                  <th className="px-4 py-3">Date</th>
+                  <th className="px-4 py-3">Expense / Category</th>
+                  <th className="px-4 py-3">Vendor / Payee</th>
+                  <th className="px-4 py-3">Method</th>
+                  <th className="px-4 py-3">Reference</th>
+                  <th className="px-4 py-3 text-right">Amount</th>
+                </tr>
+              </thead>
+              <tbody>
+                {records.map((record) => (
+                  <tr key={record.id} className="border-t border-slate-100 align-top hover:bg-violet-50/40">
+                    <td className="whitespace-nowrap px-4 py-3 text-slate-600">{formatExpenseDate(record.expense_date)}</td>
+                    <td className="px-4 py-3">
+                      <p className="m-0 font-bold text-slate-900">{record.description}</p>
+                      <p className="mt-1 mb-0 text-[8px] text-slate-500">{record.category}</p>
+                      {record.notes ? <p className="mt-1 mb-0 max-w-[260px] text-[8px] text-slate-500">{record.notes}</p> : null}
+                    </td>
+                    <td className="px-4 py-3 text-slate-700">{record.vendor || "—"}</td>
+                    <td className="px-4 py-3 capitalize text-slate-700">{record.payment_method === "mpesa" ? "M-Pesa" : record.payment_method || "—"}</td>
+                    <td className="px-4 py-3 text-slate-600">{record.reference || "—"}</td>
+                    <td className="whitespace-nowrap px-4 py-3 text-right font-extrabold text-slate-900">{formatCurrency(record.amount)}</td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot className="border-t-2 border-violet-100 bg-violet-50/50">
+                <tr>
+                  <td colSpan={5} className="px-4 py-3 text-right font-extrabold text-violet-950">Monthly expense total</td>
+                  <td className="whitespace-nowrap px-4 py-3 text-right font-extrabold text-red-700">{formatCurrency(records.reduce((sum, record) => sum + record.amount, 0))}</td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        )}
+      </div>
     </DashboardCard>
   );
+}
+
+function formatExpenseDate(value: string) {
+  if (!value) return "—";
+  const date = new Date(`${value}T00:00:00+03:00`);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat("en-KE", {
+    timeZone: NAIROBI_TIME_ZONE,
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  }).format(date);
 }
 
 /* =====================================================
@@ -530,7 +595,7 @@ function PerformanceMetrics({
 
   return (
     <DashboardCard>
-      <div className="border-b border-yellow-200 bg-yellow-50/40 px-5 py-3">
+      <div className="border-b border-orange-200 bg-gradient-to-r from-orange-50 via-amber-50 to-white px-5 py-3">
         <div className="flex items-center gap-3">
           <BarChart3
             size={25}
@@ -624,7 +689,7 @@ function StudentActivity({
 
   return (
     <DashboardCard>
-      <div className="border-b border-blue-100 px-5 py-3">
+      <div className="border-b border-sky-200 bg-gradient-to-r from-sky-100 via-blue-50 to-white px-5 py-3">
         <div className="flex items-center gap-3">
           <Users
             size={25}
@@ -643,29 +708,27 @@ function StudentActivity({
         </div>
       </div>
 
-      <div className="grid grid-cols-5 divide-x divide-blue-100">
+      <div className="grid grid-cols-2 divide-x divide-y divide-sky-100 sm:grid-cols-5 sm:divide-y-0">
         {items.map((item) => (
-          <div
-            key={item.label}
-            className="min-w-0 px-4 py-4 text-center"
-          >
-            <div
-              className={`flex items-center justify-center gap-1 text-[8px] font-bold ${item.color}`}
-            >
-              {item.icon}
-
-              <span className="truncate">
-                {item.label}
-              </span>
+          <div key={item.label} className="min-w-0 px-3 py-4 text-center">
+            <div className={`flex items-center justify-center gap-1 text-[8px] font-bold ${item.color}`}>
+              {item.icon}<span className="truncate">{item.label}</span>
             </div>
-
-            <p className="mt-3 mb-0 text-[22px] font-extrabold leading-none text-slate-900">
-              {formatInteger(
-                item.value
-              )}
-            </p>
+            <p className="mt-3 mb-0 text-[22px] font-extrabold leading-none text-slate-900">{formatInteger(item.value)}</p>
+            <div className="mx-auto mt-3 h-1.5 max-w-[110px] overflow-hidden rounded-full bg-sky-100">
+              <div className="h-full rounded-full bg-sky-500" style={{ width: `${Math.min((item.value / Math.max(...items.map((entry) => entry.value), 1)) * 100, 100)}%` }} />
+            </div>
           </div>
         ))}
+      </div>
+      <div className="border-t border-sky-100 bg-sky-50/70 px-4 py-3">
+        <div className="flex flex-wrap items-center justify-between gap-2 text-[9px]">
+          <span className="font-semibold text-sky-900">Monthly booking target</span>
+          <span className="font-extrabold text-blue-800">{formatInteger(activity?.booked ?? 0)} / {formatInteger(dashboard.settings.monthly_booking_target)} bookings</span>
+        </div>
+        <div className="mt-2 h-2 overflow-hidden rounded-full bg-white">
+          <div className="h-full rounded-full bg-gradient-to-r from-blue-500 to-sky-400" style={{ width: `${Math.min(((activity?.booked ?? 0) / Math.max(dashboard.settings.monthly_booking_target, 1)) * 100, 100)}%` }} />
+        </div>
       </div>
     </DashboardCard>
   );
@@ -696,7 +759,7 @@ function FinancialObligations({
 
   return (
     <DashboardCard>
-      <div className="border-b border-blue-100 px-5 py-3">
+      <div className="border-b border-blue-200 bg-gradient-to-r from-blue-100 via-sky-50 to-white px-5 py-3">
         <div className="flex items-center justify-between gap-4">
           <div className="flex min-w-0 items-center gap-3">
             <WalletCards
@@ -766,6 +829,12 @@ function FinancialObligations({
                     obligation.outstanding_balance
                   )}
                 </p>
+                <div className="mt-3 h-2 overflow-hidden rounded-full bg-blue-100">
+                  <div className="h-full rounded-full bg-gradient-to-r from-blue-500 to-sky-400" style={{ width: `${Math.min(Math.max(((obligation.amount - obligation.outstanding_balance) / Math.max(obligation.amount, 1)) * 100, 0), 100)}%` }} />
+                </div>
+                <p className="mt-1 mb-0 text-[7px] font-semibold text-slate-500">
+                  {formatPercentage(Math.min(Math.max(((obligation.amount - obligation.outstanding_balance) / Math.max(obligation.amount, 1)) * 100, 0), 100))} paid
+                </p>
               </div>
             )
           )}
@@ -777,7 +846,7 @@ function FinancialObligations({
 
 function RecentObligationPayments({ payments }: { payments: FinancialObligationPayment[] }) {
   return <DashboardCard>
-    <div className="border-b border-blue-100 px-5 py-3"><h2 className="m-0 text-[16px] font-extrabold text-blue-900">Recent Obligation Payments</h2><p className="mt-1 mb-0 text-[9px] text-slate-500">Recorded payments with date, method and reference</p></div>
+    <div className="border-b border-blue-200 bg-gradient-to-r from-blue-100 via-sky-50 to-white px-5 py-3"><h2 className="m-0 text-[16px] font-extrabold text-blue-900">Recent Obligation Payments</h2><p className="mt-1 mb-0 text-[9px] text-slate-500">Recorded payments with date, method and reference</p></div>
     {payments.length === 0 ? <div className="p-5 text-center text-[10px] text-slate-500">No obligation payments have been recorded yet.</div> : <div className="overflow-x-auto"><table className="w-full min-w-[620px] text-left text-[9px]"><thead className="bg-slate-50 text-slate-600"><tr><th className="px-4 py-3">Date</th><th className="px-4 py-3">Obligation</th><th className="px-4 py-3">Method</th><th className="px-4 py-3">Reference</th><th className="px-4 py-3 text-right">Amount Paid</th></tr></thead><tbody>{payments.map((payment) => <tr key={payment.id} className="border-t border-slate-100"><td className="px-4 py-3">{payment.payment_date}</td><td className="px-4 py-3 font-semibold">{payment.obligation_name}</td><td className="px-4 py-3 capitalize">{payment.payment_method}</td><td className="px-4 py-3">{payment.reference || "—"}</td><td className="px-4 py-3 text-right font-bold">{formatCurrency(payment.amount)}</td></tr>)}</tbody></table></div>}
   </DashboardCard>;
 }
@@ -786,9 +855,9 @@ function InvestmentPortfolio({ investments, outstanding }: { investments: Financ
   const contributed = investments.reduce((sum, item) => sum + item.contribution_amount, 0);
   const currentValue = investments.reduce((sum, item) => sum + item.current_value, 0);
   const expectedAnnualReturn = investments.reduce((sum, item) => sum + (item.expected_annual_return === null ? 0 : item.current_value * item.expected_annual_return / 100), 0);
-  return <div className="grid grid-cols-1 gap-3 xl:grid-cols-[minmax(0,2fr)_minmax(260px,1fr)]">
+  return <div className="grid grid-cols-1 gap-3">
     <DashboardCard>
-      <div className="border-b border-blue-100 px-5 py-3"><h2 className="m-0 text-[16px] font-extrabold text-blue-900">Investment Portfolio</h2><p className="mt-1 mb-0 text-[9px] text-slate-500">Institutions, contribution progress, expected returns and due dates</p></div>
+      <div className="border-b border-teal-200 bg-gradient-to-r from-teal-100 via-cyan-50 to-white px-5 py-3"><h2 className="m-0 text-[16px] font-extrabold text-teal-900">Investment Portfolio</h2><p className="mt-1 mb-0 text-[9px] text-slate-500">Institutions, contribution progress, expected returns and due dates</p></div>
       <div className="grid grid-cols-3 divide-x divide-blue-100 border-b border-blue-100">
         <div className="px-4 py-3"><p className="m-0 text-[8px] font-bold text-slate-500">Contributed</p><p className="mt-1 mb-0 text-[15px] font-extrabold">{formatCurrency(contributed)}</p></div>
         <div className="px-4 py-3"><p className="m-0 text-[8px] font-bold text-slate-500">Current Value</p><p className="mt-1 mb-0 text-[15px] font-extrabold text-emerald-700">{formatCurrency(currentValue)}</p></div>
@@ -796,7 +865,7 @@ function InvestmentPortfolio({ investments, outstanding }: { investments: Financ
       </div>
       {investments.length === 0 ? <p className="p-5 text-center text-[10px] text-slate-500">No active investments recorded yet.</p> : <div className="overflow-x-auto"><table className="w-full min-w-[650px] text-left text-[9px]"><thead className="bg-slate-50 text-slate-600"><tr><th className="px-4 py-3">Institution / Investment</th><th className="px-4 py-3">Frequency</th><th className="px-4 py-3 text-right">Contributed</th><th className="px-4 py-3 text-right">Current value</th><th className="px-4 py-3">Due date</th></tr></thead><tbody>{investments.map((item) => <tr key={item.id} className="border-t border-slate-100"><td className="px-4 py-3"><p className="m-0 font-bold">{item.institution}</p><p className="mt-1 mb-0 text-slate-500">{item.investment_type}</p></td><td className="px-4 py-3">{item.contribution_frequency}</td><td className="px-4 py-3 text-right">{formatCurrency(item.contribution_amount)}</td><td className="px-4 py-3 text-right">{formatCurrency(item.current_value)}</td><td className="px-4 py-3">{item.next_due_date || "—"}</td></tr>)}</tbody></table></div>}
     </DashboardCard>
-    <DashboardCard><div className="border-b border-blue-100 px-5 py-3"><h2 className="m-0 text-[16px] font-extrabold text-blue-900">Net Worth Snapshot</h2><p className="mt-1 mb-0 text-[9px] text-slate-500">Based on recorded financial data</p></div><div className="space-y-4 p-5"><div><p className="m-0 text-[9px] font-semibold text-slate-500">Tracked investment assets</p><p className="mt-1 mb-0 text-[20px] font-extrabold text-emerald-700">{formatCurrency(currentValue)}</p></div><div><p className="m-0 text-[9px] font-semibold text-slate-500">Outstanding obligations</p><p className="mt-1 mb-0 text-[20px] font-extrabold text-red-600">{formatCurrency(outstanding)}</p></div><div><p className="m-0 text-[9px] font-semibold text-slate-500">Tracked net position (partial)</p><p className="mt-1 mb-0 text-[20px] font-extrabold text-slate-900">{formatCurrency(currentValue - outstanding)}</p></div><p className="m-0 rounded-lg bg-amber-50 p-3 text-[9px] leading-relaxed text-amber-900">Partial estimate only: cash and bank balances, and assets not recorded here, are not included.</p></div></DashboardCard>
+    <DashboardCard><div className="border-b border-blue-200 bg-gradient-to-r from-blue-100 via-sky-50 to-white px-5 py-3"><h2 className="m-0 text-[16px] font-extrabold text-blue-900">Net Worth Snapshot</h2><p className="mt-1 mb-0 text-[9px] text-slate-500">Based on recorded financial data</p></div><div className="space-y-4 p-5"><div><p className="m-0 text-[9px] font-semibold text-slate-500">Tracked investment assets</p><p className="mt-1 mb-0 text-[20px] font-extrabold text-emerald-700">{formatCurrency(currentValue)}</p></div><div><p className="m-0 text-[9px] font-semibold text-slate-500">Outstanding obligations</p><p className="mt-1 mb-0 text-[20px] font-extrabold text-red-600">{formatCurrency(outstanding)}</p></div><div><p className="m-0 text-[9px] font-semibold text-slate-500">Tracked net position (partial)</p><p className="mt-1 mb-0 text-[20px] font-extrabold text-slate-900">{formatCurrency(currentValue - outstanding)}</p></div><p className="m-0 rounded-lg bg-amber-50 p-3 text-[9px] leading-relaxed text-amber-900">Partial estimate only: cash and bank balances, and assets not recorded here, are not included.</p></div></DashboardCard>
   </div>;
 }
 
@@ -1190,16 +1259,51 @@ export default function FinancialDashboardView({
       </section>
 
       {/* =================================================
+          STUDENT ACTIVITY
+          FULL WIDTH — MOVED BELOW PERFORMANCE
+      ================================================= */}
+
+      <section className="mt-3 w-full">
+        {dashboard ? (
+          <StudentActivity
+            dashboard={
+              dashboard
+            }
+          />
+        ) : null}
+      </section>
+
+      {/* =================================================
+          BUSINESS PERFORMANCE
+          FULL WIDTH — UNCHANGED
+      ================================================= */}
+
+      <section className="mt-3 w-full">
+        {dashboard ? (
+          <PerformanceMetrics
+            dashboard={
+              dashboard
+            }
+          />
+        ) : (
+          <DashboardCard>
+            <div className="p-8 text-center text-[9px] text-slate-500">
+              Financial dashboard
+              data is unavailable.
+            </div>
+          </DashboardCard>
+        )}
+      </section>
+
+      {/* =================================================
           EXPENSE BREAKDOWN
           FULL WIDTH
       ================================================= */}
 
       <section className="mt-3 w-full">
         <ExpenseBreakdown
-          expenses={
-            dashboard?.expenses ||
-            []
-          }
+          expenses={dashboard?.expenses || []}
+          records={dashboard?.expenseRecords || []}
         />
       </section>
 
@@ -1259,43 +1363,6 @@ export default function FinancialDashboardView({
             }
           />
         </DashboardCard>
-      </section>
-
-      {/* =================================================
-          BUSINESS PERFORMANCE
-          FULL WIDTH — UNCHANGED
-      ================================================= */}
-
-      <section className="mt-3 w-full">
-        {dashboard ? (
-          <PerformanceMetrics
-            dashboard={
-              dashboard
-            }
-          />
-        ) : (
-          <DashboardCard>
-            <div className="p-8 text-center text-[9px] text-slate-500">
-              Financial dashboard
-              data is unavailable.
-            </div>
-          </DashboardCard>
-        )}
-      </section>
-
-      {/* =================================================
-          STUDENT ACTIVITY
-          FULL WIDTH — MOVED BELOW PERFORMANCE
-      ================================================= */}
-
-      <section className="mt-3 w-full">
-        {dashboard ? (
-          <StudentActivity
-            dashboard={
-              dashboard
-            }
-          />
-        ) : null}
       </section>
 
       {/* =================================================
