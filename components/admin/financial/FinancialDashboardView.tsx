@@ -340,10 +340,10 @@ function ExpenseBreakdown({
         </div>
       </div>
 
-      <div className="grid min-h-[285px] grid-cols-[220px_minmax(0,1fr)] gap-5 p-4">
+      <div className="grid min-h-[250px] grid-cols-1 gap-4 p-4 sm:grid-cols-[190px_minmax(0,1fr)]">
         <div className="flex items-center justify-center">
           <div
-            className="relative flex h-[205px] w-[205px] items-center justify-center rounded-full"
+            className="relative flex h-[175px] w-[175px] items-center justify-center rounded-full"
             style={{
               background:
                 getExpenseGradient(
@@ -351,7 +351,7 @@ function ExpenseBreakdown({
                 ),
             }}
           >
-            <div className="flex h-[112px] w-[112px] flex-col items-center justify-center rounded-full bg-white shadow-sm">
+            <div className="flex h-[104px] w-[104px] flex-col items-center justify-center rounded-full bg-white shadow-sm">
               <span className="text-[8px] font-bold uppercase tracking-[0.12em] text-slate-500">
                 Total Expenses
               </span>
@@ -777,7 +777,7 @@ function FinancialObligations({
 
 function RecentObligationPayments({ payments }: { payments: FinancialObligationPayment[] }) {
   return <DashboardCard>
-    <div className="border-b border-blue-100 px-5 py-3"><h2 className="m-0 text-[16px] font-extrabold text-blue-900">Recent Obligation Payments</h2><p className="mt-1 mb-0 text-[9px] text-slate-500">Recorded payments with date, method and reference</p></div>
+    <div className="border-b border-blue-200 bg-gradient-to-r from-blue-100 via-sky-50 to-white px-5 py-3"><h2 className="m-0 text-[16px] font-extrabold text-blue-900">Recent Obligation Payments</h2><p className="mt-1 mb-0 text-[9px] text-slate-500">Recorded payments with date, method and reference</p></div>
     {payments.length === 0 ? <div className="p-5 text-center text-[10px] text-slate-500">No obligation payments have been recorded yet.</div> : <div className="overflow-x-auto"><table className="w-full min-w-[620px] text-left text-[9px]"><thead className="bg-slate-50 text-slate-600"><tr><th className="px-4 py-3">Date</th><th className="px-4 py-3">Obligation</th><th className="px-4 py-3">Method</th><th className="px-4 py-3">Reference</th><th className="px-4 py-3 text-right">Amount Paid</th></tr></thead><tbody>{payments.map((payment) => <tr key={payment.id} className="border-t border-slate-100"><td className="px-4 py-3">{payment.payment_date}</td><td className="px-4 py-3 font-semibold">{payment.obligation_name}</td><td className="px-4 py-3 capitalize">{payment.payment_method}</td><td className="px-4 py-3">{payment.reference || "—"}</td><td className="px-4 py-3 text-right font-bold">{formatCurrency(payment.amount)}</td></tr>)}</tbody></table></div>}
   </DashboardCard>;
 }
