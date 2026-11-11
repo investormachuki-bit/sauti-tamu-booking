@@ -321,7 +321,7 @@ function ExpenseBreakdown({
 
   return (
     <DashboardCard className="h-full">
-      <div className="border-b border-blue-100 px-5 py-3">
+      <div className="border-b border-violet-200 bg-gradient-to-r from-violet-100 via-purple-50 to-white px-5 py-3">
         <div className="flex items-center gap-3">
           <BarChart3
             size={24}
@@ -624,7 +624,7 @@ function StudentActivity({
 
   return (
     <DashboardCard>
-      <div className="border-b border-blue-100 px-5 py-3">
+      <div className="border-b border-sky-200 bg-gradient-to-r from-sky-100 via-blue-50 to-white px-5 py-3">
         <div className="flex items-center gap-3">
           <Users
             size={25}
@@ -696,7 +696,7 @@ function FinancialObligations({
 
   return (
     <DashboardCard>
-      <div className="border-b border-blue-100 px-5 py-3">
+      <div className="border-b border-blue-200 bg-gradient-to-r from-blue-100 via-sky-50 to-white px-5 py-3">
         <div className="flex items-center justify-between gap-4">
           <div className="flex min-w-0 items-center gap-3">
             <WalletCards
