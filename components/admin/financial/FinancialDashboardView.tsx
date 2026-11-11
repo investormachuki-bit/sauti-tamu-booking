@@ -643,29 +643,27 @@ function StudentActivity({
         </div>
       </div>
 
-      <div className="grid grid-cols-5 divide-x divide-blue-100">
+      <div className="grid grid-cols-2 divide-x divide-y divide-sky-100 sm:grid-cols-5 sm:divide-y-0">
         {items.map((item) => (
-          <div
-            key={item.label}
-            className="min-w-0 px-4 py-4 text-center"
-          >
-            <div
-              className={`flex items-center justify-center gap-1 text-[8px] font-bold ${item.color}`}
-            >
-              {item.icon}
-
-              <span className="truncate">
-                {item.label}
-              </span>
+          <div key={item.label} className="min-w-0 px-3 py-4 text-center">
+            <div className={`flex items-center justify-center gap-1 text-[8px] font-bold ${item.color}`}>
+              {item.icon}<span className="truncate">{item.label}</span>
             </div>
-
-            <p className="mt-3 mb-0 text-[22px] font-extrabold leading-none text-slate-900">
-              {formatInteger(
-                item.value
-              )}
-            </p>
+            <p className="mt-3 mb-0 text-[22px] font-extrabold leading-none text-slate-900">{formatInteger(item.value)}</p>
+            <div className="mx-auto mt-3 h-1.5 max-w-[110px] overflow-hidden rounded-full bg-sky-100">
+              <div className="h-full rounded-full bg-sky-500" style={{ width: `${Math.min((item.value / Math.max(...items.map((entry) => entry.value), 1)) * 100, 100)}%` }} />
+            </div>
           </div>
         ))}
+      </div>
+      <div className="border-t border-sky-100 bg-sky-50/70 px-4 py-3">
+        <div className="flex flex-wrap items-center justify-between gap-2 text-[9px]">
+          <span className="font-semibold text-sky-900">Monthly booking target</span>
+          <span className="font-extrabold text-blue-800">{formatInteger(activity?.booked ?? 0)} / {formatInteger(dashboard.settings.monthly_booking_target)} bookings</span>
+        </div>
+        <div className="mt-2 h-2 overflow-hidden rounded-full bg-white">
+          <div className="h-full rounded-full bg-gradient-to-r from-blue-500 to-sky-400" style={{ width: `${Math.min(((activity?.booked ?? 0) / Math.max(dashboard.settings.monthly_booking_target, 1)) * 100, 100)}%` }} />
+        </div>
       </div>
     </DashboardCard>
   );
