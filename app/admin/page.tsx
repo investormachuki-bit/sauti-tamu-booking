@@ -609,8 +609,10 @@ export default function AdminDashboard() {
 
       // Remove the completed student immediately from the dashboard.
       setStudents((current) =>
-        current.filter(
-          (item) => item.id !== student.id
+        current.map((item) =>
+          item.id === student.id
+            ? { ...item, status: "inactive" }
+            : item
         )
       );
 
