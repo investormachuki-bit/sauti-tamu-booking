@@ -831,107 +831,78 @@ function RecentObligationPayments({ payments }: { payments: FinancialObligationP
   </DashboardCard>;
 }
 
-function InvestmentPortfolio({ investments, outstanding }: { investments: FinancialInvestment[]; outstanding: number }) {
-  const contributed = investments.reduce((sum, item) => sum + item.contribution_amount, 0);
-  const currentValue = investments.reduce((sum, item) => sum + item.current_value, 0);
-  const expectedAnnualReturn = investments.reduce((sum, item) => sum + (item.expected_annual_return === null ? 0 : item.current_value * item.expected_annual_return / 100), 0);
-  return <div className="grid grid-cols-1 gap-3">
-    <DashboardCard>
-      <div className="border-b border-teal-200 bg-gradient-to-r from-teal-100 via-cyan-50 to-white px-5 py-3"><h2 className="m-0 text-[16px] font-extrabold text-teal-900">Investment Portfolio</h2><p className="mt-1 mb-0 text-[9px] text-slate-500">Institutions, contribution progress, expected returns and due dates</p></div>
-      <div className="grid grid-cols-3 divide-x divide-blue-100 border-b border-blue-100">
-        <div className="px-4 py-3"><p className="m-0 text-[8px] font-bold text-slate-500">Contributed</p><p className="mt-1 mb-0 text-[15px] font-extrabold">{formatCurrency(contributed)}</p></div>
-        <div className="px-4 py-3"><p className="m-0 text-[8px] font-bold text-slate-500">Current Value</p><p className="mt-1 mb-0 text-[15px] font-extrabold text-emerald-700">{formatCurrency(currentValue)}</p></div>
-        <div className="px-4 py-3"><p className="m-0 text-[8px] font-bold text-slate-500">Expected Annual Return</p><p className="mt-1 mb-0 text-[15px] font-extrabold text-blue-700">{formatCurrency(expectedAnnualReturn)}</p></div>
-      </div>
-      {investments.length === 0 ? <p className="p-5 text-center text-[10px] text-slate-500">No active investments recorded yet.</p> : <div className="overflow-x-auto"><table className="w-full min-w-[650px] text-left text-[9px]"><thead className="bg-slate-50 text-slate-600"><tr><th className="px-4 py-3">Institution / Investment</th><th className="px-4 py-3">Frequency</th><th className="px-4 py-3 text-right">Contributed</th><th className="px-4 py-3 text-right">Current value</th><th className="px-4 py-3">Due date</th></tr></thead><tbody>{investments.map((item) => <tr key={item.id} className="border-t border-slate-100"><td className="px-4 py-3"><p className="m-0 font-bold">{item.institution}</p><p className="mt-1 mb-0 text-slate-500">{item.investment_type}</p></td><td className="px-4 py-3">{item.contribution_frequency}</td><td className="px-4 py-3 text-right">{formatCurrency(item.contribution_amount)}</td><td className="px-4 py-3 text-right">{formatCurrency(item.current_value)}</td><td className="px-4 py-3">{item.next_due_date || "—"}</td></tr>)}</tbody></table></div>}
-    </DashboardCard>
-    <DashboardCard><div className="border-b border-blue-200 bg-gradient-to-r from-blue-100 via-sky-50 to-white px-5 py-3"><h2 className="m-0 text-[16px] font-extrabold text-blue-900">Net Worth Snapshot</h2><p className="mt-1 mb-0 text-[9px] text-slate-500">Based on recorded financial data</p></div><div className="grid grid-cols-3 divide-x divide-blue-100 p-5"><div className="min-w-0 px-3"><p className="m-0 text-[9px] font-semibold text-slate-500">Tracked investment assets</p><p className="mt-1 mb-0 break-words text-[20px] font-extrabold text-emerald-700">{formatCurrency(currentValue)}</p></div><div className="min-w-0 px-3"><p className="m-0 text-[9px] font-semibold text-slate-500">Outstanding obligations</p><p className="mt-1 mb-0 break-words text-[20px] font-extrabold text-red-600">{formatCurrency(outstanding)}</p></div><div className="min-w-0 px-3"><p className="m-0 text-[9px] font-semibold text-slate-500">Tracked net position (partial)</p><p className="mt-1 mb-0 break-words text-[20px] font-extrabold text-slate-900">{formatCurrency(currentValue - outstanding)}</p></div></div><p className="m-0 border-t border-blue-100 bg-amber-50 px-5 py-3 text-[9px] leading-relaxed text-amber-900">Partial estimate only: cash and bank balances, and assets not recorded here, are not included.</p></DashboardCard>
-  </div>;
-}
-
-function FinancialDashboardActions({ onRefresh }: { onRefresh?: () => void }) {
-  const [showInvestmentForm, setShowInvestmentForm] = useState(false);
+function InvestmentPortfolio({ investments, payments, outstanding, onRefresh }: { investments: FinancialInvestment[]; payments: FinancialInvestmentPayment[]; outstanding: number; onRefresh?: () => void }) {
+  const [activeInvestment, setActiveInvestment] = useState<FinancialInvestment | null>(null);
+  const [amount, setAmount] = useState("");
+  const [paymentDate, setPaymentDate] = useState(new Date().toLocaleDateString("en-CA", { timeZone: "Africa/Nairobi" }));
+  const [paymentMethod, setPaymentMethod] = useState("mpesa");
+  const [reference, setReference] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-  const [institution, setInstitution] = useState("");
-  const [investmentType, setInvestmentType] = useState("Other");
-  const [contribution, setContribution] = useState("");
-  const [currentValue, setCurrentValue] = useState("");
-  const [frequency, setFrequency] = useState("Monthly");
-  const [startDate, setStartDate] = useState(new Date().toLocaleDateString("en-CA", { timeZone: "Africa/Nairobi" }));
-  const [dueDate, setDueDate] = useState("");
-  const [annualReturn, setAnnualReturn] = useState("");
-
-  async function saveInvestment() {
+  const paidByInvestment = new Map<string, number>();
+  for (const payment of payments) paidByInvestment.set(payment.investment_id, (paidByInvestment.get(payment.investment_id) ?? 0) + payment.amount);
+  const totalAmount = investments.reduce((sum, item) => sum + item.contribution_amount, 0);
+  const totalPaid = investments.reduce((sum, item) => sum + (paidByInvestment.get(item.id) ?? 0), 0);
+  const currentValue = investments.reduce((sum, item) => sum + item.current_value, 0);
+  const expectedAnnualReturn = investments.reduce((sum, item) => sum + (item.expected_annual_return === null ? 0 : item.current_value * item.expected_annual_return / 100), 0);
+  const totalBalance = investments.reduce((sum, item) => sum + Math.max(item.contribution_amount - (paidByInvestment.get(item.id) ?? 0), 0), 0);
+  async function recordInvestmentPayment() {
+    if (!activeInvestment) return;
+    const value = Number(amount);
+    const alreadyPaid = paidByInvestment.get(activeInvestment.id) ?? 0;
+    const balance = Math.max(activeInvestment.contribution_amount - alreadyPaid, 0);
+    if (!Number.isFinite(value) || value <= 0) { setError("Enter a valid contribution amount."); return; }
+    if (value > balance) { setError(`Contribution cannot exceed the remaining balance of ${formatCurrency(balance)}.`); return; }
     try {
-      setSaving(true);
-      setError("");
-      const contributionAmount = Number(contribution);
-      const value = currentValue === "" ? contributionAmount : Number(currentValue);
-      const returnRate = annualReturn === "" ? null : Number(annualReturn);
-      if (!institution.trim()) throw new Error("Enter the institution or investment name.");
-      if (!Number.isFinite(contributionAmount) || contributionAmount < 0) throw new Error("Enter a valid contribution amount.");
-      if (!Number.isFinite(value) || value < 0) throw new Error("Enter a valid current value.");
-      if (returnRate !== null && (!Number.isFinite(returnRate) || returnRate < 0 || returnRate > 1000)) throw new Error("Enter a valid expected annual return percentage.");
-      const { error: insertError } = await supabase.from("financial_investments").insert({
-        institution: institution.trim(),
-        investment_type: investmentType,
-        contribution_amount: contributionAmount,
-        current_value: value,
-        contribution_frequency: frequency,
-        start_date: startDate,
-        next_due_date: dueDate || null,
-        expected_annual_return: returnRate,
-        status: "active",
+      setSaving(true); setError("");
+      const { error: insertError } = await supabase.from("financial_investment_payments").insert({
+        investment_id: activeInvestment.id,
+        payment_date: paymentDate,
+        amount: value,
+        payment_method: paymentMethod,
+        reference: reference.trim() || null,
       });
       if (insertError) throw insertError;
-      setShowInvestmentForm(false);
-      setInstitution("");
-      setContribution("");
-      setCurrentValue("");
-      setDueDate("");
-      setAnnualReturn("");
+      setActiveInvestment(null); setAmount(""); setReference("");
       onRefresh?.();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not save investment.");
-    } finally {
-      setSaving(false);
-    }
+      setError(err instanceof Error ? err.message : "Could not record investment contribution.");
+    } finally { setSaving(false); }
   }
-
-  return <>
+  return <div className="grid grid-cols-1 gap-3">
     <DashboardCard>
-      <div className="flex flex-wrap items-center justify-between gap-3 p-4">
-        <div><h2 className="m-0 text-[12px] font-extrabold text-blue-900">Quick Actions</h2><p className="mt-1 mb-0 text-[9px] text-slate-500">Manage records or print the current monthly dashboard.</p></div>
-        <div className="flex flex-wrap gap-2">
-          <a href="/admin/expenses" className="inline-flex h-9 items-center rounded-lg border border-slate-200 bg-white px-3 text-[9px] font-bold text-slate-700 hover:bg-slate-50">Add Expense</a>
-          <button type="button" onClick={() => { setError(""); setShowInvestmentForm(true); }} className="inline-flex h-9 items-center rounded-lg border border-blue-200 bg-blue-50 px-3 text-[9px] font-bold text-blue-800 hover:bg-blue-100">Add Investment</button>
-          <a href="/admin/financial-obligations" className="inline-flex h-9 items-center rounded-lg border border-slate-200 bg-white px-3 text-[9px] font-bold text-slate-700 hover:bg-slate-50">Add Obligation</a>
-          <a href="/admin/payment-schedule" className="inline-flex h-9 items-center rounded-lg border border-slate-200 bg-white px-3 text-[9px] font-bold text-slate-700 hover:bg-slate-50">View Payment Schedule</a>
-          <button type="button" onClick={() => window.print()} className="inline-flex h-9 items-center rounded-lg bg-blue-900 px-3 text-[9px] font-bold text-white hover:bg-blue-800">Generate Report</button>
-        </div>
+      <div className="border-b border-teal-200 bg-gradient-to-r from-teal-100 via-cyan-50 to-white px-5 py-3"><h2 className="m-0 text-[16px] font-extrabold text-teal-900">Investment Portfolio</h2><p className="mt-1 mb-0 text-[9px] text-slate-500">Track each investment target, contributions paid, remaining balance, expected returns and due dates</p></div>
+      <div className="grid grid-cols-3 divide-x divide-teal-100 border-b border-teal-100">
+        <div className="px-4 py-3"><p className="m-0 text-[8px] font-bold text-slate-500">Total Amount Paid</p><p className="mt-1 mb-0 text-[15px] font-extrabold">{formatCurrency(totalPaid)}</p></div>
+        <div className="px-4 py-3"><p className="m-0 text-[8px] font-bold text-slate-500">Current Portfolio Value</p><p className="mt-1 mb-0 text-[15px] font-extrabold text-emerald-700">{formatCurrency(currentValue)}</p></div>
+        <div className="px-4 py-3"><p className="m-0 text-[8px] font-bold text-slate-500">Expected Annual Return</p><p className="mt-1 mb-0 text-[15px] font-extrabold text-blue-700">{formatCurrency(expectedAnnualReturn)}</p></div>
       </div>
+      {investments.length === 0 ? <p className="p-5 text-center text-[10px] text-slate-500">No active investments recorded yet.</p> : <div className="overflow-x-auto"><table className="w-full min-w-[1250px] text-left text-[9px]"><thead className="bg-teal-50 text-teal-950"><tr><th className="px-3 py-2">Action</th><th className="px-3 py-2">#</th><th className="px-3 py-2">Item</th><th className="px-3 py-2">Institution</th><th className="px-3 py-2">Frequency</th><th className="px-3 py-2 text-right">Expected Return (p.a.)</th><th className="px-3 py-2 text-right">Amount (KSh)</th><th className="px-3 py-2 text-right">% of Total</th><th className="px-3 py-2 text-right">Amount Paid (KSh)</th><th className="px-3 py-2 text-right">Balance (KSh)</th><th className="px-3 py-2">% Paid</th><th className="px-3 py-2">Due Date</th><th className="px-3 py-2">Documents</th></tr></thead><tbody>{investments.map((item, index) => {
+        const paid = paidByInvestment.get(item.id) ?? 0;
+        const balance = Math.max(item.contribution_amount - paid, 0);
+        const percentage = item.contribution_amount > 0 ? Math.min((paid / item.contribution_amount) * 100, 100) : 0;
+        const share = totalAmount > 0 ? (item.contribution_amount / totalAmount) * 100 : 0;
+        return <tr key={item.id} className="border-t border-teal-100 hover:bg-teal-50/40">
+          <td className="px-3 py-2"><button type="button" onClick={() => { setActiveInvestment(item); setAmount(""); setError(""); }} disabled={balance <= 0} className="rounded-md bg-teal-700 px-3 py-1.5 text-[8px] font-bold text-white hover:bg-teal-800 disabled:cursor-not-allowed disabled:opacity-40">Invest</button></td>
+          <td className="px-3 py-2 text-slate-500">{index + 1}</td>
+          <td className="px-3 py-2 font-semibold text-slate-800">{item.investment_type || "Investment"}</td>
+          <td className="px-3 py-2 font-semibold text-slate-800">{item.institution}</td>
+          <td className="px-3 py-2">{item.contribution_frequency}</td>
+          <td className="px-3 py-2 text-right">{item.expected_annual_return === null ? "—" : `${formatPercentage(item.expected_annual_return)}`}</td>
+          <td className="px-3 py-2 text-right font-semibold">{formatCurrency(item.contribution_amount)}</td>
+          <td className="px-3 py-2 text-right">{formatPercentage(share)}</td>
+          <td className="px-3 py-2 text-right font-semibold text-emerald-700">{formatCurrency(paid)}</td>
+          <td className="px-3 py-2 text-right font-semibold">{formatCurrency(balance)}</td>
+          <td className="min-w-[105px] px-3 py-2"><div className="h-2 overflow-hidden rounded-full bg-slate-200"><div className="h-full rounded-full bg-emerald-600" style={{ width: `${percentage}%` }} /></div><span className="mt-1 block text-[8px]">{formatPercentage(percentage)}</span></td>
+          <td className="whitespace-nowrap px-3 py-2">{item.next_due_date || "—"}</td>
+          <td className="px-3 py-2"><span className="text-slate-400">—</span></td>
+        </tr>;
+      })}</tbody><tfoot className="border-t-2 border-teal-200 bg-teal-50 font-extrabold"><tr><td className="px-3 py-3" colSpan={6}>Total Investments</td><td className="px-3 py-3 text-right">{formatCurrency(totalAmount)}</td><td className="px-3 py-3 text-right">100%</td><td className="px-3 py-3 text-right text-emerald-700">{formatCurrency(totalPaid)}</td><td className="px-3 py-3 text-right">{formatCurrency(totalBalance)}</td><td className="px-3 py-3">{formatPercentage(totalAmount > 0 ? totalPaid / totalAmount * 100 : 0)}</td><td colSpan={2} /></tr></tfoot></table></div>}
     </DashboardCard>
-    {showInvestmentForm ? <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4">
-      <div role="dialog" aria-modal="true" aria-labelledby="investment-form-title" className="max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-2xl bg-white p-5 shadow-2xl">
-        <div className="flex items-start justify-between gap-3"><div><h2 id="investment-form-title" className="m-0 text-[17px] font-extrabold text-blue-950">Add Investment</h2><p className="mt-1 mb-0 text-[10px] text-slate-500">Record a portfolio asset and its current valuation.</p></div><button type="button" onClick={() => setShowInvestmentForm(false)} disabled={saving} className="rounded-lg border border-slate-200 px-3 py-1 text-sm">×</button></div>
-        {error ? <p className="mt-3 rounded-lg bg-red-50 p-3 text-[10px] text-red-700">{error}</p> : null}
-        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <label className="text-[10px] font-bold text-slate-600 sm:col-span-2">Institution / investment name<input value={institution} onChange={e => setInstitution(e.target.value)} required className="mt-1 h-10 w-full rounded-lg border border-slate-200 px-3 text-[12px] font-normal" placeholder="e.g. SACCO or fixed deposit" /></label>
-          <label className="text-[10px] font-bold text-slate-600">Investment type<select value={investmentType} onChange={e => setInvestmentType(e.target.value)} className="mt-1 h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-[12px] font-normal"><option>Other</option><option>SACCO</option><option>Fixed Deposit</option><option>Shares</option><option>Bonds</option><option>Money Market Fund</option><option>Property</option></select></label>
-          <label className="text-[10px] font-bold text-slate-600">Contribution frequency<select value={frequency} onChange={e => setFrequency(e.target.value)} className="mt-1 h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-[12px] font-normal"><option>One-time</option><option>Weekly</option><option>Monthly</option><option>Quarterly</option><option>Annually</option></select></label>
-          <label className="text-[10px] font-bold text-slate-600">Total contributed (KSh)<input type="number" min="0" step="0.01" value={contribution} onChange={e => setContribution(e.target.value)} required className="mt-1 h-10 w-full rounded-lg border border-slate-200 px-3 text-[12px] font-normal" /></label>
-          <label className="text-[10px] font-bold text-slate-600">Current value (KSh)<input type="number" min="0" step="0.01" value={currentValue} onChange={e => setCurrentValue(e.target.value)} placeholder="Defaults to contribution" className="mt-1 h-10 w-full rounded-lg border border-slate-200 px-3 text-[12px] font-normal" /></label>
-          <label className="text-[10px] font-bold text-slate-600">Start date<input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} required className="mt-1 h-10 w-full rounded-lg border border-slate-200 px-3 text-[12px] font-normal" /></label>
-          <label className="text-[10px] font-bold text-slate-600">Next due date<input type="date" value={dueDate} onChange={e => setDueDate(e.target.value)} className="mt-1 h-10 w-full rounded-lg border border-slate-200 px-3 text-[12px] font-normal" /></label>
-          <label className="text-[10px] font-bold text-slate-600 sm:col-span-2">Expected annual return (%)<input type="number" min="0" max="1000" step="0.01" value={annualReturn} onChange={e => setAnnualReturn(e.target.value)} className="mt-1 h-10 w-full rounded-lg border border-slate-200 px-3 text-[12px] font-normal" placeholder="Optional" /></label>
-        </div>
-        <div className="mt-5 flex justify-end gap-2 border-t border-slate-100 pt-4"><button type="button" onClick={() => setShowInvestmentForm(false)} disabled={saving} className="h-9 rounded-lg border border-slate-200 px-4 text-[10px] font-bold">Cancel</button><button type="button" onClick={saveInvestment} disabled={saving} className="h-9 rounded-lg bg-blue-900 px-4 text-[10px] font-bold text-white disabled:opacity-50">{saving ? "Saving…" : "Save Investment"}</button></div>
-      </div>
-    </div> : null}
-  </>;
+    <DashboardCard><div className="border-b border-blue-200 bg-gradient-to-r from-blue-100 via-sky-50 to-white px-5 py-3"><h2 className="m-0 text-[16px] font-extrabold text-blue-900">Net Worth Snapshot</h2><p className="mt-1 mb-0 text-[9px] text-slate-500">Based on recorded financial data</p></div><div className="grid grid-cols-3 divide-x divide-blue-100 p-5"><div className="min-w-0 px-3"><p className="m-0 text-[9px] font-semibold text-slate-500">Tracked investment assets</p><p className="mt-1 mb-0 break-words text-[20px] font-extrabold text-emerald-700">{formatCurrency(currentValue)}</p></div><div className="min-w-0 px-3"><p className="m-0 text-[9px] font-semibold text-slate-500">Outstanding obligations</p><p className="mt-1 mb-0 break-words text-[20px] font-extrabold text-red-600">{formatCurrency(outstanding)}</p></div><div className="min-w-0 px-3"><p className="m-0 text-[9px] font-semibold text-slate-500">Tracked net position (partial)</p><p className="mt-1 mb-0 break-words text-[20px] font-extrabold text-slate-900">{formatCurrency(currentValue - outstanding)}</p></div></div><p className="m-0 border-t border-blue-100 bg-amber-50 px-5 py-3 text-[9px] leading-relaxed text-amber-900">Partial estimate only: cash and bank balances, and assets not recorded here, are not included.</p></DashboardCard>
+    {activeInvestment ? <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4"><div role="dialog" aria-modal="true" aria-labelledby="investment-payment-title" className="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl"><div className="flex items-start justify-between gap-3"><div><h2 id="investment-payment-title" className="m-0 text-[16px] font-extrabold text-teal-950">Record Investment Contribution</h2><p className="mt-1 mb-0 text-[10px] text-slate-500">{activeInvestment.investment_type} · {activeInvestment.institution}</p></div><button type="button" onClick={() => setActiveInvestment(null)} disabled={saving} className="rounded-lg border border-slate-200 px-3 py-1">×</button></div><div className="mt-3 rounded-lg bg-teal-50 p-3 text-[10px]"><div className="flex justify-between"><span>Investment target</span><strong>{formatCurrency(activeInvestment.contribution_amount)}</strong></div><div className="mt-1 flex justify-between"><span>Already paid</span><strong>{formatCurrency(paidByInvestment.get(activeInvestment.id) ?? 0)}</strong></div><div className="mt-1 flex justify-between"><span>Remaining balance</span><strong>{formatCurrency(Math.max(activeInvestment.contribution_amount - (paidByInvestment.get(activeInvestment.id) ?? 0), 0))}</strong></div></div>{error ? <p className="mt-3 rounded-lg bg-red-50 p-3 text-[10px] text-red-700">{error}</p> : null}<div className="mt-3 grid grid-cols-1 gap-3"><label className="text-[10px] font-bold text-slate-600">Amount to invest (KSh)<input type="number" min="0.01" max={Math.max(activeInvestment.contribution_amount - (paidByInvestment.get(activeInvestment.id) ?? 0), 0)} step="0.01" value={amount} onChange={e => setAmount(e.target.value)} className="mt-1 h-10 w-full rounded-lg border border-slate-200 px-3 text-[12px] font-normal" /></label><label className="text-[10px] font-bold text-slate-600">Payment date<input type="date" value={paymentDate} onChange={e => setPaymentDate(e.target.value)} className="mt-1 h-10 w-full rounded-lg border border-slate-200 px-3 text-[12px] font-normal" /></label><label className="text-[10px] font-bold text-slate-600">Payment method<select value={paymentMethod} onChange={e => setPaymentMethod(e.target.value)} className="mt-1 h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-[12px] font-normal"><option value="mpesa">M-Pesa</option><option value="bank">Bank</option><option value="cash">Cash</option><option value="card">Card</option><option value="other">Other</option></select></label><label className="text-[10px] font-bold text-slate-600">Reference (optional)<input value={reference} onChange={e => setReference(e.target.value)} className="mt-1 h-10 w-full rounded-lg border border-slate-200 px-3 text-[12px] font-normal" /></label></div><div className="mt-5 flex justify-end gap-2 border-t border-slate-100 pt-4"><button type="button" onClick={() => setActiveInvestment(null)} disabled={saving} className="h-9 rounded-lg border border-slate-200 px-4 text-[10px] font-bold">Cancel</button><button type="button" onClick={recordInvestmentPayment} disabled={saving} className="h-9 rounded-lg bg-teal-700 px-4 text-[10px] font-bold text-white disabled:opacity-50">{saving ? "Saving…" : "Record Contribution"}</button></div></div></div> : null}
+  </div>;
 }
-
 /* =====================================================
    MAIN DASHBOARD
 ===================================================== */
