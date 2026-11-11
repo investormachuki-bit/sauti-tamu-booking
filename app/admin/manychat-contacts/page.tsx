@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { ContactRound, RefreshCw, Search, MessageCircle, Phone, Tag, ShieldCheck, ShieldAlert, Users } from "lucide-react";
+import { ContactRound, RefreshCw, Search, MessageCircle, Phone, Tag, ShieldCheck, ShieldAlert, Users, Download } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 
 type Contact = {
@@ -95,6 +95,38 @@ export default function ManyChatContactsPage() {
     });
   }, [contacts, search, tagFilter, consentFilter]);
 
+  function exportToExcel() {
+    const columns: Array<{ label: string; value: (contact: Contact) => string }> = [
+      { label: "ManyChat Contact ID", value: c => c.manychat_contact_id || "" },
+      { label: "Full Name", value: c => c.full_name || [c.first_name, c.last_name].filter(Boolean).join(" ") },
+      { label: "First Name", value: c => c.first_name || "" },
+      { label: "Last Name", value: c => c.last_name || "" },
+      { label: "WhatsApp Number", value: c => c.phone_e164 || "" },
+      { label: "ManyChat Tags", value: c => (c.tags || []).join(", ") },
+      { label: "WhatsApp Opted In", value: c => c.whatsapp_opted_in ? "Yes" : "No" },
+      { label: "SMS Marketing Opted In", value: c => c.sms_marketing_opt_in ? "Yes" : "No" },
+      { label: "SMS Consent Date", value: c => c.sms_consent_at || "" },
+      { label: "First Seen", value: c => c.first_seen_at || "" },
+      { label: "Last Seen", value: c => c.last_seen_at || "" },
+      { label: "Last Synced", value: c => c.synced_at || "" },
+    ];
+    const xmlEscape = (value: string) => value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&apos;");
+    const rowXml = (values: string[]) => `<Row>${values.map(value => `<Cell><Data ss:Type="String">${xmlEscape(value)}</Data></Cell>`).join("")}</Row>`;
+    const rows = [rowXml(columns.map(column => column.label)), ...filtered.map(contact => rowXml(columns.map(column => column.value(contact))))].join("");
+    const workbook = `<?xml version="1.0" encoding="UTF-8"?>
+<?mso-application progid="Excel.Sheet"?>
+<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"><Worksheet ss:Name="ManyChat Contacts"><Table>${rows}</Table></Worksheet></Workbook>`;
+    const blob = new Blob([workbook], { type: "application/vnd.ms-excel;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `sauti-tamu-manychat-contacts-${new Date().toISOString().slice(0, 10)}.xls`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  }
+
   function openWhatsApp(phone: string) {
     const digits = phone.replace(/\D/g, "");
     if (digits) window.open(`https://wa.me/${digits}`, "_blank", "noopener,noreferrer");
@@ -108,7 +140,7 @@ export default function ManyChatContactsPage() {
           <h1 className="st-page-title mt-2">ManyChat Contacts</h1>
           <p className="st-page-description">WhatsApp subscribers synchronized from ManyChat, kept separate from leads, trials and students.</p>
         </div>
-        <button type="button" onClick={() => load(true)} className="st-button st-button-secondary" disabled={refreshing}>
+        <button type="button" onClick={exportToExcel} className="st-button st-button-primary" disabled={loading || filtered.length === 0}><Download size={15} /> Export Excel ({filtered.length})</button>\n        <button type="button" onClick={() => load(true)} className="st-button st-button-secondary" disabled={refreshing}>
           <RefreshCw size={15} className={refreshing ? "animate-spin" : ""} /> Refresh contacts
         </button>
       </div>
