@@ -654,6 +654,7 @@ export async function POST(request: NextRequest) {
         ["trial_reminder_24h", 24 * 60],
         ["trial_reminder_6h", 6 * 60],
         ["trial_reminder_1h", 60],
+        ["trial_reminder_15m", 15],
       ] as const;
       const startsAtMs = new Date(lessonSlot.starts_at).getTime();
       const nowMs = Date.now();
