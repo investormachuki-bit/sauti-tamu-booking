@@ -246,7 +246,7 @@ async function processSms(request: NextRequest) {
 
           const { data: priorLog, error: priorLogError } = await supabaseServer
             .from("payment_due_reminder_sms_log")
-            .select("id,status")
+            .select("id,status,attempt_count")
             .eq("payment_schedule_id", schedule.id)
             .eq("reminder_key", reminderKey)
             .eq("due_date", schedule.due_date)
@@ -260,7 +260,7 @@ async function processSms(request: NextRequest) {
               .from("payment_due_reminder_sms_log")
               .update({
                 status: "processing",
-                attempt_count: 1,
+                attempt_count: Number(priorLog.attempt_count || 0) + 1,
                 error: null,
                 updated_at: now.toISOString(),
               })
