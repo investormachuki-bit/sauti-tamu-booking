@@ -61,7 +61,7 @@ async function processSms(request: NextRequest) {
         .single();
       if (bookingError || !booking) throw new Error("Booking not found.");
 
-      if (["cancelled", "no_show", "missed", "rescheduled"].includes(String(booking.status).toLowerCase())) {
+      if (["cancelled", "no_show", "missed", "rescheduled", "completed", "attended"].includes(String(booking.status).toLowerCase())) {
         await supabaseServer.from("follow_up_tasks").update({
           status: "cancelled",
           updated_at: new Date().toISOString(),
@@ -78,6 +78,11 @@ async function processSms(request: NextRequest) {
       if (slotError || !slot) throw new Error("Lesson slot not found.");
 
       const startsAt = new Date(slot.starts_at);
+      if (startsAt.getTime() <= Date.now()) {
+        await supabaseServer.from("follow_up_tasks").update({ status: "cancelled", updated_at: new Date().toISOString() }).eq("id", task.id).eq("status", "pending");
+        results.push({ taskId: task.id, success: false, error: "Trial has already started; stale reminder cancelled." });
+        continue;
+      }
       const offsetMinutes: Record<string, number> = {
         trial_reminder_24h: 24 * 60,
         trial_reminder_1h: 60,
@@ -126,6 +131,18 @@ async function processSms(request: NextRequest) {
       if (!sentResult.success) throw new Error(sentResult.error || "AirTouch send failed.");
 
       const now = new Date().toISOString();
+      const { error: historyError } = await supabaseServer.from("sms_messages").insert({
+        recipient_name: lead.full_name || null,
+        recipient_phone: lead.whatsapp_number,
+        message,
+        provider: "airtouch",
+        provider_status: "1000",
+        provider_response: sentResult.response || null,
+        status: "accepted",
+        source: task.task_type,
+        sent_by: null,
+      });
+      if (historyError) console.error("Trial reminder SMS history insert failed:", historyError);
       const { data: updated, error: updateError } = await supabaseServer
         .from("follow_up_tasks")
         .update({ status: "completed", sent_at: now, completed_at: now, updated_at: now })
