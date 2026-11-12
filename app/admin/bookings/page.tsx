@@ -739,6 +739,7 @@ export default function AdminBookingsPage() {
         console.error("Old slot release warning:", releaseError);
       }
 
+      await sendTrialEventSms(rescheduleBooking, "trial_rebook");
       closeReschedule();
       setSelectedBooking(null);
       await loadBookings(true);
@@ -1640,6 +1641,26 @@ export default function AdminBookingsPage() {
     }
   }
 
+
+  async function sendTrialEventSms(record: BookingRecord, event: "trial_rebook" | "trial_attended") {
+    try {
+      const { data } = await supabase.auth.getSession();
+      const token = data.session?.access_token;
+      if (!token) return;
+      const response = await fetch("/api/admin/sms/trial-event", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ bookingId: record.booking.id, event }),
+      });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        console.error("Trial event SMS was not sent:", payload.error || response.statusText);
+      }
+    } catch (error) {
+      console.error("Trial event SMS request failed:", error);
+    }
+  }
+
   /*
    * =========================================================
    * MARK ATTENDED
@@ -1685,6 +1706,7 @@ export default function AdminBookingsPage() {
         "mark_trial_attended:",
         data
       );
+      await sendTrialEventSms(record, "trial_attended");
 
       await loadBookings(true);
 
@@ -1760,6 +1782,7 @@ export default function AdminBookingsPage() {
         "mark_trial_missed:",
         data
       );
+      await sendTrialEventSms(record, "trial_rebook");
 
       await loadBookings(true);
 
@@ -1835,6 +1858,7 @@ export default function AdminBookingsPage() {
         "mark_trial_cancelled:",
         data
       );
+      await sendTrialEventSms(record, "trial_rebook");
 
       await loadBookings(true);
 
