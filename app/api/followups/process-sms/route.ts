@@ -419,6 +419,9 @@ async function processSms(request: NextRequest) {
     manychatProcessed: dueFollowups?.length ?? 0,
     manychatSent,
     manychatFailed,
+    paymentDueSent,
+    paymentDueFailed,
+    paymentDueSkipped,
     results,
   });
 }
