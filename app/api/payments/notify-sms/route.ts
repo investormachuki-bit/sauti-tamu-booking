@@ -98,7 +98,11 @@ export async function POST(request: NextRequest) {
     const totalPaid = (payments ?? []).reduce((sum, item) => sum + Number(item.amount || 0), 0);
     const balance = Math.max(courseFee - totalPaid, 0);
     const amount = Number(payment.amount || 0);
-    const message = `Hello ${student.full_name}, Sauti Tamu has received your payment of KSh ${formatCurrency(amount)} on ${formatPaymentDate(payment.payment_date)}. Your remaining course balance is KSh ${formatCurrency(balance)}. Thank you.`;
+    const { data: smsTemplate, error: templateError } = await supabaseServer.from("core_sms_templates").select("message,enabled").eq("template_key", "payment_receipt").maybeSingle();
+    if (templateError) throw templateError;
+    if (smsTemplate && !smsTemplate.enabled) return NextResponse.json({ success: true, smsSent: false, skipped: true, reason: "Payment receipt SMS template is disabled." });
+    const templateMessage = smsTemplate?.message || "Hello {{full_name}}, Sauti Tamu has received your payment of KSh {{amount}} on {{payment_date}}. Your remaining course balance is KSh {{balance}}. Thank you.";
+    const message = templateMessage.replace(/{{\s*full_name\s*}}/gi, student.full_name || "there").replace(/{{\s*amount\s*}}/gi, formatCurrency(amount)).replace(/{{\s*payment_date\s*}}/gi, formatPaymentDate(payment.payment_date)).replace(/{{\s*balance\s*}}/gi, formatCurrency(balance));
 
     const result = await sendAirTouchSms(student.whatsapp_number, message);
     if (!result.success) {
