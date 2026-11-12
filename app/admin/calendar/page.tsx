@@ -862,9 +862,9 @@ export default function AdminCalendarPage() {
 
                           <span
                             className={`inline-flex w-fit items-center gap-1.5 rounded-full px-3 py-1.5 text-[9px] font-bold uppercase tracking-[0.05em] ${
-                              isBooked
-                                ? "bg-red-50 text-[var(--st-red)]"
-                                : "bg-green-50 text-green-700"
+                              slot.is_available
+                                ? "bg-green-50 text-green-700"
+                                : "bg-gray-100 text-gray-600"
                             }`}
                           >
                             <>
