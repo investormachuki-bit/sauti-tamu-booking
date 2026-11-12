@@ -551,7 +551,8 @@ export async function POST(request: NextRequest) {
 
       if (
         message.includes("no longer available") ||
-        message.includes("SLOT_ALREADY_BOOKED")
+        message.includes("SLOT_ALREADY_BOOKED") ||
+        message.includes("SLOT_NO_LONGER_AVAILABLE")
       ) {
         return NextResponse.json(
           {
