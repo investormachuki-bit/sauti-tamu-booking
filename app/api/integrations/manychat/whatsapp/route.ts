@@ -118,6 +118,33 @@ export async function POST(request: NextRequest) {
       .single();
     if (error) throw error;
 
+    if (smsOptIn && data) {
+      const { data: templates, error: templateError } = await supabaseServer
+        .from("manychat_followup_templates")
+        .select("id,day_offset,enabled")
+        .eq("enabled", true);
+      if (templateError) throw templateError;
+      const anchor = new Date(consentAt || now).getTime();
+      const queueRows = (templates || []).map(template => ({
+        contact_id: data.id,
+        template_id: template.id,
+        day_offset: template.day_offset,
+        due_at: new Date(anchor + Number(template.day_offset) * 24 * 60 * 60 * 1000).toISOString(),
+      }));
+      if (queueRows.length) {
+        const { error: queueError } = await supabaseServer
+          .from("manychat_followup_queue")
+          .upsert(queueRows, { onConflict: "contact_id,day_offset", ignoreDuplicates: true });
+        if (queueError) throw queueError;
+      }
+    } else {
+      await supabaseServer
+        .from("manychat_followup_queue")
+        .update({ status: "cancelled", updated_at: now })
+        .eq("contact_id", data.id)
+        .eq("status", "pending");
+    }
+
     return NextResponse.json({ success: true, contact: data });
   } catch (error) {
     console.error("ManyChat WhatsApp sync failed:", error);

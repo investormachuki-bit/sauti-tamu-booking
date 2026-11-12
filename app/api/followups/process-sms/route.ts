@@ -110,7 +110,85 @@ async function processSms(request: NextRequest) {
     }
   }
 
-  return NextResponse.json({ success: true, processed: tasks?.length ?? 0, sent, failed, results });
+  const { data: dueFollowups, error: followupError } = await supabaseServer
+    .from("manychat_followup_queue")
+    .select("id,contact_id,template_id,day_offset,attempts")
+    .eq("status", "pending")
+    .lte("due_at", new Date().toISOString())
+    .order("due_at", { ascending: true })
+    .limit(50);
+
+  let manychatSent = 0;
+  let manychatFailed = 0;
+  for (const item of dueFollowups || []) {
+    const { data: claimed } = await supabaseServer
+      .from("manychat_followup_queue")
+      .update({ status: "processing", updated_at: new Date().toISOString() })
+      .eq("id", item.id)
+      .eq("status", "pending")
+      .select("id")
+      .maybeSingle();
+    if (!claimed) continue;
+    try {
+      const [{ data: contact, error: contactError }, { data: template, error: templateError }] = await Promise.all([
+        supabaseServer.from("manychat_whatsapp_contacts").select("id,phone_e164,full_name,sms_marketing_opt_in").eq("id", item.contact_id).single(),
+        supabaseServer.from("manychat_followup_templates").select("id,name,message,enabled").eq("id", item.template_id).single(),
+      ]);
+      if (contactError || !contact) throw new Error("ManyChat contact not found.");
+      if (!contact.sms_marketing_opt_in) {
+        await supabaseServer.from("manychat_followup_queue").update({ status: "cancelled", updated_at: new Date().toISOString() }).eq("id", item.id);
+        continue;
+      }
+      if (templateError || !template || !template.enabled) {
+        await supabaseServer.from("manychat_followup_queue").update({ status: "cancelled", updated_at: new Date().toISOString() }).eq("id", item.id);
+        continue;
+      }
+      const message = String(template.message).replace(/{{\\s*full_name\\s*}}/gi, contact.full_name || "there");
+      const sentResult = await sendAirTouchSms(contact.phone_e164, message);
+      if (!sentResult.success) throw new Error(sentResult.error || "AirTouch send failed.");
+      const now = new Date().toISOString();
+      const { error: logError } = await supabaseServer.from("sms_messages").insert({
+        recipient_name: contact.full_name || null,
+        recipient_phone: contact.phone_e164,
+        message,
+        provider: "airtouch",
+        provider_status: "1000",
+        provider_response: sentResult.response || null,
+        status: "accepted",
+        source: `manychat_day_${item.day_offset}`,
+        sent_by: null,
+      });
+      if (logError) console.error("ManyChat follow-up SMS history insert failed:", logError);
+      await supabaseServer.from("manychat_followup_queue").update({ status: "sent", sent_at: now, updated_at: now, last_error: null }).eq("id", item.id);
+      manychatSent++;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Unknown ManyChat follow-up error.";
+      console.error(`ManyChat follow-up ${item.id} failed:`, message);
+      await supabaseServer.from("manychat_followup_queue").update({
+        status: "pending",
+        attempts: Number(item.attempts || 0) + 1,
+        last_error: message.slice(0, 500),
+        updated_at: new Date().toISOString(),
+      }).eq("id", item.id);
+      manychatFailed++;
+    }
+  }
+
+  if (followupError) {
+    console.error("ManyChat follow-up queue query failed:", followupError);
+    return responseError("Could not load ManyChat follow-up queue.");
+  }
+
+  return NextResponse.json({
+    success: true,
+    processed: tasks?.length ?? 0,
+    sent,
+    failed,
+    manychatProcessed: dueFollowups?.length ?? 0,
+    manychatSent,
+    manychatFailed,
+    results,
+  });
 }
 
 export async function GET(request: NextRequest) {
