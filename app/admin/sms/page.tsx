@@ -8,7 +8,7 @@ type Recipient = { phone: string; name: string; source?: string; status?: string
 type ManyChatContact = { id: string; manychat_contact_id: string; phone_e164: string; first_name: string | null; last_name: string | null; full_name: string | null; tags: string[]; whatsapp_opted_in: boolean; sms_marketing_opt_in: boolean; sms_consent_at: string | null; synced_at: string };
 type Template = { id: string; name: string; category: string; message: string };
 type ManyChatFollowupTemplate = { id: string; day_offset: number; name: string; message: string; enabled: boolean };
-type TrialEventTemplate = { id: string; event_key: "trial_rebook" | "trial_attended"; name: string; message: string; enabled: boolean };
+type TrialEventTemplate = { id: string; event_key: "trial_rebook" | "trial_attended"; name: string; message: string; enabled: boolean };\ntype CoreSmsTemplate = { id: string; template_key: "trial_booking_confirmation" | "payment_receipt"; name: string; message: string; enabled: boolean };
 type Log = { id: string; recipient_name: string | null; recipient_phone: string; message: string; status: string; provider_status: string | null; created_at: string };
 
 export default function AdminSmsPage() {
@@ -27,7 +27,7 @@ export default function AdminSmsPage() {
   const [search, setSearch] = useState("");
   const [templates, setTemplates] = useState<Template[]>([]);
   const [manychatFollowupTemplates, setManychatFollowupTemplates] = useState<ManyChatFollowupTemplate[]>([]);
-  const [trialEventTemplates, setTrialEventTemplates] = useState<TrialEventTemplate[]>([]);
+  const [trialEventTemplates, setTrialEventTemplates] = useState<TrialEventTemplate[]>([]);\n  const [coreSmsTemplates, setCoreSmsTemplates] = useState<CoreSmsTemplate[]>([]);
   const [followupStats, setFollowupStats] = useState<Record<string, number>>({});
   const [savingFollowupId, setSavingFollowupId] = useState<string | null>(null);
   const [logs, setLogs] = useState<Log[]>([]);
@@ -52,7 +52,7 @@ export default function AdminSmsPage() {
 
   async function load() {
     setLoading(true); setError("");
-    try { const data = await request("/"); setLogs(data.logs || []); setTemplates(data.templates || []); setManychatFollowupTemplates(data.manychatFollowupTemplates || []); setTrialEventTemplates(data.trialEventTemplates || []); setFollowupStats(data.manychatFollowupStats || {}); }
+    try { const data = await request("/"); setLogs(data.logs || []); setTemplates(data.templates || []); setManychatFollowupTemplates(data.manychatFollowupTemplates || []); setTrialEventTemplates(data.trialEventTemplates || []); setCoreSmsTemplates(data.coreTemplates || []); setFollowupStats(data.manychatFollowupStats || {}); }
     catch (e) { setError(e instanceof Error ? e.message : "Could not load SMS records."); }
     finally { setLoading(false); }
   }
@@ -159,6 +159,16 @@ export default function AdminSmsPage() {
   }
 
 
+  async function saveCoreSmsTemplate(template: CoreSmsTemplate) {
+    setSavingFollowupId(template.id); setError(""); setNotice("");
+    try {
+      await request("/", { action: "save-core-sms-template", id: template.id, message: template.message, enabled: template.enabled });
+      setNotice(`${template.name} saved.`);
+      await load();
+    } catch (e) { setError(e instanceof Error ? e.message : "Could not save SMS template."); }
+    finally { setSavingFollowupId(null); }
+  }
+
   async function saveTrialEventTemplate(template: TrialEventTemplate) {
     setSavingFollowupId(template.id); setError(""); setNotice("");
     try {
@@ -245,6 +255,19 @@ export default function AdminSmsPage() {
           </div>
         </section>
 
+        <section className="st-card p-5">
+          <div className="mb-3 flex items-center gap-2"><MessageSquare size={18}/><h2 className="m-0 text-base font-semibold">Core automated SMS templates</h2><span className="rounded-full bg-emerald-50 px-2 py-1 text-[9px] font-semibold text-emerald-700">Automatic</span></div>
+          <p className="mb-3 text-[10px] leading-relaxed text-gray-500">These templates power the existing automatic trial booking confirmation and payment receipt SMS. Edit the wording or disable either message without changing its trigger. Available placeholders are shown below each template.</p>
+          <div className="space-y-3">
+            {coreSmsTemplates.map(template => <div key={template.id} className="rounded-xl border border-gray-100 p-3">
+              <div className="mb-2 flex items-center justify-between gap-2"><b className="text-xs">{template.name}</b><label className="flex items-center gap-1 text-[10px]"><input type="checkbox" checked={template.enabled} onChange={e=>setCoreSmsTemplates(current=>current.map(item=>item.id===template.id?{...item,enabled:e.target.checked}:item))}/> Enabled</label></div>
+              <textarea maxLength={480} value={template.message} onChange={e=>setCoreSmsTemplates(current=>current.map(item=>item.id===template.id?{...item,message:e.target.value}:item))} className="min-h-24 w-full rounded-lg border border-gray-200 p-2 text-[11px] leading-relaxed"/>
+              <p className="mt-2 mb-0 text-[9px] text-gray-500">{template.template_key==="trial_booking_confirmation" ? "Placeholders: {{full_name}}, {{lesson_date}}, {{lesson_time}}" : "Placeholders: {{full_name}}, {{amount}}, {{payment_date}}, {{balance}}"}</p>
+              <div className="mt-2 flex items-center justify-between"><span className="text-[9px] text-gray-400">{template.message.length}/480 characters</span><button className="st-button st-button-secondary" disabled={savingFollowupId===template.id||!template.message.trim()} onClick={()=>saveCoreSmsTemplate(template)}><Save size={13}/>{savingFollowupId===template.id?"Saving...":"Save template"}</button></div>
+            </div>)}
+            {!coreSmsTemplates.length&&<p className="text-xs text-gray-500">No core templates found. Refresh after the database migration.</p>}
+          </div>
+        </section>
         <section className="st-card p-5">
           <div className="mb-3 flex items-center gap-2"><MessageSquare size={18}/><h2 className="m-0 text-base font-semibold">Trial event SMS templates</h2><span className="rounded-full bg-blue-50 px-2 py-1 text-[9px] font-semibold text-blue-700">Event-triggered</span></div>
           <p className="mb-3 text-[10px] leading-relaxed text-gray-500">Sent automatically when a trial is marked missed, cancelled, rescheduled, or attended. These are immediate event messages, not scheduled follow-ups. Personalization: {'{{full_name}}'}, {'{{instrument}}'}, {'{{booking_link}}'}.</p>
