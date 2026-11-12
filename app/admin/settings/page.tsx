@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   CalendarDays,
   Check,
@@ -10,7 +10,6 @@ import {
   MapPin,
   MessageCircle,
   Music2,
-  RefreshCw,
   Save,
   Settings,
   Mail,
@@ -303,17 +302,6 @@ const defaultBusinessSettings: BusinessSettings = {
    HELPERS
 ========================================================= */
 
-function timeToMinutes(time: string) {
-  const [hours, minutes] = time.split(":").map(Number);
-  return hours * 60 + minutes;
-}
-
-function addDays(date: Date, days: number) {
-  const result = new Date(date);
-  result.setDate(result.getDate() + days);
-  return result;
-}
-
 function formatTime(time: string) {
   const [hour, minute] = time.split(":").map(Number);
 
@@ -602,8 +590,6 @@ export default function SettingsPage() {
   const [savingBusiness, setSavingBusiness] =
     useState(false);
 
-  const [generating, setGenerating] =
-    useState(false);
 
   const [uploadingLogo, setUploadingLogo] =
     useState(false);
@@ -723,6 +709,11 @@ export default function SettingsPage() {
 
       if (bookingResult.data) {
         const data = bookingResult.data;
+
+        setSchedule(Array.isArray(data.weekly_schedule) ? data.weekly_schedule : defaultSchedule);
+        const enabledInstruments = Array.isArray(data.enabled_instruments) ? data.enabled_instruments : ["piano", "guitar"];
+        setPiano(enabledInstruments.includes("piano"));
+        setGuitar(enabledInstruments.includes("guitar"));
 
         setSettings((current) => ({
           ...current,
@@ -1323,6 +1314,12 @@ export default function SettingsPage() {
         booking_duration_minutes:
           settings.booking_duration_minutes,
 
+        weekly_schedule: schedule,
+        enabled_instruments: [
+          ...(piano ? ["piano"] : []),
+          ...(guitar ? ["guitar"] : []),
+        ],
+
         availability_days:
           settings.maximum_days_ahead,
 
@@ -1466,42 +1463,6 @@ export default function SettingsPage() {
      WEEKLY SLOTS
   ======================================================= */
 
-  const weeklySlotCount = useMemo(() => {
-    let count = 0;
-
-    schedule.forEach((day) => {
-      if (!day.enabled) return;
-
-      const start =
-        timeToMinutes(day.start);
-
-      const end =
-        timeToMinutes(day.end);
-
-      const slots = Math.max(
-        0,
-        Math.floor(
-          (end - start) /
-            settings.booking_duration_minutes
-        )
-      );
-
-      const instruments =
-        Number(piano) +
-        Number(guitar);
-
-      count +=
-        slots * instruments;
-    });
-
-    return count;
-  }, [
-    schedule,
-    piano,
-    guitar,
-    settings.booking_duration_minutes,
-  ]);
-
   function updateDay(
     index: number,
     changes: Partial<DaySchedule>
@@ -1513,209 +1474,6 @@ export default function SettingsPage() {
           : day
       )
     );
-  }
-
-  /* =======================================================
-     GENERATE AVAILABILITY
-  ======================================================= */
-
-  async function generateFourWeeks() {
-    setGenerating(true);
-    setMessage("");
-    setError("");
-
-    try {
-      const instruments: Array<
-        "piano" | "guitar"
-      > = [];
-
-      if (piano)
-        instruments.push("piano");
-
-      if (guitar)
-        instruments.push("guitar");
-
-      if (!instruments.length) {
-        throw new Error(
-          "Select at least one instrument."
-        );
-      }
-
-      const today = new Date();
-
-      today.setHours(
-        0,
-        0,
-        0,
-        0
-      );
-
-      const endDate =
-        addDays(today, 28);
-
-      const {
-        data: existingSlots,
-        error: fetchError,
-      } = await supabase
-        .from("lesson_slots")
-        .select(
-          "instrument, starts_at"
-        )
-        .gte(
-          "starts_at",
-          today.toISOString()
-        )
-        .lt(
-          "starts_at",
-          endDate.toISOString()
-        );
-
-      if (fetchError)
-        throw fetchError;
-
-      const existingKeys =
-        new Set(
-          (existingSlots ?? []).map(
-            (slot) =>
-              `${slot.instrument}|${new Date(
-                slot.starts_at
-              ).getTime()}`
-          )
-        );
-
-      const newSlots: {
-        instrument:
-          | "piano"
-          | "guitar";
-        starts_at: string;
-        ends_at: string;
-        is_available: boolean;
-      }[] = [];
-
-      for (
-        let current = new Date(today);
-        current < endDate;
-        current = addDays(current, 1)
-      ) {
-        const dayIndex =
-          current.getDay();
-
-        const scheduleIndex =
-          dayIndex === 0
-            ? 6
-            : dayIndex - 1;
-
-        const daySchedule =
-          schedule[scheduleIndex];
-
-        if (!daySchedule?.enabled)
-          continue;
-
-        const startMinutes =
-          timeToMinutes(
-            daySchedule.start
-          );
-
-        const endMinutes =
-          timeToMinutes(
-            daySchedule.end
-          );
-
-        for (
-          let minutes = startMinutes;
-          minutes < endMinutes;
-          minutes +=
-            settings.booking_duration_minutes
-        ) {
-          const hour =
-            Math.floor(minutes / 60);
-
-          const minute =
-            minutes % 60;
-
-          for (const instrument of instruments) {
-            const startsAt =
-              new Date(current);
-
-            startsAt.setHours(
-              hour,
-              minute,
-              0,
-              0
-            );
-
-            const endsAt =
-              new Date(startsAt);
-
-            endsAt.setMinutes(
-              endsAt.getMinutes() +
-                settings.booking_duration_minutes
-            );
-
-            const key =
-              `${instrument}|${startsAt.getTime()}`;
-
-            if (
-              existingKeys.has(key)
-            )
-              continue;
-
-            newSlots.push({
-              instrument,
-              starts_at:
-                startsAt.toISOString(),
-              ends_at:
-                endsAt.toISOString(),
-              is_available: true,
-            });
-
-            existingKeys.add(key);
-          }
-        }
-      }
-
-      if (!newSlots.length) {
-        setMessage(
-          "Availability is already generated for the next 4 weeks."
-        );
-
-        return;
-      }
-
-      for (
-        let index = 0;
-        index < newSlots.length;
-        index += 100
-      ) {
-        const batch =
-          newSlots.slice(
-            index,
-            index + 100
-          );
-
-        const { error } =
-          await supabase
-            .from("lesson_slots")
-            .insert(batch);
-
-        if (error)
-          throw error;
-      }
-
-      setMessage(
-        `${newSlots.length} new trial slots generated for the next 4 weeks.`
-      );
-    } catch (err) {
-      console.error(err);
-
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Unable to generate availability."
-      );
-    } finally {
-      setGenerating(false);
-    }
   }
 
   /* =======================================================
@@ -3170,7 +2928,7 @@ export default function SettingsPage() {
           icon={CalendarDays}
           eyebrow="SCHEDULE"
           title="Weekly availability"
-          description="This schedule repeats every week. Trial slots are generated from these hours."
+          description="This weekly schedule automatically controls the rolling booking calendar. Save changes to update future availability."
         >
 
           <div className="divide-y divide-[#eeeaea]">
@@ -3292,7 +3050,7 @@ export default function SettingsPage() {
         <Section
           icon={Music2}
           title="Trial instruments"
-          description="Each available hour creates one slot per selected instrument."
+          description="Each selected instrument is available every configured hour, and multiple customers may book the same hour."
         >
           <div className="grid grid-cols-2 gap-3 p-5 sm:p-6">
 
@@ -3370,7 +3128,7 @@ export default function SettingsPage() {
         <Section
           icon={Clock3}
           title="Lesson length"
-          description="Standard duration used when generating new trial slots."
+          description="Standard duration used for automatically maintained trial slots."
         >
           <div className="p-5 sm:p-6">
 
@@ -3710,85 +3468,6 @@ export default function SettingsPage() {
             </div>
           </div>
         </Section>
-      </div>
-
-      {/* ===================================================
-          GENERATOR
-      =================================================== */}
-
-      <div className="mt-5 overflow-hidden rounded-2xl bg-[#242424] text-white">
-
-        <div className="p-5 sm:p-6">
-
-          <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
-
-            <div className="flex items-start gap-3">
-
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#c91f2b]">
-                <RefreshCw size={17} />
-              </div>
-
-              <div>
-                <p className="text-[8px] font-bold uppercase tracking-[0.15em] text-white/40">
-                  AVAILABILITY GENERATOR
-                </p>
-
-                <h2 className="mt-1 text-[16px] font-bold">
-                  Generate the next 4 weeks
-                </h2>
-
-                <p className="mt-1 max-w-[550px] text-[9px] leading-relaxed text-white/50">
-                  Generate bookable Piano and Guitar
-                  trial slots from the weekly schedule.
-                  Existing slots will not be duplicated.
-                </p>
-              </div>
-
-            </div>
-
-            <div className="flex items-center gap-4">
-
-              <div className="text-right">
-                <p className="text-[8px] uppercase tracking-[0.12em] text-white/40">
-                  ESTIMATED
-                </p>
-
-                <p className="mt-1 text-[22px] font-bold">
-                  {weeklySlotCount * 4}
-                </p>
-
-                <p className="text-[8px] text-white/40">
-                  slots / 4 weeks
-                </p>
-              </div>
-
-              <button
-                type="button"
-                onClick={
-                  generateFourWeeks
-                }
-                disabled={
-                  generating
-                }
-                className="flex h-10 items-center gap-2 rounded-xl bg-white px-4 text-[9px] font-bold text-[#242424] transition hover:bg-[#f5f3f3] disabled:opacity-50"
-              >
-                {generating ? (
-                  <Loader2
-                    size={13}
-                    className="animate-spin"
-                  />
-                ) : (
-                  <RefreshCw size={13} />
-                )}
-
-                Generate
-              </button>
-
-            </div>
-
-          </div>
-
-        </div>
       </div>
 
       {/* ===================================================
