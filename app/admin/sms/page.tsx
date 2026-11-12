@@ -11,6 +11,7 @@ type ManyChatFollowupTemplate = { id: string; day_offset: number; name: string; 
 type TrialEventTemplate = { id: string; event_key: "trial_rebook" | "trial_attended"; name: string; message: string; enabled: boolean };
 type CoreSmsTemplate = { id: string; template_key: "trial_booking_confirmation" | "payment_receipt"; name: string; message: string; enabled: boolean };
 type TrialReminderTemplate = { id: string; reminder_key: "trial_reminder_24h" | "trial_reminder_1h" | "trial_reminder_15m"; name: string; message: string; enabled: boolean };
+type PaymentDueTemplate = { id: string; reminder_key: "payment_due_7d" | "payment_due_3d" | "payment_due_today"; name: string; message: string; enabled: boolean };
 type Log = { id: string; recipient_name: string | null; recipient_phone: string; message: string; status: string; provider_status: string | null; created_at: string };
 
 export default function AdminSmsPage() {
@@ -32,6 +33,7 @@ export default function AdminSmsPage() {
   const [trialEventTemplates, setTrialEventTemplates] = useState<TrialEventTemplate[]>([]);
   const [coreSmsTemplates, setCoreSmsTemplates] = useState<CoreSmsTemplate[]>([]);
   const [trialReminderTemplates, setTrialReminderTemplates] = useState<TrialReminderTemplate[]>([]);
+  const [paymentDueTemplates, setPaymentDueTemplates] = useState<PaymentDueTemplate[]>([]);
   const [followupStats, setFollowupStats] = useState<Record<string, number>>({});
   const [savingFollowupId, setSavingFollowupId] = useState<string | null>(null);
   const [logs, setLogs] = useState<Log[]>([]);
@@ -56,7 +58,7 @@ export default function AdminSmsPage() {
 
   async function load() {
     setLoading(true); setError("");
-    try { const data = await request("/"); setLogs(data.logs || []); setTemplates(data.templates || []); setManychatFollowupTemplates(data.manychatFollowupTemplates || []); setTrialEventTemplates(data.trialEventTemplates || []); setCoreSmsTemplates(data.coreTemplates || []); setTrialReminderTemplates(data.trialReminderTemplates || []); setFollowupStats(data.manychatFollowupStats || {}); }
+    try { const data = await request("/"); setLogs(data.logs || []); setTemplates(data.templates || []); setManychatFollowupTemplates(data.manychatFollowupTemplates || []); setTrialEventTemplates(data.trialEventTemplates || []); setCoreSmsTemplates(data.coreTemplates || []); setTrialReminderTemplates(data.trialReminderTemplates || []); setPaymentDueTemplates(data.paymentDueTemplates || []); setFollowupStats(data.manychatFollowupStats || {}); }
     catch (e) { setError(e instanceof Error ? e.message : "Could not load SMS records."); }
     finally { setLoading(false); }
   }
@@ -173,6 +175,16 @@ export default function AdminSmsPage() {
     finally { setSavingFollowupId(null); }
   }
 
+  async function savePaymentDueTemplate(template: PaymentDueTemplate) {
+    setSavingFollowupId(template.id); setError(""); setNotice("");
+    try {
+      await request("/", { action: "save-payment-due-template", id: template.id, message: template.message, enabled: template.enabled });
+      setNotice(`${template.name} saved.`);
+      await load();
+    } catch (e) { setError(e instanceof Error ? e.message : "Could not save payment reminder template."); }
+    finally { setSavingFollowupId(null); }
+  }
+
   async function saveCoreSmsTemplate(template: CoreSmsTemplate) {
     setSavingFollowupId(template.id); setError(""); setNotice("");
     try {
@@ -282,13 +294,25 @@ export default function AdminSmsPage() {
           </div>
         </section>
         <section className="st-card p-5">
+          <div className="mb-3 flex items-center gap-2"><MessageSquare size={18}/><h2 className="m-0 text-base font-semibold">Payment due reminders</h2><span className="rounded-full bg-emerald-50 px-2 py-1 text-[9px] font-semibold text-emerald-700">Automatic</span></div>
+          <p className="mb-3 text-[10px] leading-relaxed text-gray-500">Sent from the Payment Schedule due date: 7 days before, 3 days before, and on the due date. Messages are sent between 8:00 AM and 6:00 PM Nairobi time. Reminders are skipped when the student has cleared the course balance. Placeholders: {{full_name}}, {{amount_due}}, {{balance}}, {{due_date}}.</p>
+          <div className="space-y-3">
+            {paymentDueTemplates.map(template => <div key={template.id} className="rounded-xl border border-gray-100 p-3">
+              <div className="mb-2 flex items-center justify-between gap-2"><b className="text-xs">{template.name}</b><label className="flex items-center gap-1 text-[10px]"><input type="checkbox" checked={template.enabled} onChange={e=>setPaymentDueTemplates(current=>current.map(item=>item.id===template.id?{...item,enabled:e.target.checked}:item))}/> Enabled</label></div>
+              <textarea maxLength={480} value={template.message} onChange={e=>setPaymentDueTemplates(current=>current.map(item=>item.id===template.id?{...item,message:e.target.value}:item))} className="min-h-24 w-full rounded-lg border border-gray-200 p-2 text-[11px] leading-relaxed"/>
+              <div className="mt-2 flex items-center justify-between"><span className="text-[9px] text-gray-400">{template.message.length}/480 characters</span><button className="st-button st-button-secondary" disabled={savingFollowupId===template.id||!template.message.trim()} onClick={()=>savePaymentDueTemplate(template)}><Save size={13}/>{savingFollowupId===template.id?"Saving...":"Save template"}</button></div>
+            </div>)}
+            {!paymentDueTemplates.length&&<p className="text-xs text-gray-500">No payment due reminder templates found. Refresh after the database migration.</p>}
+          </div>
+        </section>
+        <section className="st-card p-5">
           <div className="mb-3 flex items-center gap-2"><MessageSquare size={18}/><h2 className="m-0 text-base font-semibold">Core automated SMS templates</h2><span className="rounded-full bg-emerald-50 px-2 py-1 text-[9px] font-semibold text-emerald-700">Automatic</span></div>
           <p className="mb-3 text-[10px] leading-relaxed text-gray-500">These templates power the existing automatic trial booking confirmation and payment receipt SMS. Edit the wording or disable either message without changing its trigger. Available placeholders are shown below each template.</p>
           <div className="space-y-3">
             {coreSmsTemplates.map(template => <div key={template.id} className="rounded-xl border border-gray-100 p-3">
               <div className="mb-2 flex items-center justify-between gap-2"><b className="text-xs">{template.name}</b><label className="flex items-center gap-1 text-[10px]"><input type="checkbox" checked={template.enabled} onChange={e=>setCoreSmsTemplates(current=>current.map(item=>item.id===template.id?{...item,enabled:e.target.checked}:item))}/> Enabled</label></div>
               <textarea maxLength={480} value={template.message} onChange={e=>setCoreSmsTemplates(current=>current.map(item=>item.id===template.id?{...item,message:e.target.value}:item))} className="min-h-24 w-full rounded-lg border border-gray-200 p-2 text-[11px] leading-relaxed"/>
-              <p className="mt-2 mb-0 text-[9px] text-gray-500">{template.template_key==="trial_booking_confirmation" ? "Placeholders: {{full_name}}, {{lesson_date}}, {{lesson_time}}" : "Placeholders: {{full_name}}, {{amount}}, {{payment_date}}, {{balance}}"}</p>
+              <p className="mt-2 mb-0 text-[9px] text-gray-500">{template.template_key==="trial_booking_confirmation" ? "Placeholders: {{full_name}}, {{lesson_date}}, {{lesson_time}}" : "Placeholders: {{full_name}}, {{amount}}, {{payment_date}}, {{balance}}, {{balance_due}}, {{due_date}} (next Payment Schedule due date)"}</p>
               <div className="mt-2 flex items-center justify-between"><span className="text-[9px] text-gray-400">{template.message.length}/480 characters</span><button className="st-button st-button-secondary" disabled={savingFollowupId===template.id||!template.message.trim()} onClick={()=>saveCoreSmsTemplate(template)}><Save size={13}/>{savingFollowupId===template.id?"Saving...":"Save template"}</button></div>
             </div>)}
             {!coreSmsTemplates.length&&<p className="text-xs text-gray-500">No core templates found. Refresh after the database migration.</p>}
