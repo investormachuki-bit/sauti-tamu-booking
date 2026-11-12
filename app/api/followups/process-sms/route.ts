@@ -162,6 +162,186 @@ async function processSms(request: NextRequest) {
     }
   }
 
+
+  // Payment Schedule reminders: 7 days, 3 days and on the due date.
+  // This processor runs every five minutes; sending is restricted to 08:00–17:59 Nairobi time.
+  const now = new Date();
+  const nairobiParts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Africa/Nairobi",
+    year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", hourCycle: "h23",
+  }).formatToParts(now);
+  const part = (type: string) => nairobiParts.find((item) => item.type === type)?.value || "";
+  const localDate = `${part("year")}-${part("month")}-${part("day")}`;
+  const localHour = Number(part("hour"));
+  const localMinute = Number(part("minute"));
+  const withinPaymentWindow = localHour >= 8 && localHour < 18;
+  let paymentDueSent = 0;
+  let paymentDueFailed = 0;
+  let paymentDueSkipped = 0;
+
+  if (withinPaymentWindow) {
+    const dateAtNoon = new Date(`${localDate}T12:00:00Z`);
+    const dateForOffset = (offset: number) => {
+      const value = new Date(dateAtNoon);
+      value.setUTCDate(value.getUTCDate() + offset);
+      return value.toISOString().slice(0, 10);
+    };
+    const reminderForDate = new Map<string, string>([
+      [dateForOffset(7), "payment_due_7d"],
+      [dateForOffset(3), "payment_due_3d"],
+      [localDate, "payment_due_today"],
+    ]);
+    const dueDates = [...reminderForDate.keys()];
+    const { data: dueSchedules, error: dueScheduleError } = await supabaseServer
+      .from("payment_schedule")
+      .select("id,enrollment_id,amount_due,due_date,status")
+      .eq("status", "scheduled")
+      .in("due_date", dueDates);
+
+    if (dueScheduleError) {
+      console.error("Payment due SMS schedule query failed:", dueScheduleError);
+      paymentDueFailed++;
+    } else {
+      for (const schedule of dueSchedules || []) {
+        const reminderKey = reminderForDate.get(String(schedule.due_date));
+        if (!reminderKey) continue;
+        try {
+          const [{ data: enrollment, error: enrollmentError }, { data: template, error: templateError }] = await Promise.all([
+            supabaseServer.from("student_enrollments")
+              .select("id,student_id,total_fee")
+              .eq("id", schedule.enrollment_id)
+              .maybeSingle(),
+            supabaseServer.from("payment_due_reminder_sms_templates")
+              .select("id,name,message,enabled")
+              .eq("reminder_key", reminderKey)
+              .maybeSingle(),
+          ]);
+          if (enrollmentError) throw enrollmentError;
+          if (!enrollment) { paymentDueSkipped++; continue; }
+
+          const { data: student, error: studentError } = await supabaseServer
+            .from("students")
+            .select("id,full_name,whatsapp_number")
+            .eq("id", enrollment.student_id)
+            .maybeSingle();
+          if (studentError) throw studentError;
+          if (!student?.whatsapp_number?.trim()) { paymentDueSkipped++; continue; }
+
+          const { data: payments, error: paymentsError } = await supabaseServer
+            .from("payments")
+            .select("amount")
+            .eq("enrollment_id", enrollment.id);
+          if (paymentsError) throw paymentsError;
+          const totalPaid = (payments || []).reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
+          const remainingBalance = Math.max(Number(enrollment.total_fee || 0) - totalPaid, 0);
+
+          // Do not message fully paid students, even when a stale due-date row remains.
+          if (remainingBalance <= 0 || Number(schedule.amount_due || 0) <= 0) {
+            paymentDueSkipped++;
+            continue;
+          }
+          if (templateError) throw templateError;
+          if (!template || !template.enabled) { paymentDueSkipped++; continue; }
+
+          const { data: priorLog, error: priorLogError } = await supabaseServer
+            .from("payment_due_reminder_sms_log")
+            .select("id,status")
+            .eq("payment_schedule_id", schedule.id)
+            .eq("reminder_key", reminderKey)
+            .eq("due_date", schedule.due_date)
+            .maybeSingle();
+          if (priorLogError) throw priorLogError;
+          if (priorLog?.status === "accepted" || priorLog?.status === "processing") continue;
+
+          let logId = priorLog?.id as string | undefined;
+          if (logId) {
+            const { error: retryError } = await supabaseServer
+              .from("payment_due_reminder_sms_log")
+              .update({
+                status: "processing",
+                attempt_count: 1,
+                error: null,
+                updated_at: now.toISOString(),
+              })
+              .eq("id", logId)
+              .eq("status", "failed");
+            if (retryError) throw retryError;
+          } else {
+            const { data: createdLog, error: createLogError } = await supabaseServer
+              .from("payment_due_reminder_sms_log")
+              .insert({
+                payment_schedule_id: schedule.id,
+                reminder_key: reminderKey,
+                due_date: schedule.due_date,
+                student_id: student.id,
+                recipient_phone: student.whatsapp_number,
+                status: "processing",
+              })
+              .select("id")
+              .maybeSingle();
+            if (createLogError) {
+              // A concurrent cron run may have claimed this same reminder.
+              if (String(createLogError.code) === "23505") continue;
+              throw createLogError;
+            }
+            logId = createdLog?.id;
+          }
+          if (!logId) continue;
+
+          const formatDate = (value: string) => new Intl.DateTimeFormat("en-KE", {
+            day: "numeric", month: "long", year: "numeric", timeZone: "Africa/Nairobi",
+          }).format(new Date(`${value}T12:00:00+03:00`));
+          const formatMoney = (value: number) => new Intl.NumberFormat("en-KE", { maximumFractionDigits: 0 }).format(value);
+          const message = String(template.message)
+            .replace(/{{\s*full_name\s*}}/gi, student.full_name || "there")
+            .replace(/{{\s*amount_due\s*}}/gi, formatMoney(Number(schedule.amount_due || 0)))
+            .replace(/{{\s*balance\s*}}/gi, formatMoney(remainingBalance))
+            .replace(/{{\s*due_date\s*}}/gi, formatDate(String(schedule.due_date)));
+
+          const sentResult = await sendAirTouchSms(student.whatsapp_number, message);
+          if (!sentResult.success) throw new Error(sentResult.error || "AirTouch send failed.");
+          const sentAt = new Date().toISOString();
+          const { error: smsLogError } = await supabaseServer.from("sms_messages").insert({
+            recipient_name: student.full_name || null,
+            recipient_phone: student.whatsapp_number,
+            message,
+            provider: "airtouch",
+            provider_status: "1000",
+            provider_response: sentResult.response || null,
+            status: "accepted",
+            source: reminderKey,
+            sent_by: null,
+          });
+          if (smsLogError) console.error("Payment due SMS history insert failed:", smsLogError);
+          const { error: reminderLogError } = await supabaseServer
+            .from("payment_due_reminder_sms_log")
+            .update({
+              status: "accepted",
+              message,
+              provider_response: sentResult.response || null,
+              sent_at: sentAt,
+              updated_at: sentAt,
+              error: null,
+            })
+            .eq("id", logId);
+          if (reminderLogError) throw reminderLogError;
+          paymentDueSent++;
+        } catch (err) {
+          paymentDueFailed++;
+          const errorMessage = err instanceof Error ? err.message : "Unknown payment reminder error.";
+          console.error(`Payment due reminder for schedule ${schedule.id} failed:`, errorMessage);
+          await supabaseServer.from("payment_due_reminder_sms_log")
+            .update({ status: "failed", error: errorMessage.slice(0, 500), updated_at: new Date().toISOString() })
+            .eq("payment_schedule_id", schedule.id)
+            .eq("reminder_key", reminderKey)
+            .eq("due_date", schedule.due_date)
+            .eq("status", "processing");
+        }
+      }
+    }
+  }
+
   const { data: dueFollowups, error: followupError } = await supabaseServer
     .from("manychat_followup_queue")
     .select("id,contact_id,template_id,day_offset,attempts")
