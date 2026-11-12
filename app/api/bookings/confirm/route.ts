@@ -633,10 +633,12 @@ export async function POST(request: NextRequest) {
     const lessonTimeText = lessonSlot?.starts_at
       ? formatTime(lessonSlot.starts_at)
       : "";
-    const smsMessage =
-      `Hello ${cleanName}, your Sauti Tamu trial lesson is confirmed for ${lessonDateText}${lessonTimeText ? ` at ${lessonTimeText}` : ""}. We look forward to welcoming you. For enquiries, contact Sauti Tamu Piano Center.`;
+    const { data: bookingSmsTemplate, error: bookingSmsTemplateError } = await supabaseServer.from("core_sms_templates").select("message,enabled").eq("template_key", "trial_booking_confirmation").maybeSingle();
+    if (bookingSmsTemplateError) console.error("Trial booking SMS template lookup failed:", bookingSmsTemplateError);
+    const defaultBookingSms = "Hello {{full_name}}, your Sauti Tamu trial lesson is confirmed for {{lesson_date}}{{lesson_time}}. We look forward to welcoming you. For enquiries, contact Sauti Tamu Piano Center.";
+    const smsMessage = bookingSmsTemplate?.enabled === false ? "" : (bookingSmsTemplate?.message || defaultBookingSms).replace(/{{\s*full_name\s*}}/gi, cleanName).replace(/{{\s*lesson_date\s*}}/gi, lessonDateText).replace(/{{\s*lesson_time\s*}}/gi, lessonTimeText ? ` at ${lessonTimeText}` : "");
     try {
-      smsResult = await sendAirTouchSms(cleanWhatsapp, smsMessage);
+      if (smsMessage) smsResult = await sendAirTouchSms(cleanWhatsapp, smsMessage);
       if (!smsResult.success) {
         console.error("AirTouch booking confirmation SMS failed:", smsResult.error);
       }
