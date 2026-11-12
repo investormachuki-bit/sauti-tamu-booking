@@ -7,6 +7,7 @@ import { supabase } from "@/lib/supabase";
 type Recipient = { phone: string; name: string; source?: string; status?: string; instrument?: string; trialStatus?: string; tags?: string[]; smsMarketingOptIn?: boolean };
 type ManyChatContact = { id: string; manychat_contact_id: string; phone_e164: string; first_name: string | null; last_name: string | null; full_name: string | null; tags: string[]; whatsapp_opted_in: boolean; sms_marketing_opt_in: boolean; sms_consent_at: string | null; synced_at: string };
 type Template = { id: string; name: string; category: string; message: string };
+type ManyChatFollowupTemplate = { id: string; day_offset: number; name: string; message: string; enabled: boolean };
 type Log = { id: string; recipient_name: string | null; recipient_phone: string; message: string; status: string; provider_status: string | null; created_at: string };
 
 export default function AdminSmsPage() {
@@ -24,6 +25,9 @@ export default function AdminSmsPage() {
   const [selectedPhones, setSelectedPhones] = useState<string[]>([]);
   const [search, setSearch] = useState("");
   const [templates, setTemplates] = useState<Template[]>([]);
+  const [manychatFollowupTemplates, setManychatFollowupTemplates] = useState<ManyChatFollowupTemplate[]>([]);
+  const [followupStats, setFollowupStats] = useState<Record<string, number>>({});
+  const [savingFollowupId, setSavingFollowupId] = useState<string | null>(null);
   const [logs, setLogs] = useState<Log[]>([]);
   const [templateName, setTemplateName] = useState("");
   const [templateCategory, setTemplateCategory] = useState("general");
@@ -46,7 +50,7 @@ export default function AdminSmsPage() {
 
   async function load() {
     setLoading(true); setError("");
-    try { const data = await request("/"); setLogs(data.logs || []); setTemplates(data.templates || []); }
+    try { const data = await request("/"); setLogs(data.logs || []); setTemplates(data.templates || []); setManychatFollowupTemplates(data.manychatFollowupTemplates || []); setFollowupStats(data.manychatFollowupStats || {}); }
     catch (e) { setError(e instanceof Error ? e.message : "Could not load SMS records."); }
     finally { setLoading(false); }
   }
@@ -142,6 +146,16 @@ export default function AdminSmsPage() {
     catch(e) { setError(e instanceof Error ? e.message : "Could not save template."); }
     finally { setSavingTemplate(false); }
   }
+  async function saveManyChatFollowup(template: ManyChatFollowupTemplate) {
+    setSavingFollowupId(template.id); setError(""); setNotice("");
+    try {
+      await request("/", { action: "save-manychat-followup-template", id: template.id, message: template.message, enabled: template.enabled });
+      setNotice(`Day ${template.day_offset} ManyChat follow-up template saved.`);
+      await load();
+    } catch (e) { setError(e instanceof Error ? e.message : "Could not save ManyChat follow-up template."); }
+    finally { setSavingFollowupId(null); }
+  }
+
   async function deleteTemplate(id:string) {
     if (!window.confirm("Delete this message template?")) return;
     try { await request("/",{action:"delete-template",id}); await load(); }
@@ -200,6 +214,22 @@ export default function AdminSmsPage() {
           <div className="mb-3 grid grid-cols-1 gap-2"><input className="h-10 rounded-xl border border-gray-200 px-3 text-sm" placeholder="Template name" value={templateName} onChange={e=>setTemplateName(e.target.value)}/><select className="h-10 rounded-xl border border-gray-200 px-3 text-sm" value={templateCategory} onChange={e=>setTemplateCategory(e.target.value)}><option value="general">General</option><option value="marketing">Marketing</option><option value="booking">Booking</option><option value="follow-up">Follow-up</option><option value="payment">Payment</option></select></div>
           <p className="mb-3 text-[10px] text-gray-500">Save the current message using the button in the composer. Personalization variable: {"{{full_name}}"} .</p>
           <div className="space-y-2">{templates.map(t=><div key={t.id} className="rounded-xl border border-gray-100 p-3"><div className="flex items-center justify-between gap-2"><b className="text-xs">{t.name}</b><div className="flex gap-2"><button className="text-xs text-[var(--st-red)]" onClick={()=>setMessage(t.message)}>Use</button><button onClick={()=>deleteTemplate(t.id)} aria-label="Delete template"><Trash2 size={13}/></button></div></div><p className="mt-2 mb-0 line-clamp-3 text-[11px] text-gray-500">{t.message}</p></div>)}{!templates.length&&<p className="text-xs text-gray-500">No saved templates yet.</p>}</div>
+        </section>
+        <section className="st-card p-5">
+          <div className="mb-3 flex items-center justify-between gap-2"><div className="flex items-center gap-2"><RefreshCw size={18}/><h2 className="m-0 text-base font-semibold">ManyChat automated follow-ups</h2></div><span className="rounded-full bg-emerald-50 px-2 py-1 text-[9px] font-semibold text-emerald-700">Automatic</span></div>
+          <p className="mb-3 text-[10px] leading-relaxed text-gray-500">Seven editable SMS messages are scheduled from the contact's explicit SMS consent date. The system sends each message automatically through AirTouch; WhatsApp opt-in alone is not SMS consent. Use {"{{full_name}}"} to personalize.</p>
+          <div className="mb-3 grid grid-cols-3 gap-2 text-center">
+            <div className="rounded-lg bg-slate-50 p-2"><b className="block text-lg">{followupStats.pending || 0}</b><span className="text-[9px] text-gray-500">Pending</span></div>
+            <div className="rounded-lg bg-emerald-50 p-2"><b className="block text-lg">{followupStats.sent || 0}</b><span className="text-[9px] text-gray-500">Sent</span></div>
+            <div className="rounded-lg bg-red-50 p-2"><b className="block text-lg">{followupStats.failed || 0}</b><span className="text-[9px] text-gray-500">Failed</span></div>
+          </div>
+          <div className="space-y-3">
+            {manychatFollowupTemplates.map(template => <div key={template.id} className="rounded-xl border border-gray-100 p-3">
+              <div className="mb-2 flex items-center justify-between gap-2"><div><b className="text-xs">{template.name}</b><p className="m-0 text-[9px] text-gray-500">Send {template.day_offset} {template.day_offset===1?"day":"days"} after SMS consent</p></div><label className="flex items-center gap-1 text-[10px]"><input type="checkbox" checked={template.enabled} onChange={e=>setManychatFollowupTemplates(current=>current.map(item=>item.id===template.id?{...item,enabled:e.target.checked}:item))}/> Enabled</label></div>
+              <textarea maxLength={480} value={template.message} onChange={e=>setManychatFollowupTemplates(current=>current.map(item=>item.id===template.id?{...item,message:e.target.value}:item))} className="min-h-24 w-full rounded-lg border border-gray-200 p-2 text-[11px] leading-relaxed"/>
+              <div className="mt-2 flex items-center justify-between"><span className="text-[9px] text-gray-400">{template.message.length}/480 characters</span><button className="st-button st-button-secondary" disabled={savingFollowupId===template.id||!template.message.trim()} onClick={()=>saveManyChatFollowup(template)}><Save size={13}/>{savingFollowupId===template.id?"Saving...":"Save template"}</button></div>
+            </div>)}
+          </div>
         </section>
         <section className="st-card p-5"><div className="mb-4 flex items-center gap-2"><History size={18}/><h2 className="m-0 text-base font-semibold">Recent SMS activity</h2></div>
           <div className="space-y-3">{logs.slice(0,10).map(log=><div key={log.id} className="border-b border-gray-100 pb-3"><div className="flex items-center justify-between gap-2"><b className="text-xs">{log.recipient_name||log.recipient_phone}</b><span className={`rounded-full px-2 py-1 text-[9px] font-semibold ${log.status==="accepted"?"bg-green-50 text-green-700":"bg-red-50 text-red-700"}`}>{log.status}</span></div><p className="mt-1 mb-1 text-[11px] text-gray-500">{log.recipient_phone} · {new Date(log.created_at).toLocaleString()}</p><p className="m-0 line-clamp-2 text-xs">{log.message}</p></div>)}{!logs.length&&<p className="text-xs text-gray-500">No SMS history yet.</p>}</div>
