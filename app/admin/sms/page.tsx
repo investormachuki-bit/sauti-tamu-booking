@@ -295,7 +295,7 @@ export default function AdminSmsPage() {
         </section>
         <section className="st-card p-5">
           <div className="mb-3 flex items-center gap-2"><MessageSquare size={18}/><h2 className="m-0 text-base font-semibold">Payment due reminders</h2><span className="rounded-full bg-emerald-50 px-2 py-1 text-[9px] font-semibold text-emerald-700">Automatic</span></div>
-          <p className="mb-3 text-[10px] leading-relaxed text-gray-500">Sent from the Payment Schedule due date: 7 days before, 3 days before, and on the due date. Messages are sent between 8:00 AM and 6:00 PM Nairobi time. Reminders are skipped when the student has cleared the course balance. Placeholders: {{full_name}}, {{amount_due}}, {{balance}}, {{due_date}}.</p>
+          <p className="mb-3 text-[10px] leading-relaxed text-gray-500">Sent from the Payment Schedule due date: 7 days before, 3 days before, and on the due date. Messages are sent between 8:00 AM and 6:00 PM Nairobi time. Reminders are skipped when the student has cleared the course balance. Placeholders: {'{{full_name}}'}, {'{{amount_due}}'}, {'{{balance}}'}, {'{{due_date}}'}.</p>
           <div className="space-y-3">
             {paymentDueTemplates.map(template => <div key={template.id} className="rounded-xl border border-gray-100 p-3">
               <div className="mb-2 flex items-center justify-between gap-2"><b className="text-xs">{template.name}</b><label className="flex items-center gap-1 text-[10px]"><input type="checkbox" checked={template.enabled} onChange={e=>setPaymentDueTemplates(current=>current.map(item=>item.id===template.id?{...item,enabled:e.target.checked}:item))}/> Enabled</label></div>
