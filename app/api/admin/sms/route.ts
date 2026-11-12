@@ -15,7 +15,7 @@ async function authenticate(request: NextRequest) {
 export async function GET(request: NextRequest) {
   const user = await authenticate(request);
   if (!user) return NextResponse.json({ error: "Authentication required." }, { status: 401 });
-  const [logs, templates, manychatContacts, followupTemplates, followupQueue, trialEventTemplates, coreTemplates] = await Promise.all([
+  const [logs, templates, manychatContacts, followupTemplates, followupQueue, trialEventTemplates, coreTemplates, trialReminderTemplates] = await Promise.all([
     supabaseServer.from("sms_messages").select("*").order("created_at", { ascending: false }).limit(300),
     supabaseServer.from("sms_templates").select("*").order("name"),
     supabaseServer.from("manychat_whatsapp_contacts").select("id,manychat_contact_id,phone_e164,first_name,last_name,full_name,tags,whatsapp_opted_in,sms_marketing_opt_in,sms_consent_at,synced_at").order("synced_at", { ascending: false }).limit(5000),
@@ -23,8 +23,9 @@ export async function GET(request: NextRequest) {
     supabaseServer.from("manychat_followup_queue").select("status,day_offset").limit(10000),
     supabaseServer.from("trial_event_sms_templates").select("*").order("event_key"),
     supabaseServer.from("core_sms_templates").select("*").order("template_key"),
+    supabaseServer.from("trial_reminder_sms_templates").select("*").order("reminder_key"),
   ]);
-  if (logs.error || templates.error || manychatContacts.error || followupTemplates.error || followupQueue.error || trialEventTemplates.error || coreTemplates.error) {
+  if (logs.error || templates.error || manychatContacts.error || followupTemplates.error || followupQueue.error || trialEventTemplates.error || coreTemplates.error || trialReminderTemplates.error) {
     console.error("SMS Centre load failed:", logs.error || templates.error || manychatContacts.error);
     return NextResponse.json({ error: "Could not load SMS records and audiences. Confirm the latest database migration has been applied." }, { status: 500 });
   }
@@ -35,6 +36,7 @@ export async function GET(request: NextRequest) {
     manychatFollowupTemplates: followupTemplates.data || [],
     trialEventTemplates: trialEventTemplates.data || [],
     coreTemplates: coreTemplates.data || [],
+    trialReminderTemplates: trialReminderTemplates.data || [],
     manychatFollowupStats: (followupQueue.data || []).reduce((stats: Record<string, number>, item: {status:string}) => { stats[item.status] = (stats[item.status] || 0) + 1; return stats; }, {}),
   });
 }
@@ -53,6 +55,14 @@ export async function POST(request: NextRequest) {
         : await supabaseServer.from("sms_templates").insert({ name, category: String(body.category || "general"), message }).select().single();
       if (result.error) return NextResponse.json({ error: result.error.message }, { status: 500 });
       return NextResponse.json({ success: true, template: result.data });
+    }
+    if (body.action === "save-trial-reminder-template") {
+      const id = String(body.id || "");
+      const message = String(body.message || "").trim();
+      if (!id || !message || message.length > 480) return NextResponse.json({ error: "Enter a message of up to 480 characters." }, { status: 400 });
+      const { data, error } = await supabaseServer.from("trial_reminder_sms_templates").update({ message, enabled: body.enabled !== false, updated_at: new Date().toISOString() }).eq("id", id).select().single();
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json({ success: true, template: data });
     }
     if (body.action === "save-core-sms-template") {
       const id = String(body.id || "");
