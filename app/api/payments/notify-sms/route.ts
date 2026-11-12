@@ -98,11 +98,31 @@ export async function POST(request: NextRequest) {
     const totalPaid = (payments ?? []).reduce((sum, item) => sum + Number(item.amount || 0), 0);
     const balance = Math.max(courseFee - totalPaid, 0);
     const amount = Number(payment.amount || 0);
+    let nextDueDate = "";
+    if (payment.enrollment_id && balance > 0) {
+      const { data: nextSchedule, error: scheduleError } = await supabaseServer
+        .from("payment_schedule")
+        .select("due_date")
+        .eq("enrollment_id", payment.enrollment_id)
+        .eq("status", "scheduled")
+        .order("due_date", { ascending: true })
+        .limit(1)
+        .maybeSingle();
+      if (scheduleError) throw scheduleError;
+      if (nextSchedule?.due_date) nextDueDate = formatPaymentDate(nextSchedule.due_date);
+    }
     const { data: smsTemplate, error: templateError } = await supabaseServer.from("core_sms_templates").select("message,enabled").eq("template_key", "payment_receipt").maybeSingle();
     if (templateError) throw templateError;
     if (smsTemplate && !smsTemplate.enabled) return NextResponse.json({ success: true, smsSent: false, skipped: true, reason: "Payment receipt SMS template is disabled." });
     const templateMessage = smsTemplate?.message || "Hello {{full_name}}, Sauti Tamu has received your payment of KSh {{amount}} on {{payment_date}}. Your remaining course balance is KSh {{balance}}. Thank you.";
-    const message = templateMessage.replace(/{{\s*full_name\s*}}/gi, student.full_name || "there").replace(/{{\s*amount\s*}}/gi, formatCurrency(amount)).replace(/{{\s*payment_date\s*}}/gi, formatPaymentDate(payment.payment_date)).replace(/{{\s*balance\s*}}/gi, formatCurrency(balance));
+    const message = templateMessage
+      .replace(/{{\s*full_name\s*}}/gi, student.full_name || "there")
+      .replace(/{{\s*amount\s*}}/gi, formatCurrency(amount))
+      .replace(/{{\s*payment_date\s*}}/gi, formatPaymentDate(payment.payment_date))
+      .replace(/{{\s*balance\s*}}/gi, formatCurrency(balance))
+      .replace(/{{\s*balance_due\s*}}/gi, formatCurrency(balance))
+      .replace(/{{\s*due_date\s*}}/gi, nextDueDate || "not scheduled")
+      .replace(/{{\s*next_due_date\s*}}/gi, nextDueDate || "not scheduled");
 
     const result = await sendAirTouchSms(student.whatsapp_number, message);
     if (!result.success) {
