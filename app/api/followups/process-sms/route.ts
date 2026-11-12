@@ -15,9 +15,10 @@ function responseError(error: string, status = 500) {
 }
 
 async function processSms(request: NextRequest) {
-  const secret = process.env.FOLLOWUP_CRON_SECRET;
   const authorization = request.headers.get("authorization");
-  if (!secret || authorization !== `Bearer ${secret}`) {
+  const providedSecret = authorization?.startsWith("Bearer ") ? authorization.slice(7) : null;
+  const validSecrets = [process.env.FOLLOWUP_CRON_SECRET, process.env.MANYCHAT_FOLLOWUP_CRON_SECRET].filter(Boolean);
+  if (!providedSecret || !validSecrets.includes(providedSecret)) {
     return responseError("Unauthorized.", 401);
   }
 
