@@ -656,16 +656,12 @@ export default function AdminCalendarPage() {
               day === selectedDate;
 
             const availableCount =
-              daySlots.filter(
-                (slot) =>
-                  slot.is_available &&
-                  (bookingsBySlot.get(slot.id)?.length ?? 0) === 0
-              ).length;
+              daySlots.filter((slot) => slot.is_available).length;
 
-            const bookedCount =
-              daySlots.filter((slot) =>
-                (bookingsBySlot.get(slot.id)?.length ?? 0) > 0
-              ).length;
+            const bookedCount = daySlots.reduce(
+              (total, slot) => total + (bookingsBySlot.get(slot.id)?.length ?? 0),
+              0
+            );
 
             return (
               <button
@@ -871,16 +867,11 @@ export default function AdminCalendarPage() {
                                 : "bg-green-50 text-green-700"
                             }`}
                           >
-                            {isBooked ? (
-                              <>
-                                <Check
-                                  size={11}
-                                />
-                                Booked
-                              </>
-                            ) : (
-                              "Available"
-                            )}
+                            <>
+                              <Check size={11} />
+                              {slot.is_available ? "Open for bookings" : "Unavailable"}
+                              {isBooked ? " · " + slotBookings.length + " booked" : ""}
+                            </>
                           </span>
 
                         </div>
