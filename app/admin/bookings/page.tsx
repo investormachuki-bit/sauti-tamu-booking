@@ -739,6 +739,49 @@ export default function AdminBookingsPage() {
         console.error("Old slot release warning:", releaseError);
       }
 
+      // Replace only the pending pre-trial SMS reminders for the new lesson time.
+      const reminderTypes = ["trial_reminder_24h", "trial_reminder_1h", "trial_reminder_15m"];
+      const { error: cancelReminderError } = await supabase
+        .from("follow_up_tasks")
+        .update({ status: "cancelled", updated_at: new Date().toISOString() })
+        .eq("booking_id", rescheduleBooking.booking.id)
+        .eq("channel", "sms")
+        .eq("status", "pending")
+        .in("task_type", reminderTypes);
+      if (cancelReminderError) console.error("Could not cancel old trial SMS reminders:", cancelReminderError);
+
+      const { data: newSlot, error: newSlotError } = await supabase
+        .from("lesson_slots")
+        .select("starts_at")
+        .eq("id", newSlotId)
+        .single();
+      if (newSlotError) {
+        console.error("Could not load rescheduled lesson time for SMS reminders:", newSlotError);
+      } else if (newSlot?.starts_at) {
+        const startsAtMs = new Date(newSlot.starts_at).getTime();
+        const nowMs = Date.now();
+        const offsets = [
+          ["trial_reminder_24h", 24 * 60],
+          ["trial_reminder_1h", 60],
+          ["trial_reminder_15m", 15],
+        ] as const;
+        const reminderTasks = offsets.map(([task_type, minutes]) => ({
+          lead_id: rescheduleBooking.booking.lead_id,
+          booking_id: rescheduleBooking.booking.id,
+          task_type,
+          due_at: new Date(startsAtMs - minutes * 60_000).toISOString(),
+          status: "pending",
+          channel: "sms",
+          message_template: task_type,
+          sent_at: null,
+          completed_at: null,
+        })).filter(task => new Date(task.due_at).getTime() > nowMs);
+        if (reminderTasks.length) {
+          const { error: insertReminderError } = await supabase.from("follow_up_tasks").insert(reminderTasks);
+          if (insertReminderError) console.error("Could not schedule rescheduled trial SMS reminders:", insertReminderError);
+        }
+      }
+
       await sendTrialEventSms(rescheduleBooking, "trial_rebook");
       closeReschedule();
       setSelectedBooking(null);
