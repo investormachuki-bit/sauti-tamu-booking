@@ -391,28 +391,14 @@ export default function AdminCalendarPage() {
   const selectedDaySlots =
     slotsByDate.get(selectedDate) ?? [];
 
-  const bookingBySlot = useMemo(() => {
-    const map = new Map<
-      string,
-      Booking
-    >();
-
+  const bookingsBySlot = useMemo(() => {
+    const map = new Map<string, Booking[]>();
     bookings.forEach((booking) => {
-      /*
-       * Cancelled bookings should not make
-       * a slot look actively booked.
-       */
-
-      if (
-        booking.status !== "cancelled"
-      ) {
-        map.set(
-          booking.slot_id,
-          booking
-        );
-      }
+      if (booking.status === "cancelled") return;
+      const existing = map.get(booking.slot_id) ?? [];
+      existing.push(booking);
+      map.set(booking.slot_id, existing);
     });
-
     return map;
   }, [bookings]);
 
@@ -673,16 +659,12 @@ export default function AdminCalendarPage() {
               daySlots.filter(
                 (slot) =>
                   slot.is_available &&
-                  !bookingBySlot.has(
-                    slot.id
-                  )
+                  (bookingsBySlot.get(slot.id)?.length ?? 0) === 0
               ).length;
 
             const bookedCount =
               daySlots.filter((slot) =>
-                bookingBySlot.has(
-                  slot.id
-                )
+                (bookingsBySlot.get(slot.id)?.length ?? 0) > 0
               ).length;
 
             return (
@@ -827,20 +809,11 @@ export default function AdminCalendarPage() {
 
             {selectedDaySlots.map(
               (slot) => {
-                const booking =
-                  bookingBySlot.get(
-                    slot.id
-                  );
-
-                const lead =
-                  booking
-                    ? leadById.get(
-                        booking.lead_id
-                      )
-                    : undefined;
+                const slotBookings =
+                  bookingsBySlot.get(slot.id) ?? [];
 
                 const isBooked =
-                  Boolean(booking);
+                  slotBookings.length > 0;
 
                 const info =
                   instrumentInfo[
@@ -914,36 +887,31 @@ export default function AdminCalendarPage() {
 
                         {isBooked && (
                           <div className="mt-4 border-t border-[var(--st-border)] pt-4">
-
                             <p className="m-0 text-[9px] font-semibold uppercase tracking-[0.08em] text-[var(--st-gray)]">
-                              Booking
+                              {slotBookings.length} trial {slotBookings.length === 1 ? "booking" : "bookings"}
                             </p>
-
-                            <div className="mt-2 flex items-center gap-3">
-
-                              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[var(--st-bg-soft)] text-[9px] font-bold text-[var(--st-red)]">
-                                {lead
-                                  ? initials(
-                                      lead.full_name
-                                    )
-                                  : "BK"}
-                              </div>
-
-                              <div>
-                                <p className="m-0 text-[11px] font-bold text-[var(--st-charcoal-dark)]">
-                                  {lead?.full_name ||
-                                    "Reserved trial slot"}
-                                </p>
-
-                                {lead && (
-                                  <p className="mt-1 mb-0 text-[9px] text-[var(--st-gray)]">
-                                    {lead.whatsapp_number}
-                                  </p>
-                                )}
-                              </div>
-
+                            <div className="mt-3 space-y-3">
+                              {slotBookings.map((booking) => {
+                                const lead = leadById.get(booking.lead_id);
+                                return (
+                                  <div key={booking.id} className="flex items-center gap-3">
+                                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--st-bg-soft)] text-[9px] font-bold text-[var(--st-red)]">
+                                      {lead ? initials(lead.full_name) : "BK"}
+                                    </div>
+                                    <div className="min-w-0">
+                                      <p className="m-0 text-[11px] font-bold text-[var(--st-charcoal-dark)]">
+                                        {lead?.full_name || "Trial booking"}
+                                      </p>
+                                      {lead && (
+                                        <p className="mt-1 mb-0 text-[9px] text-[var(--st-gray)]">
+                                          {lead.whatsapp_number}
+                                        </p>
+                                      )}
+                                    </div>
+                                  </div>
+                                );
+                              })}
                             </div>
-
                           </div>
                         )}
 
