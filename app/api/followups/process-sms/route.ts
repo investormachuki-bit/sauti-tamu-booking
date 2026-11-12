@@ -8,6 +8,7 @@ const TASK_TYPES = [
   "trial_reminder_24h",
   "trial_reminder_6h",
   "trial_reminder_1h",
+  "trial_reminder_15m",
 ] as const;
 
 function responseError(error: string, status = 500) {
@@ -24,7 +25,7 @@ async function processSms(request: NextRequest) {
 
   const { data: tasks, error } = await supabaseServer
     .from("follow_up_tasks")
-    .select("id, lead_id, booking_id, task_type")
+    .select("id, lead_id, booking_id, task_type, due_at")
     .eq("status", "pending")
     .eq("channel", "sms")
     .lte("due_at", new Date().toISOString())
@@ -60,7 +61,7 @@ async function processSms(request: NextRequest) {
         .single();
       if (bookingError || !booking) throw new Error("Booking not found.");
 
-      if (["cancelled", "no_show"].includes(String(booking.status).toLowerCase())) {
+      if (["cancelled", "no_show", "missed", "rescheduled"].includes(String(booking.status).toLowerCase())) {
         await supabaseServer.from("follow_up_tasks").update({
           status: "cancelled",
           updated_at: new Date().toISOString(),
@@ -77,6 +78,20 @@ async function processSms(request: NextRequest) {
       if (slotError || !slot) throw new Error("Lesson slot not found.");
 
       const startsAt = new Date(slot.starts_at);
+      const offsetMinutes: Record<string, number> = {
+        trial_reminder_24h: 24 * 60,
+        trial_reminder_1h: 60,
+        trial_reminder_15m: 15,
+      };
+      const reminderOffset = offsetMinutes[task.task_type];
+      if (reminderOffset) {
+        const expectedStart = new Date(new Date(task.due_at).getTime() + reminderOffset * 60_000).getTime();
+        if (Math.abs(startsAt.getTime() - expectedStart) > 60_000) {
+          await supabaseServer.from("follow_up_tasks").update({ status: "cancelled", updated_at: new Date().toISOString() }).eq("id", task.id).eq("status", "pending");
+          results.push({ taskId: task.id, success: false, error: "Booking time changed; stale reminder cancelled." });
+          continue;
+        }
+      }
       const date = new Intl.DateTimeFormat("en-KE", {
         weekday: "long", day: "numeric", month: "long",
         timeZone: "Africa/Nairobi",
@@ -86,7 +101,26 @@ async function processSms(request: NextRequest) {
         timeZone: "Africa/Nairobi",
       }).format(startsAt);
       const label = String(booking.instrument || "music").toLowerCase() === "piano" ? "piano" : "guitar";
-      const message = `Hello ${lead.full_name}, this is a reminder of your Sauti Tamu ${label} trial lesson on ${date} at ${time}. We look forward to seeing you. Sauti Tamu Piano Center.`;
+      let message = `Hello ${lead.full_name}, this is a reminder of your Sauti Tamu ${label} trial lesson on ${date} at ${time}. We look forward to seeing you. Sauti Tamu Piano Center.`;
+      if (reminderOffset) {
+        const { data: template, error: templateError } = await supabaseServer
+          .from("trial_reminder_sms_templates")
+          .select("message,enabled")
+          .eq("reminder_key", task.task_type)
+          .maybeSingle();
+        if (templateError) throw new Error("Could not load trial reminder SMS template.");
+        if (template && !template.enabled) {
+          await supabaseServer.from("follow_up_tasks").update({ status: "cancelled", updated_at: new Date().toISOString() }).eq("id", task.id).eq("status", "pending");
+          results.push({ taskId: task.id, success: false, error: "Trial reminder template is disabled." });
+          continue;
+        }
+        const templateText = template?.message || message;
+        message = templateText
+          .replace(/{{\\s*full_name\\s*}}/gi, lead.full_name || "there")
+          .replace(/{{\\s*instrument\\s*}}/gi, label)
+          .replace(/{{\\s*lesson_date\\s*}}/gi, date)
+          .replace(/{{\\s*lesson_time\\s*}}/gi, time);
+      }
 
       const sentResult = await sendAirTouchSms(lead.whatsapp_number, message);
       if (!sentResult.success) throw new Error(sentResult.error || "AirTouch send failed.");
