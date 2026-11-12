@@ -247,7 +247,7 @@ export default function AdminSmsPage() {
 
         <section className="st-card p-5">
           <div className="mb-3 flex items-center gap-2"><MessageSquare size={18}/><h2 className="m-0 text-base font-semibold">Trial event SMS templates</h2><span className="rounded-full bg-blue-50 px-2 py-1 text-[9px] font-semibold text-blue-700">Event-triggered</span></div>
-          <p className="mb-3 text-[10px] leading-relaxed text-gray-500">Sent automatically when a trial is marked missed, cancelled, rescheduled, or attended. These are immediate event messages, not scheduled follow-ups. Personalization: {{full_name}}, {{instrument}}, {{booking_link}}.</p>
+          <p className="mb-3 text-[10px] leading-relaxed text-gray-500">Sent automatically when a trial is marked missed, cancelled, rescheduled, or attended. These are immediate event messages, not scheduled follow-ups. Personalization: {'{{full_name}}'}, {'{{instrument}}'}, {'{{booking_link}}'}.</p>
           <div className="space-y-3">
             {trialEventTemplates.map(template => <div key={template.id} className="rounded-xl border border-gray-100 p-3">
               <div className="mb-2 flex items-center justify-between gap-2"><b className="text-xs">{template.name}</b><label className="flex items-center gap-1 text-[10px]"><input type="checkbox" checked={template.enabled} onChange={e=>setTrialEventTemplates(current=>current.map(item=>item.id===template.id?{...item,enabled:e.target.checked}:item))}/> Enabled</label></div>
