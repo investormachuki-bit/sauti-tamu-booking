@@ -54,7 +54,15 @@ export async function POST(request: NextRequest) {
       if (result.error) return NextResponse.json({ error: result.error.message }, { status: 500 });
       return NextResponse.json({ success: true, template: result.data });
     }
-    if (body.action === "save-core-sms-template") {\n      const id = String(body.id || "");\n      const message = String(body.message || "").trim();\n      if (!id || !message || message.length > 480) return NextResponse.json({ error: "Enter a message of up to 480 characters." }, { status: 400 });\n      const { data, error } = await supabaseServer.from("core_sms_templates").update({ message, enabled: body.enabled !== false, updated_at: new Date().toISOString() }).eq("id", id).select().single();\n      if (error) return NextResponse.json({ error: error.message }, { status: 500 });\n      return NextResponse.json({ success: true, template: data });\n    }\n    if (body.action === "save-trial-event-template") {
+    if (body.action === "save-core-sms-template") {
+      const id = String(body.id || "");
+      const message = String(body.message || "").trim();
+      if (!id || !message || message.length > 480) return NextResponse.json({ error: "Enter a message of up to 480 characters." }, { status: 400 });
+      const { data, error } = await supabaseServer.from("core_sms_templates").update({ message, enabled: body.enabled !== false, updated_at: new Date().toISOString() }).eq("id", id).select().single();
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json({ success: true, template: data });
+    }
+    if (body.action === "save-trial-event-template") {
       const id = String(body.id || "");
       const message = String(body.message || "").trim();
       if (!id || !message || message.length > 480) return NextResponse.json({ error: "Enter a message of up to 480 characters." }, { status: 400 });
