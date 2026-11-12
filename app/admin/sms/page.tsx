@@ -115,8 +115,7 @@ export default function AdminSmsPage() {
     if (!file) return;
     const reader = new FileReader();
     reader.onload = () => {
-      const rows = String(reader.result || "").split(/\r?
-/).slice(1);
+      const rows = String(reader.result || "").split(/\\r?\\n/).slice(1);
       const parsed = rows.map(row=>{ const cols=row.split(","); return { name:(cols[0]||"").trim(), phone:(cols[1]||"").trim(), source:"CSV" }; }).filter(x=>x.phone);
       setRecipients(current=>dedupe([...current,...parsed]));
       setSelectedPhones(current=>Array.from(new Set([...current,...parsed.map(x=>x.phone)])));
