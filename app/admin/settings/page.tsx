@@ -3115,7 +3115,7 @@ export default function SettingsPage() {
                   </p>
 
                   <p className="mt-1 text-[9px] text-[#999]">
-                    1 trial slot / hour
+                    Multiple trial bookings per hour
                   </p>
 
                 </button>
