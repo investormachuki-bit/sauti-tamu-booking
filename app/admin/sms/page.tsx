@@ -8,7 +8,8 @@ type Recipient = { phone: string; name: string; source?: string; status?: string
 type ManyChatContact = { id: string; manychat_contact_id: string; phone_e164: string; first_name: string | null; last_name: string | null; full_name: string | null; tags: string[]; whatsapp_opted_in: boolean; sms_marketing_opt_in: boolean; sms_consent_at: string | null; synced_at: string };
 type Template = { id: string; name: string; category: string; message: string };
 type ManyChatFollowupTemplate = { id: string; day_offset: number; name: string; message: string; enabled: boolean };
-type TrialEventTemplate = { id: string; event_key: "trial_rebook" | "trial_attended"; name: string; message: string; enabled: boolean };\ntype CoreSmsTemplate = { id: string; template_key: "trial_booking_confirmation" | "payment_receipt"; name: string; message: string; enabled: boolean };
+type TrialEventTemplate = { id: string; event_key: "trial_rebook" | "trial_attended"; name: string; message: string; enabled: boolean };
+type CoreSmsTemplate = { id: string; template_key: "trial_booking_confirmation" | "payment_receipt"; name: string; message: string; enabled: boolean };
 type Log = { id: string; recipient_name: string | null; recipient_phone: string; message: string; status: string; provider_status: string | null; created_at: string };
 
 export default function AdminSmsPage() {
@@ -27,7 +28,8 @@ export default function AdminSmsPage() {
   const [search, setSearch] = useState("");
   const [templates, setTemplates] = useState<Template[]>([]);
   const [manychatFollowupTemplates, setManychatFollowupTemplates] = useState<ManyChatFollowupTemplate[]>([]);
-  const [trialEventTemplates, setTrialEventTemplates] = useState<TrialEventTemplate[]>([]);\n  const [coreSmsTemplates, setCoreSmsTemplates] = useState<CoreSmsTemplate[]>([]);
+  const [trialEventTemplates, setTrialEventTemplates] = useState<TrialEventTemplate[]>([]);
+  const [coreSmsTemplates, setCoreSmsTemplates] = useState<CoreSmsTemplate[]>([]);
   const [followupStats, setFollowupStats] = useState<Record<string, number>>({});
   const [savingFollowupId, setSavingFollowupId] = useState<string | null>(null);
   const [logs, setLogs] = useState<Log[]>([]);
@@ -113,7 +115,8 @@ export default function AdminSmsPage() {
     if (!file) return;
     const reader = new FileReader();
     reader.onload = () => {
-      const rows = String(reader.result || "").split(/\r?\n/).slice(1);
+      const rows = String(reader.result || "").split(/\r?
+/).slice(1);
       const parsed = rows.map(row=>{ const cols=row.split(","); return { name:(cols[0]||"").trim(), phone:(cols[1]||"").trim(), source:"CSV" }; }).filter(x=>x.phone);
       setRecipients(current=>dedupe([...current,...parsed]));
       setSelectedPhones(current=>Array.from(new Set([...current,...parsed.map(x=>x.phone)])));
@@ -214,13 +217,16 @@ export default function AdminSmsPage() {
         </div>}
         {(audience==="leads"||audience==="all") && <div className="mb-3"><label className="mb-2 block text-xs font-semibold">Lead status</label><select className="h-10 w-full rounded-xl border border-gray-200 px-3 text-sm" value={leadStatus} onChange={e=>setLeadStatus(e.target.value)}><option value="all">All statuses</option>{["new","booked","attended","follow_up","interested","registered","not_now","not_interested","no_show"].map(x=><option key={x} value={x}>{x.replaceAll("_"," ")}</option>)}</select></div>}
         {(audience==="students"||audience==="all") && <div className="mb-3"><label className="mb-2 block text-xs font-semibold">Student status</label><select className="h-10 w-full rounded-xl border border-gray-200 px-3 text-sm" value={studentStatus} onChange={e=>setStudentStatus(e.target.value)}><option value="all">All student statuses</option>{["active","registered","completed","paused","inactive"].map(x=><option key={x} value={x}>{x.replaceAll("_"," ")}</option>)}</select></div>}
-        {(audience==="students"||audience==="all") && <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-2"><div><label className="mb-2 block text-xs font-semibold">Student instrument</label><select className="h-10 w-full rounded-xl border border-gray-200 px-3 text-sm" value={studentInstrument} onChange={e=>setStudentInstrument(e.target.value)}><option value="all">All instruments</option><option value="piano">Piano</option><option value="guitar">Guitar</option></select></div></div>}\n        {(audience==="trials"||audience==="all") && <div className="mb-4 rounded-xl border border-gray-100 p-3"><p className="mb-2 text-xs font-semibold">Trial filters</p><div className="grid grid-cols-1 gap-3 sm:grid-cols-2"><div><label className="mb-2 block text-xs font-semibold">Trial instrument</label><select className="h-10 w-full rounded-xl border border-gray-200 px-3 text-sm" value={trialInstrument} onChange={e=>setTrialInstrument(e.target.value)}><option value="all">All instruments</option><option value="piano">Piano</option><option value="guitar">Guitar</option></select></div><div><label className="mb-2 block text-xs font-semibold">Trial status</label><select className="h-10 w-full rounded-xl border border-gray-200 px-3 text-sm" value={trialStatus} onChange={e=>setTrialStatus(e.target.value)}><option value="all">All trial statuses</option><option value="not_booked">No trial booking</option><option value="booked">Booked / confirmed</option><option value="attended">Attended</option><option value="no_show">Missed / no-show</option><option value="cancelled">Cancelled</option><option value="rescheduled">Rescheduled</option></select></div></div></div>}
+        {(audience==="students"||audience==="all") && <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-2"><div><label className="mb-2 block text-xs font-semibold">Student instrument</label><select className="h-10 w-full rounded-xl border border-gray-200 px-3 text-sm" value={studentInstrument} onChange={e=>setStudentInstrument(e.target.value)}><option value="all">All instruments</option><option value="piano">Piano</option><option value="guitar">Guitar</option></select></div></div>}
+        {(audience==="trials"||audience==="all") && <div className="mb-4 rounded-xl border border-gray-100 p-3"><p className="mb-2 text-xs font-semibold">Trial filters</p><div className="grid grid-cols-1 gap-3 sm:grid-cols-2"><div><label className="mb-2 block text-xs font-semibold">Trial instrument</label><select className="h-10 w-full rounded-xl border border-gray-200 px-3 text-sm" value={trialInstrument} onChange={e=>setTrialInstrument(e.target.value)}><option value="all">All instruments</option><option value="piano">Piano</option><option value="guitar">Guitar</option></select></div><div><label className="mb-2 block text-xs font-semibold">Trial status</label><select className="h-10 w-full rounded-xl border border-gray-200 px-3 text-sm" value={trialStatus} onChange={e=>setTrialStatus(e.target.value)}><option value="all">All trial statuses</option><option value="not_booked">No trial booking</option><option value="booked">Booked / confirmed</option><option value="attended">Attended</option><option value="no_show">Missed / no-show</option><option value="cancelled">Cancelled</option><option value="rescheduled">Rescheduled</option></select></div></div></div>}
         <div className="mb-4 flex flex-wrap gap-2">
           <button className="st-button st-button-secondary" onClick={loadAudience}><Users size={15}/> Load audience</button>
           <label className="st-button st-button-secondary cursor-pointer"><Upload size={15}/> Import CSV<input type="file" accept=".csv,text/csv" className="hidden" onChange={e=>importCsv(e.target.files?.[0])}/></label>
         </div>
         <label className="mb-2 block text-xs font-semibold">Add numbers manually</label>
-        <textarea className="mb-2 min-h-24 w-full rounded-xl border border-gray-200 p-3 text-sm" placeholder={"0712345678\n254712345678\n+254723456789"} value={manualNumbers} onChange={e=>setManualNumbers(e.target.value)} />
+        <textarea className="mb-2 min-h-24 w-full rounded-xl border border-gray-200 p-3 text-sm" placeholder={"0712345678
+254712345678
++254723456789"} value={manualNumbers} onChange={e=>setManualNumbers(e.target.value)} />
         <button className="st-button st-button-secondary mb-5" onClick={addManual}><Plus size={15}/> Add numbers to recipients</button>
         <div className="mb-2 flex items-center justify-between"><label className="text-xs font-semibold">Recipients ({recipients.length}) · {selectedRecipients.length} selected</label><button className="text-xs text-[var(--st-red)]" onClick={()=>{setRecipients([]);setSelectedPhones([]);}}>Clear all</button></div>{recipients.length>0 && <div className="mb-2 flex items-center justify-between rounded-lg bg-[var(--st-bg-soft)] px-3 py-2 text-xs"><label className="flex items-center gap-2 font-semibold"><input type="checkbox" checked={allVisibleSelected} onChange={e=>setSelectedPhones(current=>e.target.checked?Array.from(new Set([...current,...visibleRecipients.map(r=>r.phone)])):current.filter(p=>!visibleRecipients.some(r=>r.phone===p)))} /> Select all {visibleRecipients.length} shown</label><span className="text-gray-500">{selectedRecipients.length} selected total</span></div>}
         <input className="mb-2 h-10 w-full rounded-xl border border-gray-200 px-3 text-sm" placeholder="Search recipient list..." value={search} onChange={e=>setSearch(e.target.value)}/>
