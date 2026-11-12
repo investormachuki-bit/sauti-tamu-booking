@@ -20,7 +20,8 @@ import {
 } from "lucide-react";
 
 import { supabase } from "@/lib/supabase";
-import { completeStudent } from "@/lib/students-service";
+import { completeStudent, loadStudents } from "@/lib/students-service";
+import type { StudentRecord } from "@/components/students/students-types";
 
 type BookingStatus =
   | "confirmed"
@@ -121,6 +122,14 @@ function formatDate(dateString: string) {
     day: "numeric",
     month: "short",
   }).format(new Date(dateString));
+}
+
+function formatPaymentCurrency(value: number) {
+  return new Intl.NumberFormat("en-KE", {
+    style: "currency",
+    currency: "KES",
+    maximumFractionDigits: 0,
+  }).format(value || 0);
 }
 
 function formatDateOnly(dateString: string) {
@@ -292,6 +301,7 @@ export default function AdminDashboard() {
   const [leads, setLeads] = useState<Lead[]>([]);
   const [students, setStudents] = useState<Student[]>([]);
   const [enrollments, setEnrollments] = useState<StudentEnrollment[]>([]);
+  const [paymentRecords, setPaymentRecords] = useState<StudentRecord[]>([]);
   const [completingStudentId, setCompletingStudentId] = useState<string | null>(null);
 
   const [loading, setLoading] = useState(true);
@@ -316,6 +326,7 @@ export default function AdminDashboard() {
         { data: leadData, error: leadError },
         { data: studentData, error: studentError },
         { data: enrollmentData, error: enrollmentError },
+        paymentRecordsData,
       ] = await Promise.all([
         supabase
           .from("bookings")
@@ -388,6 +399,7 @@ export default function AdminDashboard() {
             `
           )
           .order("end_date", { ascending: true }),
+        loadStudents(),
       ]);
 
       if (bookingError) {
@@ -432,6 +444,7 @@ export default function AdminDashboard() {
       setLeads((leadData ?? []) as Lead[]);
       setStudents((studentData ?? []) as Student[]);
       setEnrollments((enrollmentData ?? []) as StudentEnrollment[]);
+      setPaymentRecords(paymentRecordsData);
     } catch (err) {
       console.error(err);
 
@@ -554,6 +567,48 @@ export default function AdminDashboard() {
         );
       });
   }, [bookings, tomorrowKey]);
+
+  const paymentScheduleRows = useMemo(() => {
+    return paymentRecords
+      .map((record) => {
+        const enrollment = record.enrollment;
+        if (!enrollment) return null;
+
+        const totalFee = Number(enrollment.total_fee || 0);
+        const totalPaid = record.payments.reduce(
+          (sum, payment) => sum + Number(payment.amount || 0),
+          0
+        );
+        const balance = Math.max(totalFee - totalPaid, 0);
+        if (balance <= 0) return null;
+
+        const nextSchedule = [...record.schedules]
+          .filter((schedule) => !["paid", "cancelled"].includes(String(schedule.status).toLowerCase()))
+          .filter((schedule) => Boolean(schedule.due_date))
+          .filter((schedule) => {
+            const paidAgainstSchedule = record.payments
+              .filter((payment) => payment.payment_schedule_id === schedule.id)
+              .reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
+            return paidAgainstSchedule < Number(schedule.amount_due || 0);
+          })
+          .sort((a, b) => a.due_date.localeCompare(b.due_date))[0] ?? null;
+
+        if (!nextSchedule) return null;
+        const daysUntilDue = calendarDaysUntil(nextSchedule.due_date, todayKey);
+        if (daysUntilDue > 7) return null;
+
+        return {
+          student: record.student,
+          enrollment,
+          balance,
+          scheduledAmount: Number(nextSchedule.amount_due || 0),
+          dueDate: nextSchedule.due_date,
+          daysUntilDue,
+        };
+      })
+      .filter((row): row is NonNullable<typeof row> => row !== null)
+      .sort((a, b) => a.daysUntilDue - b.daysUntilDue);
+  }, [paymentRecords, todayKey]);
 
   const upcomingBookings = useMemo(() => {
     const now = new Date();
@@ -939,6 +994,79 @@ export default function AdminDashboard() {
             <div className="divide-y divide-[var(--st-border)]">
               {todayBookings.map((booking) => (
                 <TrialRow key={booking.id} booking={booking} />
+              ))}
+            </div>
+          )}
+        </div>
+      </section>
+
+      {/* PAYMENT SCHEDULE */}
+      <section className="mt-5">
+        <div className="st-card overflow-hidden">
+          <div className="flex items-center justify-between gap-3 border-b border-[var(--st-border)] px-5 py-4">
+            <div>
+              <h2 className="st-section-title">Payment schedule</h2>
+              <p className="mt-1 mb-0 text-[10px] text-[var(--st-gray)]">
+                Overdue payments and payments due within the next 7 days
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => { window.location.href = "/admin/payment-schedule"; }}
+              className="st-button st-button-ghost shrink-0"
+            >
+              View schedule <ArrowRight size={14} />
+            </button>
+          </div>
+
+          {loading ? (
+            <SectionLoading label="Loading payment schedule..." />
+          ) : paymentScheduleRows.length === 0 ? (
+            <EmptyState
+              title="No payments need attention"
+              description="There are no overdue payments or payments due within the next 7 days."
+              icon={<Wallet size={19} />}
+            />
+          ) : (
+            <div className="divide-y divide-[var(--st-border)]">
+              {paymentScheduleRows.map((row) => (
+                <div key={row.student.id} className="flex flex-col gap-3 px-5 py-4 transition-colors hover:bg-[var(--st-bg-soft)] sm:flex-row sm:items-center">
+                  <div className="flex min-w-0 flex-1 items-center gap-3">
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--st-bg-soft)] text-[10px] font-bold text-[var(--st-red)]">
+                      {getInitials(row.student.full_name)}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="m-0 truncate text-[12px] font-bold text-[var(--st-charcoal-dark)]">{row.student.full_name}</p>
+                      <p className="mt-1 mb-0 text-[10px] capitalize text-[var(--st-gray)]">
+                        {row.enrollment.programme_name || row.enrollment.instrument}
+                        {row.student.whatsapp_number ? ` · ${row.student.whatsapp_number}` : ""}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4 sm:w-[330px]">
+                    <div>
+                      <p className="m-0 text-[9px] font-semibold uppercase tracking-[0.08em] text-[var(--st-gray)]">Balance</p>
+                      <p className="mt-1 mb-0 text-[12px] font-bold text-[var(--st-charcoal-dark)]">{formatPaymentCurrency(row.balance)}</p>
+                    </div>
+                    <div>
+                      <p className="m-0 text-[9px] font-semibold uppercase tracking-[0.08em] text-[var(--st-gray)]">Expected payment</p>
+                      <p className="mt-1 mb-0 text-[12px] font-bold text-[var(--st-charcoal-dark)]">{formatPaymentCurrency(row.scheduledAmount)}</p>
+                    </div>
+                  </div>
+                  <div className="shrink-0 sm:w-[145px] sm:text-right">
+                    <p className="m-0 text-[10px] font-bold text-[var(--st-charcoal-dark)]">{formatDateOnly(row.dueDate)}</p>
+                    <span className={`mt-1 inline-block text-[9px] font-bold ${row.daysUntilDue <= 0 ? "text-[var(--st-red)]" : "text-[var(--st-green)]"}`}>
+                      {row.daysUntilDue < 0 ? `Overdue by ${Math.abs(row.daysUntilDue)} day${Math.abs(row.daysUntilDue) === 1 ? "" : "s"}` : row.daysUntilDue === 0 ? "Due today" : `${row.daysUntilDue} day${row.daysUntilDue === 1 ? "" : "s"} to due date`}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => { window.location.href = `/admin/students?student=${encodeURIComponent(row.student.id)}`; }}
+                    className="st-button st-button-secondary shrink-0"
+                  >
+                    View student <ArrowRight size={13} />
+                  </button>
+                </div>
               ))}
             </div>
           )}
