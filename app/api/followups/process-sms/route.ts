@@ -121,10 +121,10 @@ async function processSms(request: NextRequest) {
         }
         const templateText = template?.message || message;
         message = templateText
-          .replace(/{{\\s*full_name\\s*}}/gi, lead.full_name || "there")
-          .replace(/{{\\s*instrument\\s*}}/gi, label)
-          .replace(/{{\\s*lesson_date\\s*}}/gi, date)
-          .replace(/{{\\s*lesson_time\\s*}}/gi, time);
+          .replace(/{{\s*full_name\s*}}/gi, lead.full_name || "there")
+          .replace(/{{\s*instrument\s*}}/gi, label)
+          .replace(/{{\s*lesson_date\s*}}/gi, date)
+          .replace(/{{\s*lesson_time\s*}}/gi, time);
       }
 
       const sentResult = await sendAirTouchSms(lead.whatsapp_number, message);
@@ -375,8 +375,8 @@ async function processSms(request: NextRequest) {
         await supabaseServer.from("manychat_followup_queue").update({ status: "cancelled", updated_at: new Date().toISOString() }).eq("id", item.id);
         continue;
       }
-      const firstName = String(contact.first_name || "").trim() || String(contact.full_name || "").trim().split(/\\s+/)[0] || "there";
-      const message = String(template.message).replace(/{{\\s*(?:first_name|full_name)\\s*}}/gi, firstName);
+      const firstName = String(contact.first_name || "").trim() || String(contact.full_name || "").trim().split(/\s+/)[0] || "there";
+      const message = String(template.message).replace(/{{\s*(?:first_name|full_name)\s*}}/gi, firstName);
       const sentResult = await sendAirTouchSms(contact.phone_e164, message);
       if (!sentResult.success) throw new Error(sentResult.error || "AirTouch send failed.");
       const now = new Date().toISOString();
