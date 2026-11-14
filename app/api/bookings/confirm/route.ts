@@ -645,6 +645,22 @@ export async function POST(request: NextRequest) {
       }
     } catch (smsError) {
       console.error("AirTouch booking confirmation SMS error:", smsError);
+      smsResult = { success: false, error: smsError instanceof Error ? smsError.message : "SMS send failed." };
+    }
+
+    if (smsMessage) {
+      const { error: smsHistoryError } = await supabaseServer.from("sms_messages").insert({
+        recipient_name: cleanName,
+        recipient_phone: cleanWhatsapp,
+        message: smsMessage,
+        provider: "airtouch",
+        provider_status: smsResult.success ? "1000" : String(smsResult.status || "error"),
+        provider_response: smsResult.response || smsResult.error || null,
+        status: smsResult.success ? "accepted" : "failed",
+        source: "trial_booking_confirmation",
+        sent_by: null,
+      });
+      if (smsHistoryError) console.error("Booking confirmation SMS history insert failed:", smsHistoryError);
     }
 
     // Queue independent SMS reminders. Existing email reminder tasks are untouched.
