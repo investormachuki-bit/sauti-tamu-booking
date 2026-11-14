@@ -125,6 +125,19 @@ export async function POST(request: NextRequest) {
       .replace(/{{\s*next_due_date\s*}}/gi, nextDueDate || "not scheduled");
 
     const result = await sendAirTouchSms(student.whatsapp_number, message);
+    const { error: historyError } = await supabaseServer.from("sms_messages").insert({
+      recipient_name: student.full_name || null,
+      recipient_phone: student.whatsapp_number,
+      message,
+      provider: "airtouch",
+      provider_status: result.success ? "1000" : String(result.status || "error"),
+      provider_response: result.response || result.error || null,
+      status: result.success ? "accepted" : "failed",
+      source: "payment_receipt",
+      sent_by: authData.user.id,
+    });
+    if (historyError) console.error("Payment receipt SMS history insert failed:", historyError);
+
     if (!result.success) {
       console.error("Payment notification SMS failed:", result.error);
       return NextResponse.json({ success: false, smsSent: false, error: result.error || "SMS could not be sent." }, { status: 502 });
