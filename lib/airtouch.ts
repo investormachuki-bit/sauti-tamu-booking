@@ -21,15 +21,25 @@ export async function sendAirTouchSms(
   msisdn: string,
   message: string,
 ): Promise<AirTouchResult> {
-  const baseUrl = process.env.AIRTOUCH_API_URL;
-  const issn = process.env.AIRTOUCH_ISSN || "SAUTI_TAMU";
-  const username = process.env.AIRTOUCH_USERNAME;
-  const apiKey = process.env.AIRTOUCH_API_KEY;
+  // Trim values so accidental whitespace in Render configuration does not
+  // make a valid credential look absent or produce a malformed gateway URL.
+  const baseUrl = (process.env.AIRTOUCH_API_URL || "").trim();
+  const issn = (process.env.AIRTOUCH_ISSN || "SAUTI_TAMU").trim();
+  const username = (process.env.AIRTOUCH_USERNAME || "").trim();
+  const apiKey = (process.env.AIRTOUCH_API_KEY || "").trim();
 
-  if (!baseUrl || !username || !apiKey) {
+  const missingConfiguration = [
+    !baseUrl && "AIRTOUCH_API_URL",
+    !username && "AIRTOUCH_USERNAME",
+    !apiKey && "AIRTOUCH_API_KEY",
+  ].filter(Boolean) as string[];
+
+  if (missingConfiguration.length) {
+    // Names only: never log or return credential values.
+    console.error("AirTouch runtime configuration missing:", missingConfiguration);
     return {
       success: false,
-      error: "AirTouch is not configured. Set AIRTOUCH_API_URL, AIRTOUCH_ISSN, AIRTOUCH_USERNAME and AIRTOUCH_API_KEY.",
+      error: `AirTouch runtime configuration unavailable: ${missingConfiguration.join(", ")}.`,
     };
   }
 
