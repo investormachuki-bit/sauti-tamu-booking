@@ -110,7 +110,7 @@ async function processSms(request: NextRequest) {
       if (reminderOffset) {
         const expectedStart = new Date(new Date(task.due_at).getTime() + reminderOffset * 60_000).getTime();
         if (Math.abs(startsAt.getTime() - expectedStart) > 60_000) {
-          await supabaseServer.from("follow_up_tasks").update({ status: "cancelled", updated_at: new Date().toISOString() }).eq("id", task.id).eq("status", "pending");
+          await supabaseServer.from("follow_up_tasks").update({ status: "cancelled", updated_at: new Date().toISOString() }).eq("id", task.id).eq("status", "processing");
           results.push({ taskId: task.id, success: false, error: "Booking time changed; stale reminder cancelled." });
           continue;
         }
@@ -133,7 +133,7 @@ async function processSms(request: NextRequest) {
           .maybeSingle();
         if (templateError) throw new Error("Could not load trial reminder SMS template.");
         if (template && !template.enabled) {
-          await supabaseServer.from("follow_up_tasks").update({ status: "cancelled", updated_at: new Date().toISOString() }).eq("id", task.id).eq("status", "pending");
+          await supabaseServer.from("follow_up_tasks").update({ status: "cancelled", updated_at: new Date().toISOString() }).eq("id", task.id).eq("status", "processing");
           results.push({ taskId: task.id, success: false, error: "Trial reminder template is disabled." });
           continue;
         }
