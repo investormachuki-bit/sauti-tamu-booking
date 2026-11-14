@@ -40,6 +40,25 @@ async function processSms(request: NextRequest) {
   const results: Array<{ taskId: string; success: boolean; error?: string }> = [];
 
   for (const task of tasks ?? []) {
+    const { data: claimedTask, error: claimTaskError } = await supabaseServer
+      .from("follow_up_tasks")
+      .update({ status: "processing", updated_at: new Date().toISOString() })
+      .eq("id", task.id)
+      .eq("status", "pending")
+      .select("id")
+      .maybeSingle();
+    if (claimTaskError) {
+      failed++;
+      results.push({ taskId: task.id, success: false, error: "Could not claim SMS reminder task." });
+      console.error("Could not claim AirTouch SMS task:", task.id, claimTaskError);
+      continue;
+    }
+    if (!claimedTask) continue;
+
+    let attemptedPhone = "";
+    let attemptedName = "";
+    let attemptedMessage = "";
+    let providerAccepted = false;
     try {
       const { data: lead, error: leadError } = await supabaseServer
         .from("leads")
@@ -48,6 +67,8 @@ async function processSms(request: NextRequest) {
         .single();
       if (leadError || !lead) throw new Error("Lead not found.");
       if (!lead.whatsapp_number) throw new Error("Lead has no mobile number.");
+      attemptedPhone = lead.whatsapp_number;
+      attemptedName = lead.full_name || "";
 
       if (!task.booking_id) throw new Error("Reminder has no booking.");
 
@@ -62,7 +83,7 @@ async function processSms(request: NextRequest) {
         await supabaseServer.from("follow_up_tasks").update({
           status: "cancelled",
           updated_at: new Date().toISOString(),
-        }).eq("id", task.id).eq("status", "pending");
+        }).eq("id", task.id).eq("status", "processing");
         results.push({ taskId: task.id, success: false, error: "Booking cancelled or no-show." });
         continue;
       }
@@ -76,7 +97,7 @@ async function processSms(request: NextRequest) {
 
       const startsAt = new Date(slot.starts_at);
       if (startsAt.getTime() <= Date.now()) {
-        await supabaseServer.from("follow_up_tasks").update({ status: "cancelled", updated_at: new Date().toISOString() }).eq("id", task.id).eq("status", "pending");
+        await supabaseServer.from("follow_up_tasks").update({ status: "cancelled", updated_at: new Date().toISOString() }).eq("id", task.id).eq("status", "processing");
         results.push({ taskId: task.id, success: false, error: "Trial has already started; stale reminder cancelled." });
         continue;
       }
@@ -124,8 +145,10 @@ async function processSms(request: NextRequest) {
           .replace(/{{\s*lesson_time\s*}}/gi, time);
       }
 
+      attemptedMessage = message;
       const sentResult = await sendAirTouchSms(lead.whatsapp_number, message);
       if (!sentResult.success) throw new Error(sentResult.error || "AirTouch send failed.");
+      providerAccepted = true;
 
       const now = new Date().toISOString();
       const { error: historyError } = await supabaseServer.from("sms_messages").insert({
@@ -144,7 +167,7 @@ async function processSms(request: NextRequest) {
         .from("follow_up_tasks")
         .update({ status: "completed", sent_at: now, completed_at: now, updated_at: now })
         .eq("id", task.id)
-        .eq("status", "pending")
+        .eq("status", "processing")
         .select("id")
         .maybeSingle();
       if (updateError || !updated) throw new Error("SMS sent, but task status could not be confirmed.");
@@ -155,6 +178,26 @@ async function processSms(request: NextRequest) {
       failed++;
       const message = err instanceof Error ? err.message : "Unknown SMS error.";
       console.error(`AirTouch SMS task ${task.id} failed:`, message);
+      if (!providerAccepted) {
+        if (attemptedPhone && attemptedMessage) {
+          const { error: failureLogError } = await supabaseServer.from("sms_messages").insert({
+            recipient_name: attemptedName || null,
+            recipient_phone: attemptedPhone,
+            message: attemptedMessage,
+            provider: "airtouch",
+            provider_status: "error",
+            provider_response: message,
+            status: "failed",
+            source: task.task_type,
+            sent_by: null,
+          });
+          if (failureLogError) console.error("Trial reminder SMS failure history insert failed:", failureLogError);
+        }
+        await supabaseServer.from("follow_up_tasks")
+          .update({ status: "pending", updated_at: new Date().toISOString() })
+          .eq("id", task.id)
+          .eq("status", "processing");
+      }
       results.push({ taskId: task.id, success: false, error: message });
     }
   }
@@ -253,7 +296,7 @@ async function processSms(request: NextRequest) {
 
           let logId = priorLog?.id as string | undefined;
           if (logId) {
-            const { error: retryError } = await supabaseServer
+            const { data: claimedLog, error: retryError } = await supabaseServer
               .from("payment_due_reminder_sms_log")
               .update({
                 status: "processing",
@@ -262,8 +305,11 @@ async function processSms(request: NextRequest) {
                 updated_at: now.toISOString(),
               })
               .eq("id", logId)
-              .eq("status", "failed");
+              .eq("status", "failed")
+              .select("id")
+              .maybeSingle();
             if (retryError) throw retryError;
+            if (!claimedLog) continue;
           } else {
             const { data: createdLog, error: createLogError } = await supabaseServer
               .from("payment_due_reminder_sms_log")
@@ -350,6 +396,10 @@ async function processSms(request: NextRequest) {
   let manychatSent = 0;
   let manychatFailed = 0;
   for (const item of dueFollowups || []) {
+    let attemptedPhone = "";
+    let attemptedName = "";
+    let attemptedMessage = "";
+    let providerAccepted = false;
     const { data: claimed } = await supabaseServer
       .from("manychat_followup_queue")
       .update({ status: "processing", updated_at: new Date().toISOString() })
@@ -364,6 +414,8 @@ async function processSms(request: NextRequest) {
         supabaseServer.from("manychat_followup_templates").select("id,name,message,enabled").eq("id", item.template_id).single(),
       ]);
       if (contactError || !contact) throw new Error("ManyChat contact not found.");
+      attemptedPhone = contact.phone_e164;
+      attemptedName = contact.full_name || contact.first_name || "";
       if (!contact.sms_marketing_opt_in) {
         await supabaseServer.from("manychat_followup_queue").update({ status: "cancelled", updated_at: new Date().toISOString() }).eq("id", item.id);
         continue;
@@ -374,8 +426,10 @@ async function processSms(request: NextRequest) {
       }
       const firstName = String(contact.first_name || "").trim() || String(contact.full_name || "").trim().split(/\s+/)[0] || "there";
       const message = String(template.message).replace(/{{\s*(?:first_name|full_name)\s*}}/gi, firstName);
+      attemptedMessage = message;
       const sentResult = await sendAirTouchSms(contact.phone_e164, message);
       if (!sentResult.success) throw new Error(sentResult.error || "AirTouch send failed.");
+      providerAccepted = true;
       const now = new Date().toISOString();
       const { error: logError } = await supabaseServer.from("sms_messages").insert({
         recipient_name: contact.full_name || null,
@@ -394,12 +448,33 @@ async function processSms(request: NextRequest) {
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unknown ManyChat follow-up error.";
       console.error(`ManyChat follow-up ${item.id} failed:`, message);
-      await supabaseServer.from("manychat_followup_queue").update({
-        status: "pending",
-        attempts: Number(item.attempts || 0) + 1,
-        last_error: message.slice(0, 500),
-        updated_at: new Date().toISOString(),
-      }).eq("id", item.id);
+      if (providerAccepted) {
+        const sentAt = new Date().toISOString();
+        await supabaseServer.from("manychat_followup_queue").update({
+          status: "sent", sent_at: sentAt, updated_at: sentAt, last_error: null,
+        }).eq("id", item.id).eq("status", "processing");
+      } else {
+        if (attemptedPhone && attemptedMessage) {
+          const { error: failureLogError } = await supabaseServer.from("sms_messages").insert({
+            recipient_name: attemptedName || null,
+            recipient_phone: attemptedPhone,
+            message: attemptedMessage,
+            provider: "airtouch",
+            provider_status: "error",
+            provider_response: message,
+            status: "failed",
+            source: `manychat_day_${item.day_offset}`,
+            sent_by: null,
+          });
+          if (failureLogError) console.error("ManyChat SMS failure history insert failed:", failureLogError);
+        }
+        await supabaseServer.from("manychat_followup_queue").update({
+          status: "pending",
+          attempts: Number(item.attempts || 0) + 1,
+          last_error: message.slice(0, 500),
+          updated_at: new Date().toISOString(),
+        }).eq("id", item.id).eq("status", "processing");
+      }
       manychatFailed++;
     }
   }
