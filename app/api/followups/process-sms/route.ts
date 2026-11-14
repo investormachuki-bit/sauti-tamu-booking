@@ -40,21 +40,6 @@ async function processSms(request: NextRequest) {
   const results: Array<{ taskId: string; success: boolean; error?: string }> = [];
 
   for (const task of tasks ?? []) {
-    const { data: claimedTask, error: claimTaskError } = await supabaseServer
-      .from("follow_up_tasks")
-      .update({ status: "processing", updated_at: new Date().toISOString() })
-      .eq("id", task.id)
-      .eq("status", "pending")
-      .select("id")
-      .maybeSingle();
-    if (claimTaskError) {
-      failed++;
-      results.push({ taskId: task.id, success: false, error: "Could not claim SMS reminder task." });
-      console.error("Could not claim AirTouch SMS task:", task.id, claimTaskError);
-      continue;
-    }
-    if (!claimedTask) continue;
-
     let attemptedPhone = "";
     let attemptedName = "";
     let attemptedMessage = "";
@@ -83,7 +68,7 @@ async function processSms(request: NextRequest) {
         await supabaseServer.from("follow_up_tasks").update({
           status: "cancelled",
           updated_at: new Date().toISOString(),
-        }).eq("id", task.id).eq("status", "processing");
+        }).eq("id", task.id).eq("status", "pending");
         results.push({ taskId: task.id, success: false, error: "Booking cancelled or no-show." });
         continue;
       }
@@ -97,7 +82,7 @@ async function processSms(request: NextRequest) {
 
       const startsAt = new Date(slot.starts_at);
       if (startsAt.getTime() <= Date.now()) {
-        await supabaseServer.from("follow_up_tasks").update({ status: "cancelled", updated_at: new Date().toISOString() }).eq("id", task.id).eq("status", "processing");
+        await supabaseServer.from("follow_up_tasks").update({ status: "cancelled", updated_at: new Date().toISOString() }).eq("id", task.id).eq("status", "pending");
         results.push({ taskId: task.id, success: false, error: "Trial has already started; stale reminder cancelled." });
         continue;
       }
@@ -110,7 +95,7 @@ async function processSms(request: NextRequest) {
       if (reminderOffset) {
         const expectedStart = new Date(new Date(task.due_at).getTime() + reminderOffset * 60_000).getTime();
         if (Math.abs(startsAt.getTime() - expectedStart) > 60_000) {
-          await supabaseServer.from("follow_up_tasks").update({ status: "cancelled", updated_at: new Date().toISOString() }).eq("id", task.id).eq("status", "processing");
+          await supabaseServer.from("follow_up_tasks").update({ status: "cancelled", updated_at: new Date().toISOString() }).eq("id", task.id).eq("status", "pending");
           results.push({ taskId: task.id, success: false, error: "Booking time changed; stale reminder cancelled." });
           continue;
         }
@@ -133,7 +118,7 @@ async function processSms(request: NextRequest) {
           .maybeSingle();
         if (templateError) throw new Error("Could not load trial reminder SMS template.");
         if (template && !template.enabled) {
-          await supabaseServer.from("follow_up_tasks").update({ status: "cancelled", updated_at: new Date().toISOString() }).eq("id", task.id).eq("status", "processing");
+          await supabaseServer.from("follow_up_tasks").update({ status: "cancelled", updated_at: new Date().toISOString() }).eq("id", task.id).eq("status", "pending");
           results.push({ taskId: task.id, success: false, error: "Trial reminder template is disabled." });
           continue;
         }
@@ -167,7 +152,7 @@ async function processSms(request: NextRequest) {
         .from("follow_up_tasks")
         .update({ status: "completed", sent_at: now, completed_at: now, updated_at: now })
         .eq("id", task.id)
-        .eq("status", "processing")
+        .eq("status", "pending")
         .select("id")
         .maybeSingle();
       if (updateError || !updated) throw new Error("SMS sent, but task status could not be confirmed.");
@@ -194,9 +179,9 @@ async function processSms(request: NextRequest) {
           if (failureLogError) console.error("Trial reminder SMS failure history insert failed:", failureLogError);
         }
         await supabaseServer.from("follow_up_tasks")
-          .update({ status: "pending", updated_at: new Date().toISOString() })
+          .update({ status: providerAccepted ? "completed" : "pending", ...(providerAccepted ? { sent_at: new Date().toISOString(), completed_at: new Date().toISOString() } : {}), updated_at: new Date().toISOString() })
           .eq("id", task.id)
-          .eq("status", "processing");
+          .eq("status", "pending");
       }
       results.push({ taskId: task.id, success: false, error: message });
     }
