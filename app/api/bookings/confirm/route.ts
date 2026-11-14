@@ -666,10 +666,7 @@ export async function POST(request: NextRequest) {
     // Queue independent SMS reminders. Existing email reminder tasks are untouched.
     if (lessonSlot?.starts_at) {
       const reminderOffsets = [
-        ["trial_reminder_7d", 7 * 24 * 60],
-        ["trial_reminder_3d", 3 * 24 * 60],
         ["trial_reminder_24h", 24 * 60],
-        ["trial_reminder_6h", 6 * 60],
         ["trial_reminder_1h", 60],
         ["trial_reminder_15m", 15],
       ] as const;
