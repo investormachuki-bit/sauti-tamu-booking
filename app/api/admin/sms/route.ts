@@ -130,7 +130,11 @@ export async function POST(request: NextRequest) {
 
     const results = [];
     for (const recipient of unique.values()) {
-      const personalized = message.replace(/{{\s*full_name\s*}}/gi, recipient.name || "there");
+      const fullName = recipient.name || "there";
+      const firstName = fullName.trim().split(/\s+/)[0] || "there";
+      const personalized = message
+        .replace(/{{\s*full_name\s*}}/gi, fullName)
+        .replace(/{{\s*first_name\s*}}/gi, firstName);
       const sent = await sendAirTouchSms(recipient.phone, personalized);
       const status = sent.success ? "accepted" : "failed";
       const { error: logError } = await supabaseServer.from("sms_messages").insert({
