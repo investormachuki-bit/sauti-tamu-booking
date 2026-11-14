@@ -3,10 +3,7 @@ import { supabaseServer } from "@/lib/supabase-server";
 import { sendAirTouchSms } from "@/lib/airtouch";
 
 const TASK_TYPES = [
-  "trial_reminder_7d",
-  "trial_reminder_3d",
   "trial_reminder_24h",
-  "trial_reminder_6h",
   "trial_reminder_1h",
   "trial_reminder_15m",
 ] as const;
