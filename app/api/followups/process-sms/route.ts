@@ -363,7 +363,7 @@ async function processSms(request: NextRequest) {
     if (!claimed) continue;
     try {
       const [{ data: contact, error: contactError }, { data: template, error: templateError }] = await Promise.all([
-        supabaseServer.from("manychat_whatsapp_contacts").select("id,phone_e164,full_name,sms_marketing_opt_in").eq("id", item.contact_id).single(),
+        supabaseServer.from("manychat_whatsapp_contacts").select("id,phone_e164,first_name,last_name,full_name,sms_marketing_opt_in").eq("id", item.contact_id).single(),
         supabaseServer.from("manychat_followup_templates").select("id,name,message,enabled").eq("id", item.template_id).single(),
       ]);
       if (contactError || !contact) throw new Error("ManyChat contact not found.");
@@ -375,7 +375,8 @@ async function processSms(request: NextRequest) {
         await supabaseServer.from("manychat_followup_queue").update({ status: "cancelled", updated_at: new Date().toISOString() }).eq("id", item.id);
         continue;
       }
-      const message = String(template.message).replace(/{{\\s*full_name\\s*}}/gi, contact.full_name || "there");
+      const firstName = String(contact.first_name || "").trim() || String(contact.full_name || "").trim().split(/\\s+/)[0] || "there";
+      const message = String(template.message).replace(/{{\\s*(?:first_name|full_name)\\s*}}/gi, firstName);
       const sentResult = await sendAirTouchSms(contact.phone_e164, message);
       if (!sentResult.success) throw new Error(sentResult.error || "AirTouch send failed.");
       const now = new Date().toISOString();
