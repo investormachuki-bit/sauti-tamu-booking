@@ -178,11 +178,11 @@ async function processSms(request: NextRequest) {
           });
           if (failureLogError) console.error("Trial reminder SMS failure history insert failed:", failureLogError);
         }
-        await supabaseServer.from("follow_up_tasks")
-          .update({ status: providerAccepted ? "completed" : "pending", ...(providerAccepted ? { sent_at: new Date().toISOString(), completed_at: new Date().toISOString() } : {}), updated_at: new Date().toISOString() })
-          .eq("id", task.id)
-          .eq("status", "pending");
       }
+      await supabaseServer.from("follow_up_tasks")
+        .update({ status: providerAccepted ? "completed" : "pending", ...(providerAccepted ? { sent_at: new Date().toISOString(), completed_at: new Date().toISOString() } : {}), updated_at: new Date().toISOString() })
+        .eq("id", task.id)
+        .eq("status", "pending");
       results.push({ taskId: task.id, success: false, error: message });
     }
   }
