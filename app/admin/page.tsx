@@ -1005,7 +1005,7 @@ export default function AdminDashboard() {
                 <TrialRow
                   key={booking.id}
                   booking={booking}
-                  compact
+                  section="tomorrow"
                 />
               ))}
             </div>
