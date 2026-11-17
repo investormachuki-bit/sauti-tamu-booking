@@ -762,6 +762,53 @@ export default function AdminDashboard() {
     );
   }
 
+  const [updatingBookingId, setUpdatingBookingId] = useState<string | null>(null);
+
+  async function sendDashboardTrialEventSms(bookingId: string, event: "trial_rebook" | "trial_attended") {
+    try {
+      const { data } = await supabase.auth.getSession();
+      const token = data.session?.access_token;
+      if (!token) return;
+      const response = await fetch("/api/admin/sms/trial-event", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ bookingId, event }),
+      });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        console.error("Trial event SMS was not sent:", payload.error || response.statusText);
+      }
+    } catch (smsError) {
+      console.error("Trial event SMS request failed:", smsError);
+    }
+  }
+
+  async function runDashboardBookingAction(booking: Booking, action: "missed" | "attended") {
+    if (booking.status !== "confirmed" || updatingBookingId) return;
+    const confirmed = window.confirm(
+      action === "missed"
+        ? `Mark ${booking.lead?.full_name ?? "this learner"}'s trial as missed?`
+        : `Mark ${booking.lead?.full_name ?? "this learner"} as attended?`
+    );
+    if (!confirmed) return;
+    setUpdatingBookingId(booking.id);
+    setError("");
+    try {
+      const { error: rpcError } = await supabase.rpc(
+        action === "missed" ? "mark_trial_missed" : "mark_trial_attended",
+        { p_booking_id: booking.id }
+      );
+      if (rpcError) throw rpcError;
+      await sendDashboardTrialEventSms(booking.id, action === "missed" ? "trial_rebook" : "trial_attended");
+      await loadDashboard();
+    } catch (actionError) {
+      console.error("Dashboard booking action failed:", actionError);
+      setError(actionError instanceof Error ? actionError.message : "We couldn't update this trial.");
+    } finally {
+      setUpdatingBookingId(null);
+    }
+  }
+
   function TrialRow({
     booking,
     section,
@@ -772,9 +819,9 @@ export default function AdminDashboard() {
     const name = booking.lead?.full_name ?? "Unknown learner";
     const phone = booking.lead?.whatsapp_number ?? "";
     const instrument = booking.slot?.instrument ?? "";
-    const actionClass = "inline-flex items-center justify-center gap-1 rounded-full border px-2.5 py-1.5 text-[10px] font-bold whitespace-nowrap shadow-sm transition hover:brightness-95";
-    const goToBookings = (filter?: string) => {
-      window.location.href = filter ? `/admin/bookings?filter=${filter}` : "/admin/bookings";
+    const actionClass = "inline-flex items-center justify-center gap-1 rounded-full border px-2.5 py-1.5 text-[10px] font-bold whitespace-nowrap shadow-sm transition hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-50";
+    const goToBookingAction = (action: "book" | "register") => {
+      window.location.href = `/admin/bookings?bookingId=${encodeURIComponent(booking.id)}&action=${action}`;
     };
 
     return (
@@ -790,19 +837,31 @@ export default function AdminDashboard() {
         <p className="m-0 text-[12px] font-medium capitalize text-slate-800">{instrument} Trial Lesson</p>
         <div className="flex flex-wrap items-center gap-1.5 sm:justify-end">
           {section === "tomorrow" ? (
-            <button type="button" onClick={() => goToBookings("tomorrow")} className={`${actionClass} border-blue-700 bg-white px-4 text-blue-800`}>
+            <button type="button" onClick={() => { window.location.href = `/admin/bookings?bookingId=${encodeURIComponent(booking.id)}&action=reschedule`; }} className={`${actionClass} border-blue-700 bg-white px-4 text-blue-800`}>
               <CalendarDays size={13} /> Re-Schedule
             </button>
           ) : (
             <>
-              <button type="button" onClick={() => goToBookings("no_show")} className={`${actionClass} border-purple-300 bg-purple-50 text-purple-800`}>♙ Missed/Cancel</button>
-              <button type="button" onClick={() => goToBookings("completed")} className={`${actionClass} border-green-300 bg-green-50 text-green-800`}>♙ Attended</button>
-              <button type="button" onClick={() => goToBookings("booked")} className={`${actionClass} border-red-300 bg-red-50 text-red-700`}>▦ Booked</button>
-              <button type="button" onClick={() => goToBookings("registered")} className={`${actionClass} border-amber-300 bg-amber-50 text-amber-800`}>✓ Registered</button>
+              <button type="button" disabled={updatingBookingId === booking.id || booking.status !== "confirmed"} onClick={() => runDashboardBookingAction(booking, "missed")} className={`${actionClass} border-purple-300 bg-purple-50 text-purple-800`}>{updatingBookingId === booking.id ? "Saving..." : "♙ Missed/Cancel"}</button>
+              <button type="button" disabled={updatingBookingId === booking.id || booking.status !== "confirmed"} onClick={() => runDashboardBookingAction(booking, "attended")} className={`${actionClass} border-green-300 bg-green-50 text-green-800`}>{updatingBookingId === booking.id ? "Saving..." : "♙ Attended"}</button>
+              <button type="button" onClick={() => goToBookingAction("book")} className={`${actionClass} border-red-300 bg-red-50 text-red-700`}>▦ Booked</button>
+              <button type="button" onClick={() => goToBookingAction("register")} className={`${actionClass} border-amber-300 bg-amber-50 text-amber-800`}>✓ Registered</button>
             </>
           )}
           {phone && (
-            <button type="button" onClick={() => callPerson(phone)} className="ml-1 inline-flex h-9 w-10 items-center justify-center rounded-full border border-slate-300 bg-white text-slate-900 shadow-sm" aria-label={`Call ${name}`} title="Call">
+            <button type="button" onClick={async () => {
+              try {
+                const { error: callError } = await supabase.rpc("record_booking_call", {
+                  p_booking_id: booking.id,
+                  p_notes: "Call initiated from Booking page.",
+                  p_outcome: "called",
+                });
+                if (callError) throw callError;
+                callPerson(phone);
+              } catch (callError) {
+                setError(callError instanceof Error ? callError.message : "We couldn't log this call.");
+              }
+            }} className="ml-1 inline-flex h-9 w-10 items-center justify-center rounded-full border border-slate-300 bg-white text-slate-900 shadow-sm" aria-label={`Call ${name}`} title="Call">
               <Phone size={17} />
             </button>
           )}
