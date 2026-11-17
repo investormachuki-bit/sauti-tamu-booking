@@ -173,6 +173,11 @@ img {
   flex: 1;
   min-width: 0;
   margin-left: var(--sidebar-width);
+  transition: margin-left 220ms ease;
+}
+
+.st-app.sidebar-collapsed .st-main-area {
+  margin-left: 76px;
 }
 
 .st-content {
@@ -193,6 +198,50 @@ img {
   flex-direction: column;
   background: var(--st-surface);
   border-right: 1px solid var(--st-border);
+  transition: width 220ms ease;
+}
+
+.st-sidebar.collapsed {
+  width: 76px;
+}
+
+.st-sidebar.collapsed .st-sidebar-brand {
+  justify-content: center;
+  padding: 0 10px;
+}
+
+.st-sidebar.collapsed .st-sidebar-brand > div {
+  justify-content: center;
+}
+
+.st-sidebar.collapsed .st-sidebar-brand > div > a,
+.st-sidebar.collapsed .st-nav-section-title,
+.st-sidebar.collapsed .st-nav-label,
+.st-sidebar.collapsed .st-sidebar-footer {
+  display: none;
+}
+
+.st-sidebar.collapsed .st-sidebar-nav {
+  padding-right: 10px;
+  padding-left: 10px;
+}
+
+.st-sidebar.collapsed .st-nav-item {
+  justify-content: center;
+  gap: 0;
+  padding: 0;
+}
+
+.st-sidebar.collapsed .st-nav-item.active::before {
+  left: -10px;
+}
+
+.st-sidebar.collapsed .st-nav-section {
+  margin-bottom: 14px;
+}
+
+.st-sidebar.collapsed .st-nav-icon {
+  width: 22px;
 }
 
 .st-sidebar-brand {
@@ -280,6 +329,18 @@ img {
 
 .st-sidebar-brand .st-icon-button {
   display: none;
+}
+
+.st-sidebar-brand .st-sidebar-collapse-button {
+  display: inline-flex;
+}
+
+.st-sidebar.collapsed .st-sidebar-brand .st-sidebar-collapse-button {
+  display: inline-flex;
+}
+
+.st-sidebar-mobile-close {
+  display: none !important;
 }
 
 /* =========================================================
@@ -554,7 +615,8 @@ img {
     --sidebar-width: 250px;
   }
 
-  .st-sidebar {
+  .st-sidebar,
+  .st-sidebar.collapsed {
     width: 250px;
     transform: translateX(-100%);
     overflow: hidden;
@@ -584,8 +646,12 @@ img {
     backdrop-filter: blur(2px);
   }
 
-  .st-sidebar-brand .st-icon-button {
-    display: inline-flex;
+  .st-sidebar-brand .st-sidebar-collapse-button {
+    display: none !important;
+  }
+
+  .st-sidebar-brand .st-sidebar-mobile-close {
+    display: inline-flex !important;
   }
 
   .st-content {
