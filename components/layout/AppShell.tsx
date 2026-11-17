@@ -16,12 +16,16 @@ export default function AppShell({
 }: AppShellProps) {
   const [sidebarOpen, setSidebarOpen] =
     useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] =
+    useState(false);
 
   return (
-    <div className="st-app">
+    <div className={`st-app ${sidebarCollapsed ? "sidebar-collapsed" : ""}`}>
 
       <Sidebar
         open={sidebarOpen}
+        collapsed={sidebarCollapsed}
+        onToggleCollapse={() => setSidebarCollapsed((current) => !current)}
         onClose={() =>
           setSidebarOpen(false)
         }
