@@ -1264,6 +1264,21 @@ export default function AdminBookingsPage() {
     loadBookings();
   }, []);
 
+  // Dashboard shortcuts open the same booking lifecycle modals used on this page.
+  useEffect(() => {
+    if (!records.length || typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const bookingId = params.get("bookingId");
+    const action = params.get("action");
+    if (!bookingId || !action) return;
+    const record = records.find((item) => item.booking.id === bookingId);
+    if (!record) return;
+    window.history.replaceState({}, "", window.location.pathname);
+    if (action === "book") openBooked(record);
+    else if (action === "register") openRegistration(record);
+    else if (action === "reschedule") void openReschedule(record);
+  }, [records]);
+
   /*
    * =========================================================
    * FILTERING
