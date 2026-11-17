@@ -946,75 +946,31 @@ export default function AdminDashboard() {
 
       {/* PAYMENT SCHEDULE */}
       <section className="mt-5 overflow-hidden rounded-2xl border-2 border-amber-500 bg-white shadow-sm">
-        <div className="overflow-hidden">
-          <div className="flex items-center justify-between gap-3 bg-amber-500 px-5 py-3 text-white">
-            <div>
-              <h2 className="m-0 text-[17px] font-extrabold uppercase tracking-tight">▣ &nbsp; DUE PAYMENTS – <span className="text-yellow-200">TASK 3</span></h2>
-              <p className="mt-1 mb-0 text-[10px] text-[var(--st-gray)]">
-                Overdue payments and payments due within the next 7 days
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={() => { window.location.href = "/admin/payment-schedule"; }}
-              className="rounded-full bg-white px-4 py-1 text-[12px] font-extrabold text-amber-700"
-            >
-              {paymentScheduleRows.length} Total
-            </button>
-          </div>
-
-          {loading ? (
-            <SectionLoading label="Loading payment schedule..." />
-          ) : paymentScheduleRows.length === 0 ? (
-            <EmptyState
-              title="No payments need attention"
-              description="There are no overdue payments or payments due within the next 7 days."
-              icon={<Wallet size={19} />}
-            />
-          ) : (
-            <div className="bg-orange-50 px-4 py-2 text-[11px] font-extrabold text-slate-900"><div className="grid grid-cols-5 gap-2"><span>Due Date</span><span>Student</span><span>Programme</span><span>Amount Due</span><span>Actions</span></div></div><div className="divide-y divide-slate-200">
-              {paymentScheduleRows.map((row) => (
-                <div key={row.student.id} className="grid grid-cols-1 gap-2 px-4 py-3 transition-colors hover:bg-orange-50 sm:grid-cols-5 sm:items-center">
-                  <div className="min-w-0"><span className={`inline-flex rounded-full px-3 py-1 text-center text-[11px] font-extrabold ${row.daysUntilDue <= 0 ? "bg-rose-200 text-rose-800" : "bg-amber-200 text-amber-900"}`}>{row.daysUntilDue < 0 ? `Overdue ${Math.abs(row.daysUntilDue)}d` : row.daysUntilDue === 0 ? "Today" : `In ${row.daysUntilDue} Days`}<small className="block text-[9px]">{formatDateOnly(row.dueDate)}</small></span></div><div className="min-w-0">
-                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--st-bg-soft)] text-[10px] font-bold text-[var(--st-red)]">
-                      {getInitials(row.student.full_name)}
-                    </div>
-                    <div className="min-w-0">
-                      <p className="m-0 truncate text-[12px] font-bold text-[var(--st-charcoal-dark)]">{row.student.full_name}</p>
-                      <p className="mt-1 mb-0 text-[10px] capitalize text-[var(--st-gray)]">
-                        {row.enrollment.programme_name || row.enrollment.instrument}
-                        {row.student.whatsapp_number ? ` · ${row.student.whatsapp_number}` : ""}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="min-w-0">
-                    <div>
-                      <p className="m-0 text-[9px] font-semibold uppercase tracking-[0.08em] text-[var(--st-gray)]">Balance</p>
-                      <p className="mt-1 mb-0 text-[12px] font-bold text-[var(--st-charcoal-dark)]">{formatPaymentCurrency(row.balance)}</p>
-                    </div>
-                    <div>
-                      <p className="m-0 text-[9px] font-semibold uppercase tracking-[0.08em] text-[var(--st-gray)]">Expected payment</p>
-                      <p className="mt-1 mb-0 text-[12px] font-bold text-[var(--st-charcoal-dark)]">{formatPaymentCurrency(row.scheduledAmount)}</p>
-                    </div>
-                  </div>
-                  <div className="min-w-0">
-                    <p className="m-0 text-[11px] font-semibold capitalize text-slate-700">{row.enrollment.programme_name || row.enrollment.instrument}</p>
-                    <span className={`mt-1 inline-block text-[9px] font-bold ${row.daysUntilDue <= 0 ? "text-[var(--st-red)]" : "text-[var(--st-green)]"}`}>
-                      {row.daysUntilDue < 0 ? `Overdue by ${Math.abs(row.daysUntilDue)} day${Math.abs(row.daysUntilDue) === 1 ? "" : "s"}` : row.daysUntilDue === 0 ? "Due today" : `${row.daysUntilDue} day${row.daysUntilDue === 1 ? "" : "s"} to due date`}
-                    </span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => { window.location.href = `/admin/students?student=${encodeURIComponent(row.student.id)}`; }}
-                    className="st-button st-button-secondary shrink-0"
-                  >
-                    View student <ArrowRight size={13} />
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
+        <div className="flex items-center justify-between gap-3 bg-amber-500 px-5 py-3 text-white">
+          <h2 className="m-0 text-[17px] font-extrabold uppercase tracking-tight">▣ &nbsp; DUE PAYMENTS – <span className="text-yellow-200">TASK 3</span></h2>
+          <span className="rounded-full bg-white px-4 py-1 text-[13px] font-extrabold text-rose-700">{paymentScheduleRows.length} Total</span>
         </div>
+        <div className="grid grid-cols-1 gap-2 bg-orange-100 px-4 py-2 text-[11px] font-extrabold text-slate-900 sm:grid-cols-[130px_minmax(150px,1fr)_minmax(130px,1fr)_minmax(130px,auto)_90px]">
+          <span>Due Date</span><span>Student</span><span>Programme</span><span>Amount Due</span><span>Actions</span>
+        </div>
+        {loading ? (
+          <SectionLoading label="Loading due payments..." />
+        ) : paymentScheduleRows.length === 0 ? (
+          <EmptyState title="No payments need attention" description="There are no overdue payments or payments due within the next 7 days." icon={<Wallet size={19} />} />
+        ) : paymentScheduleRows.map((row) => (
+          <div key={row.student.id} className="grid grid-cols-1 gap-3 border-b border-slate-200 px-4 py-3 last:border-b-0 sm:grid-cols-[130px_minmax(150px,1fr)_minmax(130px,1fr)_minmax(130px,auto)_90px] sm:items-center">
+            <div>
+              <span className={"inline-flex min-w-[105px] flex-col items-center rounded-full px-3 py-1 text-center text-[11px] font-extrabold " + (row.daysUntilDue <= 0 ? "bg-rose-200 text-rose-800" : "bg-amber-200 text-amber-900")}>
+                {row.daysUntilDue < 0 ? "Overdue " + Math.abs(row.daysUntilDue) + "d" : row.daysUntilDue === 0 ? "Today" : "In " + row.daysUntilDue + " Days"}
+                <small className="text-[9px]">{formatDateOnly(row.dueDate)}</small>
+              </span>
+            </div>
+            <div className="min-w-0"><p className="m-0 truncate text-[12px] font-bold text-slate-900">{row.student.full_name}</p></div>
+            <p className="m-0 text-[12px] capitalize text-slate-800">{row.enrollment.programme_name || row.enrollment.instrument}</p>
+            <div><span className="inline-flex min-w-[120px] justify-center rounded-full bg-rose-100 px-3 py-1.5 text-[12px] font-extrabold text-rose-700">{formatPaymentCurrency(row.scheduledAmount)}</span></div>
+            <div><button type="button" onClick={() => callPerson(row.student.whatsapp_number || "")} className="inline-flex h-9 w-10 items-center justify-center rounded-full border border-slate-300 bg-white text-slate-900 shadow-sm" aria-label={"Call " + row.student.full_name} title="Call"><Phone size={17} /></button></div>
+          </div>
+        ))}
       </section>
 
       {/* TOMORROW */}
