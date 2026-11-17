@@ -9,6 +9,8 @@ import {
   Clock3,
   Settings,
   X,
+  PanelLeftClose,
+  PanelLeftOpen,
   WalletCards,
   Receipt,
   Landmark,
@@ -21,6 +23,8 @@ import {
 
 interface SidebarProps {
   open: boolean;
+  collapsed: boolean;
+  onToggleCollapse: () => void;
   onClose: () => void;
 }
 
@@ -124,6 +128,8 @@ const navigation = [
 
 export default function Sidebar({
   open,
+  collapsed,
+  onToggleCollapse,
   onClose,
 }: SidebarProps) {
   return (
@@ -137,9 +143,7 @@ export default function Sidebar({
       )}
 
       <aside
-        className={`st-sidebar ${
-          open ? "open" : ""
-        }`}
+        className={`st-sidebar ${open ? "open" : ""} ${collapsed ? "collapsed" : ""}`}
       >
         {/* BRAND */}
         <div className="st-sidebar-brand">
@@ -165,10 +169,21 @@ export default function Sidebar({
               </div>
             </Link>
 
+            {/* Desktop collapse / expand */}
+            <button
+              type="button"
+              className="st-icon-button st-sidebar-collapse-button"
+              onClick={onToggleCollapse}
+              aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+              title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+            >
+              {collapsed ? <PanelLeftOpen size={17} /> : <PanelLeftClose size={17} />}
+            </button>
+
             {/* Mobile close button */}
             <button
               type="button"
-              className="st-icon-button"
+              className="st-icon-button st-sidebar-mobile-close"
               onClick={onClose}
               aria-label="Close navigation"
             >
@@ -205,7 +220,7 @@ export default function Sidebar({
                       />
                     </span>
 
-                    <span>
+                    <span className="st-nav-label">
                       {item.label}
                     </span>
                   </Link>
