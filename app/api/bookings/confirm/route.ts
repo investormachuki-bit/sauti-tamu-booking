@@ -686,11 +686,29 @@ export async function POST(request: NextRequest) {
         }))
         .filter((task) => new Date(task.due_at).getTime() > nowMs);
       if (smsTasks.length) {
-        const { error: queueError } = await supabaseServer
+        // Email and SMS reminders are separate channel-specific tasks.
+        // Check existing SMS tasks first so a repeated confirmation does not
+        // collide with the booking/task/channel unique index.
+        const { data: existingSmsTasks, error: existingSmsTasksError } = await supabaseServer
           .from("follow_up_tasks")
-          .insert(smsTasks);
-        if (queueError) {
-          console.error("Could not queue AirTouch SMS reminders:", queueError);
+          .select("task_type")
+          .eq("booking_id", booking.booking_id)
+          .eq("channel", "sms")
+          .in("task_type", reminderOffsets.map(([taskType]) => taskType));
+
+        if (existingSmsTasksError) {
+          console.error("Could not check existing AirTouch SMS reminders:", existingSmsTasksError);
+        } else {
+          const existingTypes = new Set((existingSmsTasks || []).map((task) => task.task_type));
+          const missingSmsTasks = smsTasks.filter((task) => !existingTypes.has(task.task_type));
+          if (missingSmsTasks.length) {
+            const { error: queueError } = await supabaseServer
+              .from("follow_up_tasks")
+              .insert(missingSmsTasks);
+            if (queueError) {
+              console.error("Could not queue AirTouch SMS reminders:", queueError);
+            }
+          }
         }
       }
     }
