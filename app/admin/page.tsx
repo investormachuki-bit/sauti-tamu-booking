@@ -999,6 +999,7 @@ export default function AdminDashboard() {
               icon={<CalendarDays size={19} />}
             />
           ) : (
+            <>
             <div className="bg-green-100 px-4 py-2 text-[11px] font-extrabold text-slate-900"><div className="grid grid-cols-1 gap-2 sm:grid-cols-[112px_minmax(150px,1fr)_minmax(130px,1fr)_minmax(200px,auto)]"><span>Time</span><span>Student</span><span>Lesson</span><span>Actions</span></div></div><div className="divide-y divide-slate-200">
               {tomorrowBookings.map((booking) => (
                 <TrialRow
@@ -1008,6 +1009,7 @@ export default function AdminDashboard() {
                 />
               ))}
             </div>
+            </>
           )}
         </div>
       </section>
