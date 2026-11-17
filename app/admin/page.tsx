@@ -532,6 +532,16 @@ export default function AdminDashboard() {
       }) as CompletionStudent[];
   }, [activeEnrollments, students, todayKey]);
 
+  const yesterdayKey = useMemo(() => addCalendarDays(todayKey, -1), [todayKey]);
+
+  const yesterdayBookings = useMemo(() => {
+    return bookings
+      .filter((booking) => booking.slot?.starts_at &&
+        getNairobiDateKey(new Date(booking.slot.starts_at)) === yesterdayKey &&
+        booking.status !== "cancelled")
+      .sort((a, b) => new Date(a.slot!.starts_at).getTime() - new Date(b.slot!.starts_at).getTime());
+  }, [bookings, yesterdayKey]);
+
   const todayBookings = useMemo(() => {
     return bookings
       .filter((booking) => {
@@ -754,95 +764,47 @@ export default function AdminDashboard() {
 
   function TrialRow({
     booking,
-    compact = false,
+    section,
   }: {
     booking: Booking;
-    compact?: boolean;
+    section: "yesterday" | "today" | "tomorrow";
   }) {
     const name = booking.lead?.full_name ?? "Unknown learner";
     const phone = booking.lead?.whatsapp_number ?? "";
     const instrument = booking.slot?.instrument ?? "";
+    const actionClass = "inline-flex items-center justify-center gap-1 rounded-full border px-2.5 py-1.5 text-[10px] font-bold whitespace-nowrap shadow-sm transition hover:brightness-95";
+    const goToBookings = (filter?: string) => {
+      window.location.href = filter ? `/admin/bookings?filter=${filter}` : "/admin/bookings";
+    };
 
     return (
-      <div
-        className={`flex flex-col gap-4 px-5 py-4 transition-colors hover:bg-[var(--st-bg-soft)] ${
-          compact ? "sm:flex-row sm:items-center" : "sm:flex-row sm:items-center"
-        }`}
-      >
-        <div className="w-[100px] shrink-0">
-          <p className="m-0 text-[12px] font-bold text-[var(--st-charcoal-dark)]">
-            {formatTime(booking.slot!.starts_at)}
-          </p>
-
-          <p className="mt-1 mb-0 text-[9px] text-[var(--st-gray)]">
-            {formatTime(booking.slot!.ends_at)}
-          </p>
-        </div>
-
-        <div className="flex min-w-0 flex-1 items-center gap-3">
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--st-bg-soft)] text-[10px] font-bold text-[var(--st-red)]">
-            {getInitials(name)}
-          </div>
-
-          <div className="min-w-0">
-            <p className="m-0 truncate text-[12px] font-bold text-[var(--st-charcoal-dark)]">
-              {name}
-            </p>
-
-            {phone ? (
-              <p className="mt-1 mb-0 text-[12px] font-semibold text-[var(--st-charcoal-dark)]">
-                {phone}
-              </p>
-            ) : (
-              <p className="mt-1 mb-0 text-[10px] text-[var(--st-gray)]">
-                No phone number
-              </p>
-            )}
-
-            <p className="mt-1 mb-0 text-[10px] capitalize text-[var(--st-gray)]">
-              {instrument} trial lesson
-            </p>
-          </div>
-        </div>
-
+      <div className="grid grid-cols-1 gap-3 border-b border-slate-200 px-4 py-3 last:border-b-0 sm:grid-cols-[112px_minmax(150px,1fr)_minmax(130px,1fr)_minmax(330px,auto)] sm:items-center sm:gap-3">
         <div>
-          <span
-            className={`st-badge ${
-              booking.status === "confirmed" ||
-              booking.status === "completed"
-                ? "st-badge-green"
-                : "st-badge-red"
-            }`}
-          >
-            {(booking.status === "confirmed" ||
-              booking.status === "completed") && (
-              <CheckCircle2 size={11} />
-            )}
-            {capitalizeStatus(booking.status)}
+          <span className="inline-flex min-w-[105px] justify-center rounded-full bg-blue-100 px-3 py-1.5 text-[12px] font-extrabold text-slate-900">
+            {formatTime(booking.slot!.starts_at)}
           </span>
         </div>
-
-        <div className="flex items-center gap-1">
-          {phone && (
+        <div className="min-w-0">
+          <p className="m-0 truncate text-[12px] font-bold text-slate-900">{name}</p>
+        </div>
+        <p className="m-0 text-[12px] font-medium capitalize text-slate-800">{instrument} Trial Lesson</p>
+        <div className="flex flex-wrap items-center gap-1.5 sm:justify-end">
+          {section === "tomorrow" ? (
+            <button type="button" onClick={() => goToBookings("tomorrow")} className={`${actionClass} border-blue-700 bg-white px-4 text-blue-800`}>
+              <CalendarDays size={13} /> Re-Schedule
+            </button>
+          ) : (
             <>
-              <button
-                type="button"
-                onClick={() => openWhatsApp(phone, name)}
-                className="st-icon-button"
-                aria-label={`WhatsApp ${name}`}
-              >
-                <MessageCircle size={15} />
-              </button>
-
-              <button
-                type="button"
-                onClick={() => callPerson(phone)}
-                className="st-icon-button"
-                aria-label={`Call ${name}`}
-              >
-                <Phone size={15} />
-              </button>
+              <button type="button" onClick={() => goToBookings("no_show")} className={`${actionClass} border-purple-300 bg-purple-50 text-purple-800`}>♙ Missed/Cancel</button>
+              <button type="button" onClick={() => goToBookings("completed")} className={`${actionClass} border-green-300 bg-green-50 text-green-800`}>♙ Attended</button>
+              <button type="button" onClick={() => goToBookings("booked")} className={`${actionClass} border-red-300 bg-red-50 text-red-700`}>▦ Booked</button>
+              <button type="button" onClick={() => goToBookings("registered")} className={`${actionClass} border-amber-300 bg-amber-50 text-amber-800`}>✓ Registered</button>
             </>
+          )}
+          {phone && (
+            <button type="button" onClick={() => callPerson(phone)} className="ml-1 inline-flex h-9 w-10 items-center justify-center rounded-full border border-slate-300 bg-white text-slate-900 shadow-sm" aria-label={`Call ${name}`} title="Call">
+              <Phone size={17} />
+            </button>
           )}
         </div>
       </div>
@@ -958,54 +920,36 @@ export default function AdminDashboard() {
         </div>
       </section>
 
-      {/* TODAY */}
-      <section className="mt-5">
-        <div className="st-card overflow-hidden">
-          <div className="flex items-center justify-between gap-3 border-b border-[var(--st-border)] px-5 py-4">
-            <div className="min-w-0">
-              <h2 className="st-section-title">Today&apos;s trials</h2>
-
-              <p className="mt-1 mb-0 text-[10px] text-[var(--st-gray)]">
-                Live trial lesson schedule for today
-              </p>
-            </div>
-
-            <button
-              type="button"
-              onClick={() => {
-                window.location.href = "/admin/calendar";
-              }}
-              className="st-button st-button-ghost shrink-0"
-            >
-              View calendar
-              <ArrowRight size={14} />
-            </button>
-          </div>
-
-          {loading ? (
-            <SectionLoading label="Loading today's trials..." />
-          ) : todayBookings.length === 0 ? (
-            <EmptyState
-              title="No trials scheduled today"
-              description="Your calendar is clear for today."
-              icon={<CalendarDays size={19} />}
-            />
-          ) : (
-            <div className="divide-y divide-[var(--st-border)]">
-              {todayBookings.map((booking) => (
-                <TrialRow key={booking.id} booking={booking} />
-              ))}
-            </div>
-          )}
+      {/* YESTERDAY */}
+      <section className="mt-5 overflow-hidden rounded-2xl border-2 border-blue-700 bg-white shadow-sm">
+        <div className="flex items-center justify-between bg-blue-600 px-5 py-3 text-white">
+          <h2 className="m-0 text-[17px] font-extrabold uppercase tracking-tight">▦ &nbsp; YESTERDAY&apos;S TRIALS – <span className="text-yellow-300">TASK 1</span></h2>
+          <span className="rounded-full bg-white px-4 py-1 text-[13px] font-extrabold text-blue-800">{yesterdayBookings.length} Total</span>
         </div>
+        <div className="grid grid-cols-1 gap-2 bg-blue-100 px-4 py-2 text-[11px] font-extrabold text-slate-900 sm:grid-cols-[112px_minmax(150px,1fr)_minmax(130px,1fr)_minmax(330px,auto)]">
+          <span>Time</span><span>Student</span><span>Lesson</span><span className="sm:text-center">Actions</span>
+        </div>
+        {loading ? <SectionLoading label="Loading yesterday's trials..." /> : yesterdayBookings.length === 0 ? <EmptyState title="No trials yesterday" description="There were no non-cancelled trial bookings yesterday." icon={<CalendarDays size={19} />} /> : yesterdayBookings.map((booking) => <TrialRow key={booking.id} booking={booking} section="yesterday" />)}
+      </section>
+
+      {/* TODAY */}
+      <section className="mt-5 overflow-hidden rounded-2xl border-2 border-rose-600 bg-white shadow-sm">
+        <div className="flex items-center justify-between bg-rose-600 px-5 py-3 text-white">
+          <h2 className="m-0 text-[17px] font-extrabold uppercase tracking-tight">☎ &nbsp; TODAY&apos;S TRIALS – <span className="text-yellow-300">TASK 2</span></h2>
+          <span className="rounded-full bg-white px-4 py-1 text-[13px] font-extrabold text-rose-700">{todayBookings.length} Total</span>
+        </div>
+        <div className="grid grid-cols-1 gap-2 bg-rose-100 px-4 py-2 text-[11px] font-extrabold text-slate-900 sm:grid-cols-[112px_minmax(150px,1fr)_minmax(130px,1fr)_minmax(330px,auto)]">
+          <span>Time</span><span>Student</span><span>Lesson</span><span className="sm:text-center">Actions</span>
+        </div>
+        {loading ? <SectionLoading label="Loading today's trials..." /> : todayBookings.length === 0 ? <EmptyState title="No trials scheduled today" description="Your calendar is clear for today." icon={<CalendarDays size={19} />} /> : todayBookings.map((booking) => <TrialRow key={booking.id} booking={booking} section="today" />)}
       </section>
 
       {/* PAYMENT SCHEDULE */}
-      <section className="mt-5">
-        <div className="st-card overflow-hidden">
-          <div className="flex items-center justify-between gap-3 border-b border-[var(--st-border)] px-5 py-4">
+      <section className="mt-5 overflow-hidden rounded-2xl border-2 border-amber-500 bg-white shadow-sm">
+        <div className="overflow-hidden">
+          <div className="flex items-center justify-between gap-3 bg-amber-500 px-5 py-3 text-white">
             <div>
-              <h2 className="st-section-title">Payment schedule</h2>
+              <h2 className="m-0 text-[17px] font-extrabold uppercase tracking-tight">▣ &nbsp; DUE PAYMENTS – <span className="text-yellow-200">TASK 3</span></h2>
               <p className="mt-1 mb-0 text-[10px] text-[var(--st-gray)]">
                 Overdue payments and payments due within the next 7 days
               </p>
@@ -1013,9 +957,9 @@ export default function AdminDashboard() {
             <button
               type="button"
               onClick={() => { window.location.href = "/admin/payment-schedule"; }}
-              className="st-button st-button-ghost shrink-0"
+              className="rounded-full bg-white px-4 py-1 text-[12px] font-extrabold text-amber-700"
             >
-              View schedule <ArrowRight size={14} />
+              {paymentScheduleRows.length} Total
             </button>
           </div>
 
@@ -1028,10 +972,10 @@ export default function AdminDashboard() {
               icon={<Wallet size={19} />}
             />
           ) : (
-            <div className="divide-y divide-[var(--st-border)]">
+            <div className="bg-orange-50 px-4 py-2 text-[11px] font-extrabold text-slate-900"><div className="grid grid-cols-5 gap-2"><span>Due Date</span><span>Student</span><span>Programme</span><span>Amount Due</span><span>Actions</span></div></div><div className="divide-y divide-slate-200">
               {paymentScheduleRows.map((row) => (
-                <div key={row.student.id} className="flex flex-col gap-3 px-5 py-4 transition-colors hover:bg-[var(--st-bg-soft)] sm:flex-row sm:items-center">
-                  <div className="flex min-w-0 flex-1 items-center gap-3">
+                <div key={row.student.id} className="grid grid-cols-1 gap-2 px-4 py-3 transition-colors hover:bg-orange-50 sm:grid-cols-5 sm:items-center">
+                  <div className="min-w-0"><span className={`inline-flex rounded-full px-3 py-1 text-center text-[11px] font-extrabold ${row.daysUntilDue <= 0 ? "bg-rose-200 text-rose-800" : "bg-amber-200 text-amber-900"}`}>{row.daysUntilDue < 0 ? `Overdue ${Math.abs(row.daysUntilDue)}d` : row.daysUntilDue === 0 ? "Today" : `In ${row.daysUntilDue} Days`}<small className="block text-[9px]">{formatDateOnly(row.dueDate)}</small></span></div><div className="min-w-0">
                     <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--st-bg-soft)] text-[10px] font-bold text-[var(--st-red)]">
                       {getInitials(row.student.full_name)}
                     </div>
@@ -1043,7 +987,7 @@ export default function AdminDashboard() {
                       </p>
                     </div>
                   </div>
-                  <div className="grid grid-cols-2 gap-4 sm:w-[330px]">
+                  <div className="min-w-0">
                     <div>
                       <p className="m-0 text-[9px] font-semibold uppercase tracking-[0.08em] text-[var(--st-gray)]">Balance</p>
                       <p className="mt-1 mb-0 text-[12px] font-bold text-[var(--st-charcoal-dark)]">{formatPaymentCurrency(row.balance)}</p>
@@ -1053,8 +997,8 @@ export default function AdminDashboard() {
                       <p className="mt-1 mb-0 text-[12px] font-bold text-[var(--st-charcoal-dark)]">{formatPaymentCurrency(row.scheduledAmount)}</p>
                     </div>
                   </div>
-                  <div className="shrink-0 sm:w-[145px] sm:text-right">
-                    <p className="m-0 text-[10px] font-bold text-[var(--st-charcoal-dark)]">{formatDateOnly(row.dueDate)}</p>
+                  <div className="min-w-0">
+                    <p className="m-0 text-[11px] font-semibold capitalize text-slate-700">{row.enrollment.programme_name || row.enrollment.instrument}</p>
                     <span className={`mt-1 inline-block text-[9px] font-bold ${row.daysUntilDue <= 0 ? "text-[var(--st-red)]" : "text-[var(--st-green)]"}`}>
                       {row.daysUntilDue < 0 ? `Overdue by ${Math.abs(row.daysUntilDue)} day${Math.abs(row.daysUntilDue) === 1 ? "" : "s"}` : row.daysUntilDue === 0 ? "Due today" : `${row.daysUntilDue} day${row.daysUntilDue === 1 ? "" : "s"} to due date`}
                     </span>
@@ -1074,11 +1018,11 @@ export default function AdminDashboard() {
       </section>
 
       {/* TOMORROW */}
-      <section className="mt-5">
-        <div className="st-card overflow-hidden">
-          <div className="flex items-center justify-between gap-3 border-b border-[var(--st-border)] px-5 py-4">
+      <section className="mt-5 overflow-hidden rounded-2xl border-2 border-green-700 bg-white shadow-sm">
+        <div className="overflow-hidden">
+          <div className="flex items-center justify-between gap-3 bg-green-700 px-5 py-3 text-white">
             <div>
-              <h2 className="st-section-title">Tomorrow&apos;s trials</h2>
+              <h2 className="m-0 text-[17px] font-extrabold uppercase tracking-tight">▦ &nbsp; TOMORROW&apos;S TRIALS – <span className="text-yellow-300">TASK 4</span></h2>
 
               <p className="mt-1 mb-0 text-[10px] text-[var(--st-gray)]">
                 Trial lesson schedule for tomorrow
@@ -1099,7 +1043,7 @@ export default function AdminDashboard() {
               icon={<CalendarDays size={19} />}
             />
           ) : (
-            <div className="divide-y divide-[var(--st-border)]">
+            <div className="bg-green-100 px-4 py-2 text-[11px] font-extrabold text-slate-900"><div className="grid grid-cols-1 gap-2 sm:grid-cols-[112px_minmax(150px,1fr)_minmax(130px,1fr)_minmax(200px,auto)]"><span>Time</span><span>Student</span><span>Lesson</span><span>Actions</span></div></div><div className="divide-y divide-slate-200">
               {tomorrowBookings.map((booking) => (
                 <TrialRow
                   key={booking.id}
