@@ -44,7 +44,7 @@ export default function AdminSmsPage() {
   const [sending, setSending] = useState(false);
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
-  const [results, setResults] = useState<{total:number;accepted:number;failed:number}|null>(null);
+  const [results, setResults] = useState<{total:number;accepted:number;failed:number;details:Array<{phone:string;name:string;success:boolean;error?:string}>}|null>(null);
 
   async function request(path: string, body?: unknown) {
     const { data } = await supabase.auth.getSession();
@@ -141,7 +141,7 @@ export default function AdminSmsPage() {
     setSending(true); setError(""); setNotice(""); setResults(null);
     try {
       const data = await request("/", { action:"send", recipients:selectedRecipients, message });
-      setResults({total:data.total,accepted:data.accepted,failed:data.failed});
+      setResults({total:data.total,accepted:data.accepted,failed:data.failed,details:data.results||[]});
       setNotice(`Sending completed: ${data.accepted} accepted, ${data.failed} failed.`);
       await load();
     } catch(e) { setError(e instanceof Error ? e.message : "Sending failed."); }
@@ -221,7 +221,11 @@ export default function AdminSmsPage() {
     </div>
     {error && <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700"><AlertCircle className="mr-2 inline" size={16}/>{error}</div>}
     {notice && <div className="mb-4 rounded-xl border border-green-200 bg-green-50 p-3 text-sm text-green-700"><CheckCircle2 className="mr-2 inline" size={16}/>{notice}</div>}
-    {results && <div className="mb-4 rounded-xl bg-[var(--st-bg-soft)] p-4 text-sm">Batch summary: <b>{results.accepted}</b> accepted · <b>{results.failed}</b> failed · {results.total} attempted.</div>}
+    {results && <div className="mb-4 rounded-xl bg-[var(--st-bg-soft)] p-4 text-sm">
+      <p className="m-0">Batch summary: <b>{results.accepted}</b> accepted · <b>{results.failed}</b> failed · {results.total} attempted.</p>
+      {results.failed > 0 && <div className="mt-3 space-y-2">{results.details.filter(item=>!item.success).map((item,index)=><div key={item.phone+index} className="rounded-lg border border-red-200 bg-red-50 p-2 text-xs text-red-800"><b>{item.name || item.phone}</b><span className="ml-2 text-red-700">{item.phone}</span><p className="mb-0 mt-1">{item.error || "SMS was not accepted."}</p></div>)}</div>}
+      <p className="mb-0 mt-3 text-[10px] text-gray-500">Accepted means AirTouch accepted the request; it does not confirm handset delivery. For timeouts, check SMS history before retrying.</p>
+    </div>}
     <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1.5fr)_minmax(320px,1fr)]">
       <section className="st-card p-5">
         <div className="mb-5 flex items-center gap-3"><div className="rounded-full bg-[var(--st-bg-soft)] p-3 text-[var(--st-red)]"><Send size={18}/></div><div><h2 className="m-0 text-base font-semibold">Compose SMS</h2><p className="mt-1 mb-0 text-xs text-[var(--st-gray)]">Personalized bulk messaging and manual recipients.</p></div></div>
