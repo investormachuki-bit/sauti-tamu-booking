@@ -12,7 +12,7 @@ type TrialEventTemplate = { id: string; event_key: "trial_rebook" | "trial_atten
 type CoreSmsTemplate = { id: string; template_key: "trial_booking_confirmation" | "payment_receipt"; name: string; message: string; enabled: boolean };
 type TrialReminderTemplate = { id: string; reminder_key: "trial_reminder_24h" | "trial_reminder_1h" | "trial_reminder_15m"; name: string; message: string; enabled: boolean };
 type PaymentDueTemplate = { id: string; reminder_key: "payment_due_7d" | "payment_due_3d" | "payment_due_today"; name: string; message: string; enabled: boolean };
-type Log = { id: string; recipient_name: string | null; recipient_phone: string; message: string; status: string; provider_status: string | null; created_at: string };
+type Log = { id: string; recipient_name: string | null; recipient_phone: string; message: string; status: string; provider_status: string | null; delivery_status?: string | null; provider_message_id?: string | null; source?: string | null; created_at: string };
 
 export default function AdminSmsPage() {
   const [recipients, setRecipients] = useState<Recipient[]>([]);
@@ -334,7 +334,7 @@ export default function AdminSmsPage() {
           </div>
         </section>
         <section className="st-card p-5"><div className="mb-4 flex items-center gap-2"><History size={18}/><h2 className="m-0 text-base font-semibold">Recent SMS activity</h2></div>
-          <div className="space-y-3">{logs.slice(0,10).map(log=><div key={log.id} className="border-b border-gray-100 pb-3"><div className="flex items-center justify-between gap-2"><b className="text-xs">{log.recipient_name||log.recipient_phone}</b><span className={`rounded-full px-2 py-1 text-[9px] font-semibold ${log.status==="accepted"?"bg-green-50 text-green-700":"bg-red-50 text-red-700"}`}>{log.status}</span></div><p className="mt-1 mb-1 text-[11px] text-gray-500">{log.recipient_phone} · {new Date(log.created_at).toLocaleString()}</p><p className="m-0 line-clamp-2 text-xs">{log.message}</p></div>)}{!logs.length&&<p className="text-xs text-gray-500">No SMS history yet.</p>}</div>
+          <div className="space-y-3">{logs.slice(0,10).map(log=><div key={log.id} className="border-b border-gray-100 pb-3"><div className="flex items-center justify-between gap-2"><b className="text-xs">{log.recipient_name||log.recipient_phone}</b><span className={`rounded-full px-2 py-1 text-[9px] font-semibold ${log.status==="accepted"?"bg-green-50 text-green-700":"bg-red-50 text-red-700"}`}>{log.status}</span></div><p className="mt-1 mb-1 text-[11px] text-gray-500">{log.recipient_phone} · {new Date(log.created_at).toLocaleString()} · {log.source==="airtouch_test"?"Test SMS":log.source||"SMS"}</p><p className="mb-1 text-[10px] font-medium text-amber-700">Delivery: {log.delivery_status==="accepted_by_provider"?"Accepted by AirTouch — handset delivery not confirmed":log.delivery_status==="delivered"?"Delivered":log.delivery_status==="not_accepted"?"Not accepted by provider":"Not confirmed"}</p>{log.provider_message_id&&<p className="mb-1 text-[10px] text-gray-500">Provider reference: {log.provider_message_id}</p>}<p className="m-0 line-clamp-2 text-xs">{log.message}</p></div>)}{!logs.length&&<p className="text-xs text-gray-500">No SMS history yet.</p>}</div>
         </section>
       </div>
     </div>
