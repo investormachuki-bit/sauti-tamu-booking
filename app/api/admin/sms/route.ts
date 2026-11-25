@@ -122,11 +122,12 @@ export async function POST(request: NextRequest) {
 
     const unique = new Map<string, { phone: string; name: string }>();
     for (const item of recipients) {
-      const phone = normalizeKenyanMsisdn(String(item.phone || ""));
-      if (!/^254\d{9}$/.test(phone) && !/^\d{8,15}$/.test(phone)) continue;
-      unique.set(phone, { phone, name: String(item.name || "").slice(0, 120) });
+      const rawPhone = String(item?.phone || "").trim();
+      if (!rawPhone) continue;
+      const phone = normalizeKenyanMsisdn(rawPhone);
+      unique.set(phone, { phone, name: String(item?.name || "").slice(0, 120) });
     }
-    if (!unique.size) return NextResponse.json({ error: "No valid recipient numbers were supplied." }, { status: 400 });
+    if (!unique.size) return NextResponse.json({ error: "No recipient numbers were supplied." }, { status: 400 });
 
     const results = [];
     for (const recipient of unique.values()) {
@@ -142,13 +143,13 @@ export async function POST(request: NextRequest) {
         recipient_phone: recipient.phone,
         message: personalized,
         provider: "airtouch",
-        provider_status: sent.success ? "1000" : String(sent.status || "error"),
+        provider_status: sent.success ? "1000" : (sent.errorCode || String(sent.status || "error")),
         provider_response: sent.response || sent.error || null,
         status,
         source: "manual",
         sent_by: user.id,
       });
-      results.push({ phone: recipient.phone, name: recipient.name, success: sent.success, error: sent.error || (logError ? "Sent but history could not be saved." : undefined) });
+      results.push({ phone: recipient.phone, name: recipient.name, success: sent.success, errorCode: sent.errorCode, error: sent.error || (logError ? "Provider result received, but SMS history could not be saved." : undefined) });
     }
     return NextResponse.json({ success: true, total: results.length, accepted: results.filter(x => x.success).length, failed: results.filter(x => !x.success).length, results });
   } catch (error) {
