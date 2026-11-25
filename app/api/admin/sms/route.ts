@@ -145,7 +145,10 @@ export async function POST(request: NextRequest) {
         provider: "airtouch",
         provider_status: sent.success ? "1000" : (sent.errorCode || String(sent.status || "error")),
         provider_response: sent.response || sent.error || null,
+        provider_message_id: sent.providerMessageId || null,
         status,
+        delivery_status: sent.success ? "accepted_by_provider" : "not_accepted",
+        delivery_status_updated_at: new Date().toISOString(),
         source: "manual",
         sent_by: user.id,
       });
