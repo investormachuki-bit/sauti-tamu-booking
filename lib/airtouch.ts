@@ -7,6 +7,7 @@ export type AirTouchResult = {
   response?: string;
   error?: string;
   errorCode?: "configuration" | "invalid_recipient" | "provider_rejected" | "timeout" | "network";
+  providerMessageId?: string;
 };
 
 export function normalizeKenyanMsisdn(value: string): string {
@@ -77,13 +78,16 @@ export async function sendAirTouchSms(
 
     let providerCode: string | undefined;
     let providerDescription: string | undefined;
+    let providerMessageId: string | undefined;
     try {
       const parsed = JSON.parse(rawBody) as {
         status_code?: string | number;
         status_desc?: string;
+        message_id?: string | number | null;
       };
       providerCode = parsed.status_code == null ? undefined : String(parsed.status_code);
       providerDescription = parsed.status_desc;
+      providerMessageId = parsed.message_id == null ? undefined : String(parsed.message_id);
     } catch {
       // Keep the raw, redacted provider response for diagnostics.
     }
@@ -93,6 +97,7 @@ export async function sendAirTouchSms(
       success: accepted,
       status: response.status,
       response: body,
+      providerMessageId,
       ...(!accepted
         ? {
             errorCode: "provider_rejected",
