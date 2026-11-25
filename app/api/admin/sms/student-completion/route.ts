@@ -36,7 +36,7 @@ export async function POST(request: NextRequest) {
     if (prior) return NextResponse.json({ success: true, alreadySent: true, message: "A completion SMS was already accepted for this enrollment." });
 
     const phone = normalizeKenyanMsisdn(student.whatsapp_number);
-    const message = String(template.message).replace(/{{\\s*full_name\\s*}}/gi, student.full_name || "there");
+    const message = String(template.message).replace(/{{\s*full_name\s*}}/gi, student.full_name || "there");
     const sent = await sendAirTouchSms(phone, message);
     const accepted = sent.success;
     const { error: logError } = await supabaseServer.from("sms_messages").insert({
