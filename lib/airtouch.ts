@@ -46,7 +46,7 @@ export async function sendAirTouchSms(
   }
 
   const recipient = normalizeKenyanMsisdn(msisdn);
-  if (!/^254[17]\\d{8}$/.test(recipient) {
+  if (!/^254[17]\d{8}$/.test(recipient) {
     return { success: false, errorCode: "invalid_recipient", error: "Invalid Kenyan mobile number. Use 07XXXXXXXX, 01XXXXXXXX, or 2547XXXXXXXX / 2541XXXXXXXX." };
   }
 
