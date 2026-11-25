@@ -32,7 +32,31 @@ export async function POST(request: NextRequest) {
     }
 
     const result = await sendAirTouchSms(phone, message);
-    if (!result.success) {
+    const accepted = result.success;
+    const { data: auditRecord, error: auditError } = await supabaseServer
+      .from("sms_messages")
+      .insert({
+        recipient_name: "AirTouch test",
+        recipient_phone: phone,
+        message,
+        provider: "airtouch",
+        provider_status: accepted ? "1000" : (result.errorCode || String(result.status || "error")),
+        provider_response: result.response || result.error || null,
+        provider_message_id: result.providerMessageId || null,
+        status: accepted ? "accepted" : "failed",
+        delivery_status: accepted ? "accepted_by_provider" : "not_accepted",
+        delivery_status_updated_at: new Date().toISOString(),
+        source: "airtouch_test",
+        sent_by: authData.user.id,
+      })
+      .select("id")
+      .single();
+
+    if (auditError) {
+      console.error("AirTouch test SMS audit write failed:", { message: auditError.message });
+    }
+
+    if (!accepted) {
       console.error("AirTouch test SMS failed:", {
         error: result.error,
         status: result.status,
@@ -42,13 +66,19 @@ export async function POST(request: NextRequest) {
         success: false,
         error: result.error || "AirTouch rejected the test message.",
         providerResponse: result.response,
+        auditSaved: !auditError,
+        auditId: auditRecord?.id || null,
       }, { status: 502 });
     }
 
     return NextResponse.json({
       success: true,
-      message: "The SMS request was accepted by AirTouch. Confirm delivery on the recipient phone.",
+      message: "AirTouch accepted the request. This is not a delivery confirmation.",
       providerResponse: result.response,
+      providerMessageId: result.providerMessageId || null,
+      deliveryStatus: "accepted_by_provider",
+      auditSaved: !auditError,
+      auditId: auditRecord?.id || null,
       status: result.status,
     });
   } catch (error) {
