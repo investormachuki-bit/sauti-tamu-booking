@@ -672,6 +672,35 @@ export default function AdminDashboard() {
         enrollment.id
       );
 
+      // Completion is already saved; send the event SMS independently so a
+      // provider failure never rolls back or misreports the student completion.
+      let completionSmsWarning = "";
+      try {
+        const { data: sessionData } = await supabase.auth.getSession();
+        const accessToken = sessionData.session?.access_token;
+        if (!accessToken) {
+          completionSmsWarning = "Student completed, but the completion SMS could not be sent because your session has expired.";
+        } else {
+          const smsResponse = await fetch("/api/admin/sms/student-completion", {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ studentId: student.id, enrollmentId: enrollment.id }),
+          });
+          const smsResult = await smsResponse.json();
+          if (!smsResponse.ok) {
+            completionSmsWarning = `Student completed, but the completion SMS was not accepted: ${smsResult.error || "Unknown SMS error"}`;
+          } else if (smsResult.skipped) {
+            completionSmsWarning = `Student completed. Completion SMS was skipped: ${smsResult.skipped}`;
+          }
+        }
+      } catch (smsError) {
+        console.error("Student completion SMS request failed:", smsError);
+        completionSmsWarning = "Student completed, but the completion SMS request could not be confirmed.";
+      }
+
       // Remove the completed student immediately from the dashboard.
       setStudents((current) =>
         current.map((item) =>
@@ -690,8 +719,9 @@ export default function AdminDashboard() {
         )
       );
 
-      // Confirm the final database state.
+      // Confirm the final database state, then surface any SMS-only warning.
       await loadDashboard();
+      if (completionSmsWarning) setError(completionSmsWarning);
     } catch (err) {
       console.error(
         "Complete student error:",
