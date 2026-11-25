@@ -6,6 +6,7 @@ export type AirTouchResult = {
   status?: number;
   response?: string;
   error?: string;
+  errorCode?: "configuration" | "invalid_recipient" | "provider_rejected" | "timeout" | "network";
 };
 
 export function normalizeKenyanMsisdn(value: string): string {
@@ -39,13 +40,14 @@ export async function sendAirTouchSms(
     console.error("AirTouch runtime configuration missing:", missingConfiguration);
     return {
       success: false,
-      error: `AirTouch runtime configuration unavailable: ${missingConfiguration.join(", ")}.`,
+      errorCode: "configuration",
+      error: `AirTouch configuration is unavailable on this server instance (${missingConfiguration.join(", ")}). No SMS was sent. Please contact the administrator; do not repeatedly retry.`,
     };
   }
 
   const recipient = normalizeKenyanMsisdn(msisdn);
   if (!/^254\d{9}$/.test(recipient)) {
-    return { success: false, error: "Invalid Kenyan mobile number." };
+    return { success: false, errorCode: "invalid_recipient", error: "Invalid Kenyan mobile number. Use 07XXXXXXXX, 01XXXXXXXX, or 2547XXXXXXXX / 2541XXXXXXXX." };
   }
 
   // AirTouch documentation specifies MD5(API key), hexadecimal, as the password.
@@ -93,6 +95,7 @@ export async function sendAirTouchSms(
       response: body,
       ...(!accepted
         ? {
+            errorCode: "provider_rejected",
             error: providerCode
               ? `AirTouch rejected the SMS (code ${providerCode}${providerDescription ? `: ${providerDescription}` : ""}).`
               : `AirTouch returned an unexpected response (HTTP ${response.status}).`,
@@ -100,9 +103,13 @@ export async function sendAirTouchSms(
         : {}),
     };
   } catch (error) {
+    const timedOut = error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError");
     return {
       success: false,
-      error: error instanceof Error ? error.message : "AirTouch request failed.",
+      errorCode: timedOut ? "timeout" : "network",
+      error: timedOut
+        ? "AirTouch did not respond within 15 seconds. Delivery is unknown; check SMS history before retrying to avoid duplicates."
+        : "Could not reach AirTouch. No provider acceptance was received; check connectivity and SMS history before retrying.",
     };
   }
 }
