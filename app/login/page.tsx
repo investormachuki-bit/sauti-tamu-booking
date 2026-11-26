@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import {
   ArrowRight,
   Eye,
@@ -10,12 +10,15 @@ import {
   Music2,
   ShieldCheck,
 } from "lucide-react";
-import { useRouter, useSearchParams } from "next/navigation";
+
 import { supabase } from "@/lib/supabase";
 
 export default function LoginPage() {
-  const router = useRouter();
-  const searchParams = useSearchParams();
+  const [loggedOut, setLoggedOut] = useState(false);
+
+  useEffect(() => {
+    setLoggedOut(new URLSearchParams(window.location.search).get("loggedOut") === "1");
+  }, []);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -92,7 +95,7 @@ export default function LoginPage() {
               <p className="mt-2 text-[12px] leading-6 text-[#888]">Sign in to continue to your Sauti Tamu workspace.</p>
             </div>
 
-            {searchParams.get("loggedOut") === "1" && (
+            {loggedOut && (
               <div className="mb-5 flex items-start gap-2 rounded-xl border border-[#dce9df] bg-[#f2f8f3] px-4 py-3 text-[11px] leading-5 text-[#477451]">
                 <ShieldCheck size={15} className="mt-0.5 shrink-0" />
                 <span>You have been signed out securely.</span>
