@@ -892,13 +892,13 @@ async function processSms(request: NextRequest) {
               day: "numeric", month: "long", year: "numeric", timeZone: "Africa/Nairobi",
             }).format(new Date(`${value}T12:00:00+03:00`));
             const fullName = String(student.full_name || "").trim() || "there";
-            const firstName = fullName.split(/\\s+/)[0] || "there";
+            const firstName = fullName.split(/\s+/)[0] || "there";
             attemptedPhone = student.whatsapp_number;
             attemptedName = fullName;
             attemptedMessage = String(template.message)
-              .replace(/{{\\s*full_name\\s*}}/gi, fullName)
-              .replace(/{{\\s*first_name\\s*}}/gi, firstName)
-              .replace(/{{\\s*end_date\\s*}}/gi, formatEndDate(String(notice.end_date)));
+              .replace(/{{\s*full_name\s*}}/gi, fullName)
+              .replace(/{{\s*first_name\s*}}/gi, firstName)
+              .replace(/{{\s*end_date\s*}}/gi, formatEndDate(String(notice.end_date)));
 
             const sendResult = await sendAirTouchSms(attemptedPhone, attemptedMessage);
             if (!sendResult.success) throw new Error(sendResult.error || "AirTouch send failed.");
