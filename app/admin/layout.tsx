@@ -23,11 +23,12 @@ export default function AdminLayout({
   children: React.ReactNode;
 }) {
   return (
-    <AdminGuard>
-      <AppShell>
-        {children}
-        <AdminPwaInstall />
-      </AppShell>
-    </AdminGuard>
+    <>
+      {/* Attach install listeners before AdminGuard finishes session verification. */}
+      <AdminPwaInstall />
+      <AdminGuard>
+        <AppShell>{children}</AppShell>
+      </AdminGuard>
+    </>
   );
 }
