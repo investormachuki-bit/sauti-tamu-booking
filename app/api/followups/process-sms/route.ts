@@ -509,6 +509,14 @@ async function processSms(request: NextRequest) {
         calculatedEnd.setUTCDate(calculatedEnd.getUTCDate() + 90);
         const calculatedEndDate = calculatedEnd.toISOString().slice(0, 10);
 
+        const { data: existingSchedule, error: existingScheduleError } = await supabaseServer
+          .from("student_completion_sms_schedule")
+          .select("manual_end_date")
+          .eq("enrollment_id", enrollment.id)
+          .maybeSingle();
+        if (existingScheduleError) throw existingScheduleError;
+        const scheduledFor = existingSchedule?.manual_end_date || calculatedEndDate;
+
         const { error: scheduleError } = await supabaseServer
           .from("student_completion_sms_schedule")
           .upsert({
@@ -516,7 +524,7 @@ async function processSms(request: NextRequest) {
             student_id: student.id,
             first_payment_date: firstPaymentDate,
             calculated_end_date: calculatedEndDate,
-            scheduled_for: calculatedEndDate,
+            scheduled_for: scheduledFor,
             updated_at: new Date().toISOString(),
           }, { onConflict: "enrollment_id", ignoreDuplicates: false });
         if (scheduleError) throw scheduleError;
@@ -635,7 +643,7 @@ async function processSms(request: NextRequest) {
           attemptedPhone = student.whatsapp_number;
           attemptedName = student.full_name || "";
           attemptedMessage = String(template.message)
-            .replace(/{{\\s*full_name\\s*}}/gi, student.full_name || "there");
+            .replace(/{{\s*full_name\s*}}/gi, student.full_name || "there");
           const sentResult = await sendAirTouchSms(attemptedPhone, attemptedMessage);
           if (!sentResult.success) throw new Error(sentResult.error || "AirTouch send failed.");
           providerAccepted = true;
