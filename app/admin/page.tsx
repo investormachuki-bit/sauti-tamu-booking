@@ -88,6 +88,8 @@ type CompletionStudent = {
   student: Student;
   enrollment: StudentEnrollment;
   daysRemaining: number;
+  gracePeriodDaysRemaining?: number;
+  gracePeriodEndsOn?: string | null;
 };
 
 const TERMINAL_STUDENT_STATUSES = new Set([
@@ -302,6 +304,7 @@ export default function AdminDashboard() {
   const [students, setStudents] = useState<Student[]>([]);
   const [enrollments, setEnrollments] = useState<StudentEnrollment[]>([]);
   const [paymentRecords, setPaymentRecords] = useState<StudentRecord[]>([]);
+  const [graceSchedules, setGraceSchedules] = useState<Array<{ enrollment_id: string; grace_period_starts_on: string | null; grace_period_ends_on: string | null; grace_period_completed_at: string | null }>>([]);
   const [completingStudentId, setCompletingStudentId] = useState<string | null>(null);
 
   const [loading, setLoading] = useState(true);
@@ -326,6 +329,7 @@ export default function AdminDashboard() {
         { data: leadData, error: leadError },
         { data: studentData, error: studentError },
         { data: enrollmentData, error: enrollmentError },
+        { data: graceScheduleData, error: graceScheduleError },
         paymentRecordsData,
       ] = await Promise.all([
         supabase
@@ -399,6 +403,7 @@ export default function AdminDashboard() {
             `
           )
           .order("end_date", { ascending: true }),
+        supabase.from("student_completion_sms_schedule").select("enrollment_id,grace_period_starts_on,grace_period_ends_on,grace_period_completed_at"),
         loadStudents(),
       ]);
 
@@ -415,6 +420,11 @@ export default function AdminDashboard() {
       if (studentError) {
         console.error("Dashboard students error:", studentError);
         throw new Error("Bookings loaded, but students could not be loaded.");
+      }
+
+      if (graceScheduleError) {
+        console.error("Dashboard grace-period schedule error:", graceScheduleError);
+        throw new Error("Student data loaded, but grace-period countdowns could not be loaded.");
       }
 
       if (enrollmentError) {
@@ -444,6 +454,7 @@ export default function AdminDashboard() {
       setLeads((leadData ?? []) as Lead[]);
       setStudents((studentData ?? []) as Student[]);
       setEnrollments((enrollmentData ?? []) as StudentEnrollment[]);
+      setGraceSchedules((graceScheduleData ?? []) as typeof graceSchedules);
       setPaymentRecords(paymentRecordsData);
     } catch (err) {
       console.error(err);
@@ -479,58 +490,26 @@ export default function AdminDashboard() {
   }, [enrollments]);
 
   const nearingCompletion = useMemo<CompletionStudent[]>(() => {
-    const studentMap = new Map(
-      students.map((student) => [student.id, student])
-    );
-
-    const nearestEnrollmentByStudent = new Map<
-      string,
-      { enrollment: StudentEnrollment; daysRemaining: number }
-    >();
-
+    const studentMap = new Map(students.map((student) => [student.id, student]));
+    const graceByEnrollment = new Map(graceSchedules.map((item) => [item.enrollment_id, item]));
+    const cards: CompletionStudent[] = [];
     for (const enrollment of activeEnrollments) {
       if (!enrollment.end_date) continue;
-
       const student = studentMap.get(enrollment.student_id);
-      if (!student) continue;
-
-      const studentStatus = student.status.toLowerCase();
-      if (TERMINAL_STUDENT_STATUSES.has(studentStatus)) continue;
-
-      const daysRemaining = calendarDaysUntil(
-        enrollment.end_date,
-        todayKey
-      );
-
-      if (daysRemaining > 14) continue;
-
-      const existing = nearestEnrollmentByStudent.get(student.id);
-
-      if (!existing || daysRemaining < existing.daysRemaining) {
-        nearestEnrollmentByStudent.set(student.id, {
-          enrollment,
-          daysRemaining,
-        });
+      if (!student || TERMINAL_STUDENT_STATUSES.has(student.status.toLowerCase())) continue;
+      const grace = graceByEnrollment.get(enrollment.id);
+      if (grace?.grace_period_starts_on && grace.grace_period_ends_on && !grace.grace_period_completed_at) {
+        const days = calendarDaysUntil(grace.grace_period_ends_on, todayKey) + 1;
+        if (days >= 1 && days <= 14) {
+          cards.push({ student, enrollment, daysRemaining: 0, gracePeriodDaysRemaining: days, gracePeriodEndsOn: grace.grace_period_ends_on });
+        }
+        continue;
       }
+      const daysRemaining = calendarDaysUntil(enrollment.end_date, todayKey);
+      if (daysRemaining <= 14) cards.push({ student, enrollment, daysRemaining });
     }
-
-    return Array.from(nearestEnrollmentByStudent.entries())
-      .map(([studentId, value]) => {
-        const student = studentMap.get(studentId);
-        if (!student) return null;
-
-        return {
-          student,
-          enrollment: value.enrollment,
-          daysRemaining: value.daysRemaining,
-        };
-      })
-      .filter(Boolean)
-      .sort((a, b) => {
-        if (!a || !b) return 0;
-        return a.daysRemaining - b.daysRemaining;
-      }) as CompletionStudent[];
-  }, [activeEnrollments, students, todayKey]);
+    return cards.sort((a, b) => (a.gracePeriodDaysRemaining ?? a.daysRemaining) - (b.gracePeriodDaysRemaining ?? b.daysRemaining));
+  }, [activeEnrollments, students, todayKey, graceSchedules]);
 
   const yesterdayKey = useMemo(() => addCalendarDays(todayKey, -1), [todayKey]);
 
@@ -1114,7 +1093,7 @@ export default function AdminDashboard() {
               </h2>
 
               <p className="mt-1 mb-0 text-[10px] text-[var(--st-gray)]">
-                Active students with 14 calendar days or less remaining in their enrollment
+                Active students approaching the 90-day end date or currently within their 14-day grace period
               </p>
             </div>
 
@@ -1128,7 +1107,7 @@ export default function AdminDashboard() {
           ) : nearingCompletion.length === 0 ? (
             <EmptyState
               title="No students are nearing completion"
-              description="No active student is within 14 calendar days of their enrollment end date."
+              description="No active student is approaching the end of their learning period or currently in a grace period."
               icon={<GraduationCap size={19} />}
             />
           ) : (
@@ -1137,6 +1116,8 @@ export default function AdminDashboard() {
                 student,
                 enrollment,
                 daysRemaining,
+                gracePeriodDaysRemaining,
+                gracePeriodEndsOn,
               }) => {
                 const photoUrl = getStudentPhotoUrl(
                   student.photo_path
@@ -1226,13 +1207,11 @@ export default function AdminDashboard() {
 
                         <div className="min-w-0">
                           <p className="m-0 text-[9px] font-semibold uppercase tracking-[0.08em] text-[var(--st-gray)]">
-                            Enrollment ends
+                            {gracePeriodDaysRemaining !== undefined ? "Grace period ends" : "Enrollment ends"}
                           </p>
 
                           <p className="mt-1 mb-0 text-[12px] font-bold text-[var(--st-charcoal-dark)]">
-                            {enrollment.end_date
-                              ? formatDateOnly(enrollment.end_date)
-                              : "—"}
+                            {gracePeriodEndsOn ? formatDateOnly(gracePeriodEndsOn) : enrollment.end_date ? formatDateOnly(enrollment.end_date) : "—"}
                           </p>
                         </div>
                       </div>
@@ -1245,7 +1224,9 @@ export default function AdminDashboard() {
                         </p>
 
                         <div className="mt-2">
-                          {renderCompletionStatus(daysRemaining)}
+                          {gracePeriodDaysRemaining !== undefined ? (
+                            <span className="text-[14px] font-bold text-amber-700">GRACE PERIOD · {gracePeriodDaysRemaining} DAY{gracePeriodDaysRemaining === 1 ? "" : "S"} REMAINING</span>
+                          ) : renderCompletionStatus(daysRemaining)}
                         </div>
                       </div>
 
