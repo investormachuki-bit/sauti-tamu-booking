@@ -142,14 +142,25 @@ export default function Sidebar({
   async function handleLogout() {
     if (loggingOut) return;
     setLoggingOut(true);
-    const { error } = await supabase.auth.signOut();
-    if (error) {
-      console.error("Administrator sign out failed:", error);
+    try {
+      const { error } = await supabase.auth.signOut({ scope: "local" });
+      if (error) console.error("Supabase sign-out returned an error:", error);
+
+      // Clear persisted Supabase auth tokens in this browser/PWA session.
+      for (const storage of [window.localStorage, window.sessionStorage]) {
+        for (const key of Object.keys(storage)) {
+          if (key.startsWith("sb-") && key.endsWith("-auth-token")) {
+            storage.removeItem(key);
+          }
+        }
+      }
+
+      // Force a fresh document so no cached App Router state can retain the dashboard.
+      window.location.replace("/login?loggedOut=1");
+    } catch (error) {
+      console.error("Administrator sign-out failed:", error);
       setLoggingOut(false);
-      return;
     }
-    router.replace("/login");
-    router.refresh();
   }
 
   return (
