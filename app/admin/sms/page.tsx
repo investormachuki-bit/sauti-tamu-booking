@@ -13,6 +13,7 @@ type CoreSmsTemplate = { id: string; template_key: "trial_booking_confirmation" 
 type TrialReminderTemplate = { id: string; reminder_key: "trial_reminder_24h" | "trial_reminder_1h" | "trial_reminder_15m"; name: string; message: string; enabled: boolean };
 type PaymentDueTemplate = { id: string; reminder_key: "payment_due_7d" | "payment_due_3d" | "payment_due_today"; name: string; message: string; enabled: boolean };
 type StudentCompletionTemplate = { id: string; template_key: "student_completion"; name: string; message: string; enabled: boolean };
+type StudentWelcomeTemplate = { id: string; template_key: "first_payment_welcome"; name: string; message: string; enabled: boolean };
 type Log = { id: string; recipient_name: string | null; recipient_phone: string; message: string; status: string; provider_status: string | null; delivery_status?: string | null; provider_message_id?: string | null; source?: string | null; created_at: string };
 
 export default function AdminSmsPage() {
@@ -36,6 +37,7 @@ export default function AdminSmsPage() {
   const [trialReminderTemplates, setTrialReminderTemplates] = useState<TrialReminderTemplate[]>([]);
   const [paymentDueTemplates, setPaymentDueTemplates] = useState<PaymentDueTemplate[]>([]);
   const [studentCompletionTemplates, setStudentCompletionTemplates] = useState<StudentCompletionTemplate[]>([]);
+  const [studentWelcomeTemplates, setStudentWelcomeTemplates] = useState<StudentWelcomeTemplate[]>([]);
   const [followupStats, setFollowupStats] = useState<Record<string, number>>({});
   const [savingFollowupId, setSavingFollowupId] = useState<string | null>(null);
   const [logs, setLogs] = useState<Log[]>([]);
@@ -60,7 +62,7 @@ export default function AdminSmsPage() {
 
   async function load() {
     setLoading(true); setError("");
-    try { const data = await request("/"); setLogs(data.logs || []); setTemplates(data.templates || []); setManychatFollowupTemplates(data.manychatFollowupTemplates || []); setTrialEventTemplates(data.trialEventTemplates || []); setCoreSmsTemplates(data.coreTemplates || []); setTrialReminderTemplates(data.trialReminderTemplates || []); setPaymentDueTemplates(data.paymentDueTemplates || []); setStudentCompletionTemplates(data.studentCompletionTemplates || []); setFollowupStats(data.manychatFollowupStats || {}); }
+    try { const data = await request("/"); setLogs(data.logs || []); setTemplates(data.templates || []); setManychatFollowupTemplates(data.manychatFollowupTemplates || []); setTrialEventTemplates(data.trialEventTemplates || []); setCoreSmsTemplates(data.coreTemplates || []); setTrialReminderTemplates(data.trialReminderTemplates || []); setPaymentDueTemplates(data.paymentDueTemplates || []); setStudentCompletionTemplates(data.studentCompletionTemplates || []); setStudentWelcomeTemplates(data.studentWelcomeTemplates || []); setFollowupStats(data.manychatFollowupStats || {}); }
     catch (e) { setError(e instanceof Error ? e.message : "Could not load SMS records."); }
     finally { setLoading(false); }
   }
@@ -194,6 +196,16 @@ export default function AdminSmsPage() {
       setNotice(`${template.name} saved.`);
       await load();
     } catch (e) { setError(e instanceof Error ? e.message : "Could not save SMS template."); }
+    finally { setSavingFollowupId(null); }
+  }
+
+  async function saveStudentWelcomeTemplate(template: StudentWelcomeTemplate) {
+    setSavingFollowupId(template.id); setError(""); setNotice("");
+    try {
+      await request("/", { action: "save-student-welcome-template", id: template.id, message: template.message, enabled: template.enabled });
+      setNotice("New student welcome SMS template saved.");
+      await load();
+    } catch (e) { setError(e instanceof Error ? e.message : "Could not save new student welcome template."); }
     finally { setSavingFollowupId(null); }
   }
 
@@ -343,6 +355,18 @@ export default function AdminSmsPage() {
               <textarea maxLength={480} value={template.message} onChange={e=>setTrialEventTemplates(current=>current.map(item=>item.id===template.id?{...item,message:e.target.value}:item))} className="min-h-24 w-full rounded-lg border border-gray-200 p-2 text-[11px] leading-relaxed"/>
               <div className="mt-2 flex items-center justify-between"><span className="text-[9px] text-gray-400">{template.message.length}/480 characters</span><button className="st-button st-button-secondary" disabled={savingFollowupId===template.id||!template.message.trim()} onClick={()=>saveTrialEventTemplate(template)}><Save size={13}/>{savingFollowupId===template.id?"Saving...":"Save template"}</button></div>
             </div>)}
+          </div>
+        </section>
+        <section className="st-card p-5">
+          <div className="mb-3 flex items-center gap-2"><MessageSquare size={18}/><h2 className="m-0 text-base font-semibold">New student welcome SMS</h2><span className="rounded-full bg-blue-50 px-2 py-1 text-[9px] font-semibold text-blue-700">First payment event</span></div>
+          <p className="mb-3 text-[10px] leading-relaxed text-gray-500">Sent only after the first payment receipt SMS has been accepted by AirTouch. It is sent once per enrollment, never on later payments. If the receipt SMS fails or is disabled, this welcome message is not sent. Personalization: {'{{full_name}}'}, {'{{first_name}}'}.</p>
+          <div className="space-y-3">
+            {studentWelcomeTemplates.map(template => <div key={template.id} className="rounded-xl border border-gray-100 p-3">
+              <div className="mb-2 flex items-center justify-between gap-2"><b className="text-xs">{template.name}</b><label className="flex items-center gap-1 text-[10px]"><input type="checkbox" checked={template.enabled} onChange={e=>setStudentWelcomeTemplates(current=>current.map(item=>item.id===template.id?{...item,enabled:e.target.checked}:item))}/> Enabled</label></div>
+              <textarea maxLength={480} value={template.message} onChange={e=>setStudentWelcomeTemplates(current=>current.map(item=>item.id===template.id?{...item,message:e.target.value}:item))} className="min-h-24 w-full rounded-lg border border-gray-200 p-2 text-[11px] leading-relaxed"/>
+              <div className="mt-2 flex items-center justify-between"><span className="text-[9px] text-gray-400">{template.message.length}/480 characters</span><button className="st-button st-button-secondary" disabled={savingFollowupId===template.id||!template.message.trim()} onClick={()=>saveStudentWelcomeTemplate(template)}><Save size={13}/>{savingFollowupId===template.id?"Saving...":"Save template"}</button></div>
+            </div>)}
+            {!studentWelcomeTemplates.length&&<p className="text-xs text-gray-500">No new student welcome template found. Refresh after the database migration.</p>}
           </div>
         </section>
         <section className="st-card p-5">
