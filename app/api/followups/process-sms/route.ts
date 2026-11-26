@@ -669,8 +669,8 @@ async function processSms(request: NextRequest) {
                 status: "accepted",
                 provider_message_id: sentResult.providerMessageId || null,
                 sent_at: sentAt,
-                grace_period_starts_on: (() => { const parts = new Intl.DateTimeFormat("en-CA", { timeZone: "Africa/Nairobi", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(sentAt)).split("-").map(Number); const date = new Date(Date.UTC(parts[0], parts[1]-1, parts[2])); date.setUTCDate(date.getUTCDate()+1); return date.toISOString().slice(0,10); })(),
-                grace_period_ends_on: (() => { const parts = new Intl.DateTimeFormat("en-CA", { timeZone: "Africa/Nairobi", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(sentAt)).split("-").map(Number); const date = new Date(Date.UTC(parts[0], parts[1]-1, parts[2])); date.setUTCDate(date.getUTCDate()+14); return date.toISOString().slice(0,10); })(),
+                grace_period_starts_on: (() => { const parts = (() => { const parts = new Intl.DateTimeFormat("en-GB", { timeZone: "Africa/Nairobi", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(new Date(sentAt)); return [Number(parts.find(x => x.type === "year")?.value), Number(parts.find(x => x.type === "month")?.value), Number(parts.find(x => x.type === "day")?.value)]; })(); const date = new Date(Date.UTC(parts[0], parts[1]-1, parts[2])); date.setUTCDate(date.getUTCDate()+1); return date.toISOString().slice(0,10); })(),
+                grace_period_ends_on: (() => { const parts = (() => { const parts = new Intl.DateTimeFormat("en-GB", { timeZone: "Africa/Nairobi", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(new Date(sentAt)); return [Number(parts.find(x => x.type === "year")?.value), Number(parts.find(x => x.type === "month")?.value), Number(parts.find(x => x.type === "day")?.value)]; })(); const date = new Date(Date.UTC(parts[0], parts[1]-1, parts[2])); date.setUTCDate(date.getUTCDate()+14); return date.toISOString().slice(0,10); })(),
                 grace_period_sms_status: "pending",
                 last_error: null,
                 updated_at: sentAt,
@@ -1071,6 +1071,9 @@ async function processSms(request: NextRequest) {
     oneMonthNoticeSent,
     oneMonthNoticeFailed,
     oneMonthNoticeSkipped,
+    gracePeriodCompleted,
+    gracePeriodSmsSent,
+    gracePeriodSmsFailed,
     results,
   });
 }
