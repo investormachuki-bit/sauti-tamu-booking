@@ -44,9 +44,9 @@ export default function Topbar({
       <div className="st-topbar-right">
 
         <Link
-          href="/"
+          href="/book"
           target="_blank"
-          className="hidden sm:block"
+          className="block"
         >
           <IconButton label="View public booking page">
             <ExternalLink size={16} />
