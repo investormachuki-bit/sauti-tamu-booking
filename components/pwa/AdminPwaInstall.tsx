@@ -13,16 +13,11 @@ export default function AdminPwaInstall() {
   const [installed, setInstalled] = useState(false);
 
   useEffect(() => {
-    if (!("serviceWorker" in navigator)) return;
-
-    let cancelled = false;
-    navigator.serviceWorker
-      .register("/admin/sw.js", { scope: "/admin/", updateViaCache: "none" })
-      .catch((error) => console.error("Admin PWA service worker registration failed:", error));
+    let mounted = true;
 
     const onBeforeInstallPrompt = (event: Event) => {
       event.preventDefault();
-      setInstallPrompt(event as InstallPromptEvent);
+      if (mounted) setInstallPrompt(event as InstallPromptEvent);
     };
 
     const onInstalled = () => {
@@ -36,14 +31,23 @@ export default function AdminPwaInstall() {
       window.matchMedia("(display-mode: standalone)").matches ||
       (window.navigator as Navigator & { standalone?: boolean }).standalone === true;
 
-    if (!cancelled && isIos && !isStandalone) setShowIosHelp(true);
+    if (isIos && !isStandalone) setShowIosHelp(true);
     if (isStandalone) setInstalled(true);
+
+    // Script is deliberately at the site root so its allowed maximum scope
+    // includes the exact /admin URL as well as every nested admin route.
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker
+        .register("/admin-sw.js", { scope: "/admin", updateViaCache: "none" })
+        .then((registration) => registration.update())
+        .catch((error) => console.error("Admin PWA service worker registration failed:", error));
+    }
 
     window.addEventListener("beforeinstallprompt", onBeforeInstallPrompt);
     window.addEventListener("appinstalled", onInstalled);
 
     return () => {
-      cancelled = true;
+      mounted = false;
       window.removeEventListener("beforeinstallprompt", onBeforeInstallPrompt);
       window.removeEventListener("appinstalled", onInstalled);
     };
