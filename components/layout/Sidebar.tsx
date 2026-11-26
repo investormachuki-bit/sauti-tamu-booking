@@ -1,6 +1,9 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useState } from "react";
+import { supabase } from "@/lib/supabase";
 import {
   LayoutDashboard,
   CalendarDays,
@@ -19,6 +22,7 @@ import {
   ContactRound,
   BriefcaseBusiness,
   FileBarChart,
+  LogOut,
 } from "lucide-react";
 
 interface SidebarProps {
@@ -132,6 +136,22 @@ export default function Sidebar({
   onToggleCollapse,
   onClose,
 }: SidebarProps) {
+  const router = useRouter();
+  const [loggingOut, setLoggingOut] = useState(false);
+
+  async function handleLogout() {
+    if (loggingOut) return;
+    setLoggingOut(true);
+    const { error } = await supabase.auth.signOut();
+    if (error) {
+      console.error("Administrator sign out failed:", error);
+      setLoggingOut(false);
+      return;
+    }
+    router.replace("/login");
+    router.refresh();
+  }
+
   return (
     <>
       {open && (
@@ -229,6 +249,25 @@ export default function Sidebar({
             </div>
           ))}
         </nav>
+
+        {/* SIGN OUT */}
+        <div className="px-3 pb-3">
+          <button
+            type="button"
+            onClick={handleLogout}
+            disabled={loggingOut}
+            title="Sign out"
+            aria-label="Sign out"
+            className="st-nav-item w-full border-0 bg-transparent text-left disabled:cursor-wait disabled:opacity-60"
+          >
+            <span className="st-nav-icon">
+              <LogOut size={17} strokeWidth={1.8} />
+            </span>
+            <span className="st-nav-label">
+              {loggingOut ? "Signing out..." : "Logout"}
+            </span>
+          </button>
+        </div>
 
         {/* FOOTER */}
         <div className="st-sidebar-footer">
