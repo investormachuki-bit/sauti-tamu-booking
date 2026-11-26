@@ -15,6 +15,7 @@ type PaymentDueTemplate = { id: string; reminder_key: "payment_due_7d" | "paymen
 type StudentCompletionTemplate = { id: string; template_key: "student_completion"; name: string; message: string; enabled: boolean };
 type StudentWelcomeTemplate = { id: string; template_key: "first_payment_welcome"; name: string; message: string; enabled: boolean };
 type StudentOneMonthNoticeTemplate = { id: string; template_key: "one_month_remaining"; name: string; message: string; enabled: boolean };
+type GracePeriodTemplate = { id: string; template_key: "grace_period_ended"; name: string; message: string; enabled: boolean };
 type Log = { id: string; recipient_name: string | null; recipient_phone: string; message: string; status: string; provider_status: string | null; delivery_status?: string | null; provider_message_id?: string | null; source?: string | null; created_at: string };
 
 export default function AdminSmsPage() {
@@ -40,6 +41,7 @@ export default function AdminSmsPage() {
   const [studentCompletionTemplates, setStudentCompletionTemplates] = useState<StudentCompletionTemplate[]>([]);
   const [studentWelcomeTemplates, setStudentWelcomeTemplates] = useState<StudentWelcomeTemplate[]>([]);
   const [studentOneMonthNoticeTemplates, setStudentOneMonthNoticeTemplates] = useState<StudentOneMonthNoticeTemplate[]>([]);
+  const [gracePeriodTemplates, setGracePeriodTemplates] = useState<GracePeriodTemplate[]>([]);
   const [followupStats, setFollowupStats] = useState<Record<string, number>>({});
   const [savingFollowupId, setSavingFollowupId] = useState<string | null>(null);
   const [logs, setLogs] = useState<Log[]>([]);
@@ -64,7 +66,7 @@ export default function AdminSmsPage() {
 
   async function load() {
     setLoading(true); setError("");
-    try { const data = await request("/"); setLogs(data.logs || []); setTemplates(data.templates || []); setManychatFollowupTemplates(data.manychatFollowupTemplates || []); setTrialEventTemplates(data.trialEventTemplates || []); setCoreSmsTemplates(data.coreTemplates || []); setTrialReminderTemplates(data.trialReminderTemplates || []); setPaymentDueTemplates(data.paymentDueTemplates || []); setStudentCompletionTemplates(data.studentCompletionTemplates || []); setStudentWelcomeTemplates(data.studentWelcomeTemplates || []); setStudentOneMonthNoticeTemplates(data.studentOneMonthNoticeTemplates || []); setFollowupStats(data.manychatFollowupStats || {}); }
+    try { const data = await request("/"); setLogs(data.logs || []); setTemplates(data.templates || []); setManychatFollowupTemplates(data.manychatFollowupTemplates || []); setTrialEventTemplates(data.trialEventTemplates || []); setCoreSmsTemplates(data.coreTemplates || []); setTrialReminderTemplates(data.trialReminderTemplates || []); setPaymentDueTemplates(data.paymentDueTemplates || []); setStudentCompletionTemplates(data.studentCompletionTemplates || []); setStudentWelcomeTemplates(data.studentWelcomeTemplates || []); setStudentOneMonthNoticeTemplates(data.studentOneMonthNoticeTemplates || []); setGracePeriodTemplates(data.gracePeriodTemplates || []); setFollowupStats(data.manychatFollowupStats || {}); }
     catch (e) { setError(e instanceof Error ? e.message : "Could not load SMS records."); }
     finally { setLoading(false); }
   }
@@ -231,6 +233,16 @@ export default function AdminSmsPage() {
     finally { setSavingFollowupId(null); }
   }
 
+  async function saveGracePeriodTemplate(template: GracePeriodTemplate) {
+    setSavingFollowupId(template.id); setError(""); setNotice("");
+    try {
+      await request("/", { action: "save-grace-period-template", id: template.id, message: template.message, enabled: template.enabled });
+      setNotice("Grace-period end SMS template saved.");
+      await load();
+    } catch (e) { setError(e instanceof Error ? e.message : "Could not save grace-period template."); }
+    finally { setSavingFollowupId(null); }
+  }
+
   async function saveTrialEventTemplate(template: TrialEventTemplate) {
     setSavingFollowupId(template.id); setError(""); setNotice("");
     try {
@@ -391,6 +403,18 @@ export default function AdminSmsPage() {
               <div className="mt-2 flex items-center justify-between"><span className="text-[9px] text-gray-400">{template.message.length}/480 characters</span><button className="st-button st-button-secondary" disabled={savingFollowupId===template.id||!template.message.trim()} onClick={()=>saveStudentOneMonthNoticeTemplate(template)}><Save size={13}/>{savingFollowupId===template.id?"Saving...":"Save template"}</button></div>
             </div>)}
             {!studentOneMonthNoticeTemplates.length&&<p className="text-xs text-gray-500">No one-month notice template found. Refresh after the database migration.</p>}
+          </div>
+        </section>
+        <section className="st-card p-5">
+          <div className="mb-3 flex items-center gap-2"><MessageSquare size={18}/><h2 className="m-0 text-base font-semibold">14-day grace period ended SMS</h2><span className="rounded-full bg-blue-50 px-2 py-1 text-[9px] font-semibold text-blue-700">Automatic</span></div>
+          <p className="mb-3 text-[10px] leading-relaxed text-gray-500">Sent on the 14th grace-period day. Counting starts the day after the 90-day completion SMS is accepted by AirTouch. The student lifecycle is completed automatically even if a balance remains. Placeholder: {'{{first_name}}'}.</p>
+          <div className="space-y-3">
+            {gracePeriodTemplates.map(template => <div key={template.id} className="rounded-xl border border-gray-100 p-3">
+              <div className="mb-2 flex items-center justify-between gap-2"><b className="text-xs">{template.name}</b><label className="flex items-center gap-1 text-[10px]"><input type="checkbox" checked={template.enabled} onChange={e=>setGracePeriodTemplates(current=>current.map(item=>item.id===template.id?{...item,enabled:e.target.checked}:item))}/> Enabled</label></div>
+              <textarea maxLength={480} value={template.message} onChange={e=>setGracePeriodTemplates(current=>current.map(item=>item.id===template.id?{...item,message:e.target.value}:item))} className="min-h-24 w-full rounded-lg border border-gray-200 p-2 text-[11px] leading-relaxed"/>
+              <div className="mt-2 flex items-center justify-between"><span className="text-[9px] text-gray-400">{template.message.length}/480 characters</span><button className="st-button st-button-secondary" disabled={savingFollowupId===template.id||!template.message.trim()} onClick={()=>saveGracePeriodTemplate(template)}><Save size={13}/>{savingFollowupId===template.id?"Saving...":"Save template"}</button></div>
+            </div>)}
+            {!gracePeriodTemplates.length&&<p className="text-xs text-gray-500">No grace-period template found. Refresh after the database migration.</p>}
           </div>
         </section>
         <section className="st-card p-5">
