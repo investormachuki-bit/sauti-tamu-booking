@@ -14,6 +14,7 @@ type TrialReminderTemplate = { id: string; reminder_key: "trial_reminder_24h" | 
 type PaymentDueTemplate = { id: string; reminder_key: "payment_due_7d" | "payment_due_3d" | "payment_due_today"; name: string; message: string; enabled: boolean };
 type StudentCompletionTemplate = { id: string; template_key: "student_completion"; name: string; message: string; enabled: boolean };
 type StudentWelcomeTemplate = { id: string; template_key: "first_payment_welcome"; name: string; message: string; enabled: boolean };
+type StudentOneMonthNoticeTemplate = { id: string; template_key: "one_month_remaining"; name: string; message: string; enabled: boolean };
 type Log = { id: string; recipient_name: string | null; recipient_phone: string; message: string; status: string; provider_status: string | null; delivery_status?: string | null; provider_message_id?: string | null; source?: string | null; created_at: string };
 
 export default function AdminSmsPage() {
@@ -38,6 +39,7 @@ export default function AdminSmsPage() {
   const [paymentDueTemplates, setPaymentDueTemplates] = useState<PaymentDueTemplate[]>([]);
   const [studentCompletionTemplates, setStudentCompletionTemplates] = useState<StudentCompletionTemplate[]>([]);
   const [studentWelcomeTemplates, setStudentWelcomeTemplates] = useState<StudentWelcomeTemplate[]>([]);
+  const [studentOneMonthNoticeTemplates, setStudentOneMonthNoticeTemplates] = useState<StudentOneMonthNoticeTemplate[]>([]);
   const [followupStats, setFollowupStats] = useState<Record<string, number>>({});
   const [savingFollowupId, setSavingFollowupId] = useState<string | null>(null);
   const [logs, setLogs] = useState<Log[]>([]);
@@ -62,7 +64,7 @@ export default function AdminSmsPage() {
 
   async function load() {
     setLoading(true); setError("");
-    try { const data = await request("/"); setLogs(data.logs || []); setTemplates(data.templates || []); setManychatFollowupTemplates(data.manychatFollowupTemplates || []); setTrialEventTemplates(data.trialEventTemplates || []); setCoreSmsTemplates(data.coreTemplates || []); setTrialReminderTemplates(data.trialReminderTemplates || []); setPaymentDueTemplates(data.paymentDueTemplates || []); setStudentCompletionTemplates(data.studentCompletionTemplates || []); setStudentWelcomeTemplates(data.studentWelcomeTemplates || []); setFollowupStats(data.manychatFollowupStats || {}); }
+    try { const data = await request("/"); setLogs(data.logs || []); setTemplates(data.templates || []); setManychatFollowupTemplates(data.manychatFollowupTemplates || []); setTrialEventTemplates(data.trialEventTemplates || []); setCoreSmsTemplates(data.coreTemplates || []); setTrialReminderTemplates(data.trialReminderTemplates || []); setPaymentDueTemplates(data.paymentDueTemplates || []); setStudentCompletionTemplates(data.studentCompletionTemplates || []); setStudentWelcomeTemplates(data.studentWelcomeTemplates || []); setStudentOneMonthNoticeTemplates(data.studentOneMonthNoticeTemplates || []); setFollowupStats(data.manychatFollowupStats || {}); }
     catch (e) { setError(e instanceof Error ? e.message : "Could not load SMS records."); }
     finally { setLoading(false); }
   }
@@ -219,6 +221,16 @@ export default function AdminSmsPage() {
     finally { setSavingFollowupId(null); }
   }
 
+  async function saveStudentOneMonthNoticeTemplate(template: StudentOneMonthNoticeTemplate) {
+    setSavingFollowupId(template.id); setError(""); setNotice("");
+    try {
+      await request("/", { action: "save-student-one-month-notice-template", id: template.id, message: template.message, enabled: template.enabled });
+      setNotice("One-month remaining notice SMS template saved.");
+      await load();
+    } catch (e) { setError(e instanceof Error ? e.message : "Could not save one-month notice template."); }
+    finally { setSavingFollowupId(null); }
+  }
+
   async function saveTrialEventTemplate(template: TrialEventTemplate) {
     setSavingFollowupId(template.id); setError(""); setNotice("");
     try {
@@ -367,6 +379,18 @@ export default function AdminSmsPage() {
               <div className="mt-2 flex items-center justify-between"><span className="text-[9px] text-gray-400">{template.message.length}/480 characters</span><button className="st-button st-button-secondary" disabled={savingFollowupId===template.id||!template.message.trim()} onClick={()=>saveStudentWelcomeTemplate(template)}><Save size={13}/>{savingFollowupId===template.id?"Saving...":"Save template"}</button></div>
             </div>)}
             {!studentWelcomeTemplates.length&&<p className="text-xs text-gray-500">No new student welcome template found. Refresh after the database migration.</p>}
+          </div>
+        </section>
+        <section className="st-card p-5">
+          <div className="mb-3 flex items-center gap-2"><MessageSquare size={18}/><h2 className="m-0 text-base font-semibold">One month remaining notice SMS</h2><span className="rounded-full bg-blue-50 px-2 py-1 text-[9px] font-semibold text-blue-700">Scheduled automatically</span></div>
+          <p className="mb-3 text-[10px] leading-relaxed text-gray-500">Sent once on the date exactly 30 calendar days before the student's current scheduled end date, based on the first successful payment. If the student has less than 30 days remaining, the notice is skipped and never sent late. A manually adjusted end date is respected. Placeholders: {'{{first_name}}'}, {'{{full_name}}'}, {'{{end_date}}'}.</p>
+          <div className="space-y-3">
+            {studentOneMonthNoticeTemplates.map(template => <div key={template.id} className="rounded-xl border border-gray-100 p-3">
+              <div className="mb-2 flex items-center justify-between gap-2"><b className="text-xs">{template.name}</b><label className="flex items-center gap-1 text-[10px]"><input type="checkbox" checked={template.enabled} onChange={e=>setStudentOneMonthNoticeTemplates(current=>current.map(item=>item.id===template.id?{...item,enabled:e.target.checked}:item))}/> Enabled</label></div>
+              <textarea maxLength={480} value={template.message} onChange={e=>setStudentOneMonthNoticeTemplates(current=>current.map(item=>item.id===template.id?{...item,message:e.target.value}:item))} className="min-h-24 w-full rounded-lg border border-gray-200 p-2 text-[11px] leading-relaxed"/>
+              <div className="mt-2 flex items-center justify-between"><span className="text-[9px] text-gray-400">{template.message.length}/480 characters</span><button className="st-button st-button-secondary" disabled={savingFollowupId===template.id||!template.message.trim()} onClick={()=>saveStudentOneMonthNoticeTemplate(template)}><Save size={13}/>{savingFollowupId===template.id?"Saving...":"Save template"}</button></div>
+            </div>)}
+            {!studentOneMonthNoticeTemplates.length&&<p className="text-xs text-gray-500">No one-month notice template found. Refresh after the database migration.</p>}
           </div>
         </section>
         <section className="st-card p-5">
