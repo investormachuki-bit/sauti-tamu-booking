@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { supabase } from "@/lib/supabase";
 import {
@@ -136,7 +135,6 @@ export default function Sidebar({
   onToggleCollapse,
   onClose,
 }: SidebarProps) {
-  const router = useRouter();
   const [loggingOut, setLoggingOut] = useState(false);
 
   async function handleLogout() {
