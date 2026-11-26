@@ -534,175 +534,178 @@ async function processSms(request: NextRequest) {
       }
     }
 
-    const { data: dueCompletionRows, error: dueCompletionError } = await supabaseServer
-      .from("student_completion_sms_schedule")
-      .select("id,enrollment_id,student_id,scheduled_for,attempt_count")
-      .in("status", ["pending", "failed"])
-      .lte("scheduled_for", localDate)
-      .order("scheduled_for", { ascending: true })
-      .limit(50);
-
-    if (dueCompletionError) {
-      completionSmsFailed++;
-      console.error("Due student completion SMS query failed:", dueCompletionError);
-    } else {
-      for (const row of dueCompletionRows || []) {
-        const nowIso = new Date().toISOString();
-        const { data: claimed, error: claimError } = await supabaseServer
-          .from("student_completion_sms_schedule")
-          .update({
-            status: "processing",
-            attempt_count: Number(row.attempt_count || 0) + 1,
-            last_error: null,
-            updated_at: nowIso,
-          })
-          .eq("id", row.id)
-          .in("status", ["pending", "failed"])
-          .select("id")
-          .maybeSingle();
-        if (claimError || !claimed) continue;
-
-        let attemptedPhone = "";
-        let attemptedName = "";
-        let attemptedMessage = "";
-        let providerAccepted = false;
-        try {
-          const [{ data: student, error: studentError }, { data: enrollment, error: enrollmentError }, { data: template, error: templateError }] = await Promise.all([
-            supabaseServer.from("students")
-              .select("id,full_name,whatsapp_number,status")
-              .eq("id", row.student_id)
-              .maybeSingle(),
-            supabaseServer.from("student_enrollments")
-              .select("id,student_id,status,end_date")
-              .eq("id", row.enrollment_id)
-              .maybeSingle(),
-            supabaseServer.from("student_completion_sms_templates")
-              .select("message,enabled")
-              .eq("template_key", "student_completion")
-              .maybeSingle(),
-          ]);
-          if (studentError) throw studentError;
-          if (enrollmentError) throw enrollmentError;
-          if (templateError) throw templateError;
-          if (!student || !enrollment || enrollment.status !== "active" || student.status !== "active") {
-            await supabaseServer.from("student_completion_sms_schedule")
-              .update({ status: "cancelled", updated_at: new Date().toISOString() })
-              .eq("id", row.id).eq("status", "processing");
-            completionSmsSkipped++;
-            continue;
-          }
-          if (!template || !template.enabled) {
-            await supabaseServer.from("student_completion_sms_schedule")
-              .update({ status: "pending", updated_at: new Date().toISOString() })
-              .eq("id", row.id).eq("status", "processing");
-            completionSmsSkipped++;
-            continue;
-          }
-          if (!student.whatsapp_number?.trim()) throw new Error("Student has no mobile number on record.");
-
-          // If the admin used the existing Complete button, its accepted SMS
-          // uses this same source key and suppresses the automatic duplicate.
-          const source = `student_completion:${row.enrollment_id}`;
-          const { data: priorAccepted, error: priorError } = await supabaseServer
-            .from("sms_messages")
-            .select("id,provider_message_id")
-            .eq("source", source)
-            .eq("status", "accepted")
-            .limit(1)
-            .maybeSingle();
-          if (priorError) throw priorError;
-          if (priorAccepted) {
-            await supabaseServer.from("student_completion_sms_schedule")
-              .update({
-                status: "accepted",
-                provider_message_id: priorAccepted.provider_message_id || null,
-                sent_at: new Date().toISOString(),
-                updated_at: new Date().toISOString(),
-              })
-              .eq("id", row.id);
-            completionSmsSkipped++;
-            continue;
-          }
-
-          // Re-check the current end date immediately before sending. A manual
-          // extension/reschedule means this row is no longer due.
-          const { data: currentSchedule, error: currentScheduleError } = await supabaseServer
+    if (withinPaymentWindow) {
+      const { data: dueCompletionRows, error: dueCompletionError } = await supabaseServer
+        .from("student_completion_sms_schedule")
+        .select("id,enrollment_id,student_id,scheduled_for,attempt_count")
+        .in("status", ["pending", "failed"])
+        .lte("scheduled_for", localDate)
+        .order("scheduled_for", { ascending: true })
+        .limit(50);
+  
+      if (dueCompletionError) {
+        completionSmsFailed++;
+        console.error("Due student completion SMS query failed:", dueCompletionError);
+      } else {
+        for (const row of dueCompletionRows || []) {
+          const nowIso = new Date().toISOString();
+          const { data: claimed, error: claimError } = await supabaseServer
             .from("student_completion_sms_schedule")
-            .select("scheduled_for")
-            .eq("id", row.id)
-            .single();
-          if (currentScheduleError) throw currentScheduleError;
-          if (String(currentSchedule.scheduled_for) > localDate) {
-            await supabaseServer.from("student_completion_sms_schedule")
-              .update({ status: "pending", updated_at: new Date().toISOString() })
-              .eq("id", row.id).eq("status", "processing");
-            completionSmsSkipped++;
-            continue;
-          }
-
-          attemptedPhone = student.whatsapp_number;
-          attemptedName = student.full_name || "";
-          attemptedMessage = String(template.message)
-            .replace(/{{\s*full_name\s*}}/gi, student.full_name || "there");
-          const sentResult = await sendAirTouchSms(attemptedPhone, attemptedMessage);
-          if (!sentResult.success) throw new Error(sentResult.error || "AirTouch send failed.");
-          providerAccepted = true;
-          const sentAt = new Date().toISOString();
-          const { error: historyError } = await supabaseServer.from("sms_messages").insert({
-            recipient_name: attemptedName || null,
-            recipient_phone: attemptedPhone,
-            message: attemptedMessage,
-            provider: "airtouch",
-            provider_status: "1000",
-            provider_response: sentResult.response || null,
-            provider_message_id: sentResult.providerMessageId || null,
-            status: "accepted",
-            delivery_status: "accepted_by_provider",
-            delivery_status_updated_at: sentAt,
-            source,
-            sent_by: null,
-          });
-          if (historyError) console.error("Automatic student completion SMS history insert failed:", historyError);
-          await supabaseServer.from("student_completion_sms_schedule")
             .update({
-              status: "accepted",
-              provider_message_id: sentResult.providerMessageId || null,
-              sent_at: sentAt,
+              status: "processing",
+              attempt_count: Number(row.attempt_count || 0) + 1,
               last_error: null,
-              updated_at: sentAt,
+              updated_at: nowIso,
             })
-            .eq("id", row.id).eq("status", "processing");
-          completionSmsSent++;
-        } catch (error) {
-          const errorMessage = error instanceof Error ? error.message : "Unknown completion SMS error.";
-          completionSmsFailed++;
-          console.error("Automatic student completion SMS failed:", row.enrollment_id, errorMessage);
-          if (!providerAccepted && attemptedPhone && attemptedMessage) {
-            const { error: failureHistoryError } = await supabaseServer.from("sms_messages").insert({
+            .eq("id", row.id)
+            .in("status", ["pending", "failed"])
+            .select("id")
+            .maybeSingle();
+          if (claimError || !claimed) continue;
+  
+          let attemptedPhone = "";
+          let attemptedName = "";
+          let attemptedMessage = "";
+          let providerAccepted = false;
+          try {
+            const [{ data: student, error: studentError }, { data: enrollment, error: enrollmentError }, { data: template, error: templateError }] = await Promise.all([
+              supabaseServer.from("students")
+                .select("id,full_name,whatsapp_number,status")
+                .eq("id", row.student_id)
+                .maybeSingle(),
+              supabaseServer.from("student_enrollments")
+                .select("id,student_id,status,end_date")
+                .eq("id", row.enrollment_id)
+                .maybeSingle(),
+              supabaseServer.from("student_completion_sms_templates")
+                .select("message,enabled")
+                .eq("template_key", "student_completion")
+                .maybeSingle(),
+            ]);
+            if (studentError) throw studentError;
+            if (enrollmentError) throw enrollmentError;
+            if (templateError) throw templateError;
+            if (!student || !enrollment || enrollment.status !== "active" || student.status !== "active") {
+              await supabaseServer.from("student_completion_sms_schedule")
+                .update({ status: "cancelled", updated_at: new Date().toISOString() })
+                .eq("id", row.id).eq("status", "processing");
+              completionSmsSkipped++;
+              continue;
+            }
+            if (!template || !template.enabled) {
+              await supabaseServer.from("student_completion_sms_schedule")
+                .update({ status: "pending", updated_at: new Date().toISOString() })
+                .eq("id", row.id).eq("status", "processing");
+              completionSmsSkipped++;
+              continue;
+            }
+            if (!student.whatsapp_number?.trim()) throw new Error("Student has no mobile number on record.");
+  
+            // If the admin used the existing Complete button, its accepted SMS
+            // uses this same source key and suppresses the automatic duplicate.
+            const source = `student_completion:${row.enrollment_id}`;
+            const { data: priorAccepted, error: priorError } = await supabaseServer
+              .from("sms_messages")
+              .select("id,provider_message_id")
+              .eq("source", source)
+              .eq("status", "accepted")
+              .limit(1)
+              .maybeSingle();
+            if (priorError) throw priorError;
+            if (priorAccepted) {
+              await supabaseServer.from("student_completion_sms_schedule")
+                .update({
+                  status: "accepted",
+                  provider_message_id: priorAccepted.provider_message_id || null,
+                  sent_at: new Date().toISOString(),
+                  updated_at: new Date().toISOString(),
+                })
+                .eq("id", row.id);
+              completionSmsSkipped++;
+              continue;
+            }
+  
+            // Re-check the current end date immediately before sending. A manual
+            // extension/reschedule means this row is no longer due.
+            const { data: currentSchedule, error: currentScheduleError } = await supabaseServer
+              .from("student_completion_sms_schedule")
+              .select("scheduled_for")
+              .eq("id", row.id)
+              .single();
+            if (currentScheduleError) throw currentScheduleError;
+            if (String(currentSchedule.scheduled_for) > localDate) {
+              await supabaseServer.from("student_completion_sms_schedule")
+                .update({ status: "pending", updated_at: new Date().toISOString() })
+                .eq("id", row.id).eq("status", "processing");
+              completionSmsSkipped++;
+              continue;
+            }
+  
+            attemptedPhone = student.whatsapp_number;
+            attemptedName = student.full_name || "";
+            attemptedMessage = String(template.message)
+              .replace(/{{\s*full_name\s*}}/gi, student.full_name || "there");
+            const sentResult = await sendAirTouchSms(attemptedPhone, attemptedMessage);
+            if (!sentResult.success) throw new Error(sentResult.error || "AirTouch send failed.");
+            providerAccepted = true;
+            const sentAt = new Date().toISOString();
+            const { error: historyError } = await supabaseServer.from("sms_messages").insert({
               recipient_name: attemptedName || null,
               recipient_phone: attemptedPhone,
               message: attemptedMessage,
               provider: "airtouch",
-              provider_status: "error",
-              provider_response: errorMessage,
-              status: "failed",
-              delivery_status: "not_accepted",
-              delivery_status_updated_at: new Date().toISOString(),
-              source: `student_completion:${row.enrollment_id}`,
+              provider_status: "1000",
+              provider_response: sentResult.response || null,
+              provider_message_id: sentResult.providerMessageId || null,
+              status: "accepted",
+              delivery_status: "accepted_by_provider",
+              delivery_status_updated_at: sentAt,
+              source,
               sent_by: null,
             });
-            if (failureHistoryError) console.error("Completion SMS failure history insert failed:", failureHistoryError);
+            if (historyError) console.error("Automatic student completion SMS history insert failed:", historyError);
+            await supabaseServer.from("student_completion_sms_schedule")
+              .update({
+                status: "accepted",
+                provider_message_id: sentResult.providerMessageId || null,
+                sent_at: sentAt,
+                last_error: null,
+                updated_at: sentAt,
+              })
+              .eq("id", row.id).eq("status", "processing");
+            completionSmsSent++;
+          } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : "Unknown completion SMS error.";
+            completionSmsFailed++;
+            console.error("Automatic student completion SMS failed:", row.enrollment_id, errorMessage);
+            if (!providerAccepted && attemptedPhone && attemptedMessage) {
+              const { error: failureHistoryError } = await supabaseServer.from("sms_messages").insert({
+                recipient_name: attemptedName || null,
+                recipient_phone: attemptedPhone,
+                message: attemptedMessage,
+                provider: "airtouch",
+                provider_status: "error",
+                provider_response: errorMessage,
+                status: "failed",
+                delivery_status: "not_accepted",
+                delivery_status_updated_at: new Date().toISOString(),
+                source: `student_completion:${row.enrollment_id}`,
+                sent_by: null,
+              });
+              if (failureHistoryError) console.error("Completion SMS failure history insert failed:", failureHistoryError);
+            }
+            await supabaseServer.from("student_completion_sms_schedule")
+              .update({
+                status: providerAccepted ? "accepted" : "failed",
+                last_error: errorMessage.slice(0, 500),
+                updated_at: new Date().toISOString(),
+                ...(providerAccepted ? { sent_at: new Date().toISOString() } : {}),
+              })
+              .eq("id", row.id).eq("status", "processing");
           }
-          await supabaseServer.from("student_completion_sms_schedule")
-            .update({
-              status: providerAccepted ? "accepted" : "failed",
-              last_error: errorMessage.slice(0, 500),
-              updated_at: new Date().toISOString(),
-              ...(providerAccepted ? { sent_at: new Date().toISOString() } : {}),
-            })
-            .eq("id", row.id).eq("status", "processing");
         }
-      }
+  
+    }
     }
   }
 
@@ -722,6 +725,9 @@ async function processSms(request: NextRequest) {
     paymentDueSent,
     paymentDueFailed,
     paymentDueSkipped,
+    completionSmsSent,
+    completionSmsFailed,
+    completionSmsSkipped,
     results,
   });
 }
