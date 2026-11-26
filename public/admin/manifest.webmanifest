@@ -1,0 +1,20 @@
+{
+  "id": "/admin",
+  "name": "Sauti Tamu Admin",
+  "short_name": "Sauti Tamu",
+  "description": "Sauti Tamu Piano Center administration dashboard.",
+  "start_url": "/admin",
+  "scope": "/admin/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#8f2635",
+  "orientation": "any",
+  "icons": [
+    {
+      "src": "/admin/icons/admin-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
