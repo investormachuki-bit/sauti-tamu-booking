@@ -38,7 +38,20 @@ export default function AdminPwaInstall() {
     // includes the exact /admin URL as well as every nested admin route.
     if ("serviceWorker" in navigator) {
       navigator.serviceWorker
-        .register("/admin-sw.js", { scope: "/admin", updateViaCache: "none" })
+        .getRegistrations()
+        .then(async (registrations) => {
+          // Remove the earlier nested /admin/ registration so one worker
+          // controls both the exact /admin URL and all admin subroutes.
+          await Promise.all(
+            registrations
+              .filter((registration) => new URL(registration.scope).pathname === "/admin/")
+              .map((registration) => registration.unregister())
+          );
+          return navigator.serviceWorker.register("/admin-sw.js", {
+            scope: "/admin",
+            updateViaCache: "none",
+          });
+        })
         .then((registration) => registration.update())
         .catch((error) => console.error("Admin PWA service worker registration failed:", error));
     }
