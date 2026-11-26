@@ -709,6 +709,260 @@ async function processSms(request: NextRequest) {
     }
   }
 
+
+  // Student one-month remaining notice. The 90-day end date is derived from
+  // the first positive payment and respects any manually adjusted end date.
+  // The notice is due exactly 30 calendar days before that effective end date.
+  let oneMonthNoticeSent = 0;
+  let oneMonthNoticeFailed = 0;
+  let oneMonthNoticeSkipped = 0;
+  const { data: completionSchedulesForNotice, error: noticeScheduleSourceError } = await supabaseServer
+    .from("student_completion_sms_schedule")
+    .select("enrollment_id,student_id,scheduled_for");
+
+  if (noticeScheduleSourceError) {
+    console.error("One-month notice source schedule query failed:", noticeScheduleSourceError);
+    oneMonthNoticeFailed++;
+  } else {
+    for (const completionSchedule of completionSchedulesForNotice || []) {
+      try {
+        const endDate = String(completionSchedule.scheduled_for).slice(0, 10);
+        const [endYear, endMonth, endDay] = endDate.split("-").map(Number);
+        const noticeDate = new Date(Date.UTC(endYear, endMonth - 1, endDay));
+        noticeDate.setUTCDate(noticeDate.getUTCDate() - 30);
+        const scheduledNoticeDate = noticeDate.toISOString().slice(0, 10);
+        const { data: existingNotice, error: existingNoticeError } = await supabaseServer
+          .from("student_one_month_notice_sms_schedule")
+          .select("id,status,scheduled_for")
+          .eq("enrollment_id", completionSchedule.enrollment_id)
+          .maybeSingle();
+        if (existingNoticeError) throw existingNoticeError;
+
+        if (!existingNotice) {
+          const { error: insertNoticeError } = await supabaseServer
+            .from("student_one_month_notice_sms_schedule")
+            .insert({
+              enrollment_id: completionSchedule.enrollment_id,
+              student_id: completionSchedule.student_id,
+              end_date: endDate,
+              scheduled_for: scheduledNoticeDate,
+              status: scheduledNoticeDate < localDate ? "expired" : "pending",
+            });
+          if (insertNoticeError) throw insertNoticeError;
+        } else if (existingNotice.status !== "accepted" && existingNotice.status !== "processing" && existingNotice.status !== "skipped") {
+          const isExpired = scheduledNoticeDate < localDate;
+          if (String(existingNotice.scheduled_for) !== scheduledNoticeDate || (isExpired && existingNotice.status !== "expired")) {
+            const { error: refreshNoticeError } = await supabaseServer
+              .from("student_one_month_notice_sms_schedule")
+              .update({
+                student_id: completionSchedule.student_id,
+                end_date: endDate,
+                scheduled_for: scheduledNoticeDate,
+                status: isExpired ? "expired" : "pending",
+                last_error: null,
+                updated_at: new Date().toISOString(),
+              })
+              .eq("id", existingNotice.id);
+            if (refreshNoticeError) throw refreshNoticeError;
+          }
+        }
+      } catch (error) {
+        oneMonthNoticeFailed++;
+        console.error("One-month notice schedule refresh failed:", completionSchedule.enrollment_id, error);
+      }
+    }
+
+    // Expire any missed notification dates. We intentionally never send a
+    // catch-up notice once the student has fewer than 30 days remaining.
+    const { error: expireNoticeError } = await supabaseServer
+      .from("student_one_month_notice_sms_schedule")
+      .update({ status: "expired", updated_at: new Date().toISOString() })
+      .in("status", ["pending", "failed"])
+      .lt("scheduled_for", localDate);
+    if (expireNoticeError) {
+      console.error("One-month notice expiry update failed:", expireNoticeError);
+      oneMonthNoticeFailed++;
+    }
+
+    if (withinPaymentWindow) {
+      const { data: dueNotices, error: dueNoticeError } = await supabaseServer
+        .from("student_one_month_notice_sms_schedule")
+        .select("id,enrollment_id,student_id,end_date,scheduled_for,attempt_count")
+        .eq("scheduled_for", localDate)
+        .in("status", ["pending", "failed"])
+        .order("created_at", { ascending: true })
+        .limit(50);
+
+      if (dueNoticeError) {
+        console.error("One-month notice due query failed:", dueNoticeError);
+        oneMonthNoticeFailed++;
+      } else {
+        for (const notice of dueNotices || []) {
+          const claimTime = new Date().toISOString();
+          const { data: claimedNotice, error: claimNoticeError } = await supabaseServer
+            .from("student_one_month_notice_sms_schedule")
+            .update({
+              status: "processing",
+              attempt_count: Number(notice.attempt_count || 0) + 1,
+              last_error: null,
+              updated_at: claimTime,
+            })
+            .eq("id", notice.id)
+            .in("status", ["pending", "failed"])
+            .select("id")
+            .maybeSingle();
+          if (claimNoticeError || !claimedNotice) continue;
+
+          let attemptedPhone = "";
+          let attemptedName = "";
+          let attemptedMessage = "";
+          let providerAccepted = false;
+          try {
+            const [{ data: student, error: studentError }, { data: enrollment, error: enrollmentError }, { data: template, error: templateError }, { data: currentCompletionSchedule, error: currentCompletionScheduleError }] = await Promise.all([
+              supabaseServer.from("students")
+                .select("id,full_name,whatsapp_number,status")
+                .eq("id", notice.student_id)
+                .maybeSingle(),
+              supabaseServer.from("student_enrollments")
+                .select("id,student_id,status")
+                .eq("id", notice.enrollment_id)
+                .maybeSingle(),
+              supabaseServer.from("student_one_month_notice_sms_templates")
+                .select("message,enabled")
+                .eq("template_key", "one_month_remaining")
+                .maybeSingle(),
+              supabaseServer.from("student_completion_sms_schedule")
+                .select("scheduled_for")
+                .eq("enrollment_id", notice.enrollment_id)
+                .maybeSingle(),
+            ]);
+            if (studentError) throw studentError;
+            if (enrollmentError) throw enrollmentError;
+            if (templateError) throw templateError;
+            if (currentCompletionScheduleError) throw currentCompletionScheduleError;
+
+            if (!student || !enrollment || enrollment.status !== "active" || student.status !== "active") {
+              await supabaseServer.from("student_one_month_notice_sms_schedule")
+                .update({ status: "skipped", updated_at: new Date().toISOString() })
+                .eq("id", notice.id).eq("status", "processing");
+              oneMonthNoticeSkipped++;
+              continue;
+            }
+            if (!template || !template.enabled) {
+              await supabaseServer.from("student_one_month_notice_sms_schedule")
+                .update({ status: "skipped", last_error: "One-month notice template is disabled.", updated_at: new Date().toISOString() })
+                .eq("id", notice.id).eq("status", "processing");
+              oneMonthNoticeSkipped++;
+              continue;
+            }
+            if (String(currentCompletionSchedule?.scheduled_for || "") !== String(notice.end_date)) {
+              await supabaseServer.from("student_one_month_notice_sms_schedule")
+                .update({ status: "pending", updated_at: new Date().toISOString() })
+                .eq("id", notice.id).eq("status", "processing");
+              oneMonthNoticeSkipped++;
+              continue;
+            }
+            if (String(notice.scheduled_for) !== localDate) {
+              await supabaseServer.from("student_one_month_notice_sms_schedule")
+                .update({ status: String(notice.scheduled_for) < localDate ? "expired" : "pending", updated_at: new Date().toISOString() })
+                .eq("id", notice.id).eq("status", "processing");
+              oneMonthNoticeSkipped++;
+              continue;
+            }
+            if (!student.whatsapp_number?.trim()) throw new Error("Student has no mobile number on record.");
+
+            const source = `student_one_month_remaining:${notice.enrollment_id}`;
+            const { data: priorAcceptedNotice, error: priorAcceptedNoticeError } = await supabaseServer
+              .from("sms_messages")
+              .select("id")
+              .eq("source", source)
+              .eq("status", "accepted")
+              .limit(1)
+              .maybeSingle();
+            if (priorAcceptedNoticeError) throw priorAcceptedNoticeError;
+            if (priorAcceptedNotice) {
+              await supabaseServer.from("student_one_month_notice_sms_schedule")
+                .update({ status: "accepted", sent_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+                .eq("id", notice.id);
+              oneMonthNoticeSkipped++;
+              continue;
+            }
+
+            const formatEndDate = (value: string) => new Intl.DateTimeFormat("en-KE", {
+              day: "numeric", month: "long", year: "numeric", timeZone: "Africa/Nairobi",
+            }).format(new Date(`${value}T12:00:00+03:00`));
+            const fullName = String(student.full_name || "").trim() || "there";
+            const firstName = fullName.split(/\\s+/)[0] || "there";
+            attemptedPhone = student.whatsapp_number;
+            attemptedName = fullName;
+            attemptedMessage = String(template.message)
+              .replace(/{{\\s*full_name\\s*}}/gi, fullName)
+              .replace(/{{\\s*first_name\\s*}}/gi, firstName)
+              .replace(/{{\\s*end_date\\s*}}/gi, formatEndDate(String(notice.end_date)));
+
+            const sendResult = await sendAirTouchSms(attemptedPhone, attemptedMessage);
+            if (!sendResult.success) throw new Error(sendResult.error || "AirTouch send failed.");
+            providerAccepted = true;
+            const sentAt = new Date().toISOString();
+            const { error: historyError } = await supabaseServer.from("sms_messages").insert({
+              recipient_name: attemptedName,
+              recipient_phone: attemptedPhone,
+              message: attemptedMessage,
+              provider: "airtouch",
+              provider_status: "1000",
+              provider_response: sendResult.response || null,
+              provider_message_id: sendResult.providerMessageId || null,
+              status: "accepted",
+              delivery_status: "accepted_by_provider",
+              delivery_status_updated_at: sentAt,
+              source,
+              sent_by: null,
+            });
+            if (historyError) console.error("One-month notice SMS history insert failed:", historyError);
+            await supabaseServer.from("student_one_month_notice_sms_schedule")
+              .update({
+                status: "accepted",
+                provider_message_id: sendResult.providerMessageId || null,
+                sent_at: sentAt,
+                last_error: null,
+                updated_at: sentAt,
+              })
+              .eq("id", notice.id).eq("status", "processing");
+            oneMonthNoticeSent++;
+          } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : "Unknown one-month notice SMS error.";
+            oneMonthNoticeFailed++;
+            console.error("One-month remaining SMS failed:", notice.enrollment_id, errorMessage);
+            if (!providerAccepted && attemptedPhone && attemptedMessage) {
+              const { error: failureHistoryError } = await supabaseServer.from("sms_messages").insert({
+                recipient_name: attemptedName || null,
+                recipient_phone: attemptedPhone,
+                message: attemptedMessage,
+                provider: "airtouch",
+                provider_status: "error",
+                provider_response: errorMessage,
+                status: "failed",
+                delivery_status: "not_accepted",
+                delivery_status_updated_at: new Date().toISOString(),
+                source: `student_one_month_remaining:${notice.enrollment_id}`,
+                sent_by: null,
+              });
+              if (failureHistoryError) console.error("One-month notice failure history insert failed:", failureHistoryError);
+            }
+            await supabaseServer.from("student_one_month_notice_sms_schedule")
+              .update({
+                status: providerAccepted ? "accepted" : "failed",
+                last_error: errorMessage.slice(0, 500),
+                updated_at: new Date().toISOString(),
+                ...(providerAccepted ? { sent_at: new Date().toISOString() } : {}),
+              })
+              .eq("id", notice.id).eq("status", "processing");
+          }
+        }
+      }
+    }
+  }
+
   if (followupError) {
     console.error("ManyChat follow-up queue query failed:", followupError);
     return responseError("Could not load ManyChat follow-up queue.");
@@ -728,6 +982,9 @@ async function processSms(request: NextRequest) {
     completionSmsSent,
     completionSmsFailed,
     completionSmsSkipped,
+    oneMonthNoticeSent,
+    oneMonthNoticeFailed,
+    oneMonthNoticeSkipped,
     results,
   });
 }
