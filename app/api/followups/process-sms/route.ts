@@ -669,6 +669,9 @@ async function processSms(request: NextRequest) {
                 status: "accepted",
                 provider_message_id: sentResult.providerMessageId || null,
                 sent_at: sentAt,
+                grace_period_starts_on: (() => { const parts = new Intl.DateTimeFormat("en-CA", { timeZone: "Africa/Nairobi", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(sentAt)).split("-").map(Number); const date = new Date(Date.UTC(parts[0], parts[1]-1, parts[2])); date.setUTCDate(date.getUTCDate()+1); return date.toISOString().slice(0,10); })(),
+                grace_period_ends_on: (() => { const parts = new Intl.DateTimeFormat("en-CA", { timeZone: "Africa/Nairobi", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(sentAt)).split("-").map(Number); const date = new Date(Date.UTC(parts[0], parts[1]-1, parts[2])); date.setUTCDate(date.getUTCDate()+14); return date.toISOString().slice(0,10); })(),
+                grace_period_sms_status: "pending",
                 last_error: null,
                 updated_at: sentAt,
               })
@@ -709,6 +712,89 @@ async function processSms(request: NextRequest) {
     }
   }
 
+
+
+  // End the 14-day grace period on its final calendar day. The count starts
+  // the day after the 90-day completion SMS is accepted by AirTouch.
+  let gracePeriodCompleted = 0;
+  let gracePeriodSmsSent = 0;
+  let gracePeriodSmsFailed = 0;
+  if (withinPaymentWindow) {
+    const { data: dueGraceRows, error: graceQueryError } = await supabaseServer
+      .from("student_completion_sms_schedule")
+      .select("id,enrollment_id,student_id,grace_period_sms_status")
+      .not("grace_period_starts_on", "is", null)
+      .lte("grace_period_ends_on", localDate)
+      .is("grace_period_completed_at", null)
+      .eq("status", "accepted")
+      .eq("grace_period_sms_status", "pending");
+    if (graceQueryError) {
+      console.error("Grace-period schedule query failed:", graceQueryError);
+      gracePeriodSmsFailed++;
+    } else {
+      for (const row of dueGraceRows || []) {
+        const { data: claimed } = await supabaseServer.from("student_completion_sms_schedule")
+          .update({ grace_period_sms_status: "processing", updated_at: new Date().toISOString() })
+          .eq("id", row.id).eq("grace_period_sms_status", "pending").select("id").maybeSingle();
+        if (!claimed) continue;
+        let accepted = false;
+        let smsError: string | null = null;
+        try {
+          const [{ data: student, error: studentError }, { data: enrollment, error: enrollmentError }, { data: template, error: templateError }] = await Promise.all([
+            supabaseServer.from("students").select("id,full_name,whatsapp_number,status").eq("id", row.student_id).maybeSingle(),
+            supabaseServer.from("student_enrollments").select("id,student_id,status").eq("id", row.enrollment_id).maybeSingle(),
+            supabaseServer.from("student_grace_period_sms_templates").select("message,enabled").eq("template_key", "grace_period_ended").maybeSingle(),
+          ]);
+          if (studentError) throw studentError;
+          if (enrollmentError) throw enrollmentError;
+          if (templateError) throw templateError;
+          if (student?.status === "active" && enrollment?.status === "active" && template?.enabled && student.whatsapp_number?.trim()) {
+            const firstName = String(student.full_name || "there").trim().split(/\s+/)[0] || "there";
+            const message = String(template.message).replace(/{{\s*first_name\s*}}/gi, firstName).replace(/{{\s*full_name\s*}}/gi, student.full_name || "there");
+            const sent = await sendAirTouchSms(student.whatsapp_number, message);
+            if (!sent.success) throw new Error(sent.error || "AirTouch did not accept the grace-period SMS.");
+            accepted = true;
+            const sentAt = new Date().toISOString();
+            const { error: logError } = await supabaseServer.from("sms_messages").insert({
+              recipient_name: student.full_name || null, recipient_phone: student.whatsapp_number, message,
+              provider: "airtouch", provider_status: "1000", provider_response: sent.response || null,
+              provider_message_id: sent.providerMessageId || null, status: "accepted",
+              delivery_status: "accepted_by_provider", delivery_status_updated_at: sentAt,
+              source: `student_grace_period_ended:${row.enrollment_id}`, sent_by: null,
+            });
+            if (logError) console.error("Grace-period SMS history insert failed:", logError);
+            gracePeriodSmsSent++;
+          } else {
+            smsError = "Grace-period template is disabled or the active student/enrollment/mobile number is unavailable.";
+          }
+        } catch (error) {
+          smsError = error instanceof Error ? error.message : "Grace-period SMS failed.";
+          gracePeriodSmsFailed++;
+        }
+        // Complete the actual student lifecycle even if AirTouch rejects the SMS;
+        // an SMS failure must never extend the grace period.
+        const { error: lifecycleError } = await supabaseServer.rpc("complete_student_lifecycle", {
+          p_student_id: row.student_id, p_enrollment_id: row.enrollment_id,
+        });
+        if (lifecycleError) {
+          await supabaseServer.from("student_completion_sms_schedule").update({
+            grace_period_sms_status: accepted ? "accepted" : "failed",
+            last_error: lifecycleError.message, updated_at: new Date().toISOString(),
+          }).eq("id", row.id);
+          console.error("Grace-period lifecycle completion failed:", lifecycleError);
+          continue;
+        }
+        const completedAt = new Date().toISOString();
+        await supabaseServer.from("student_completion_sms_schedule").update({
+          grace_period_sms_status: accepted ? "accepted" : "failed",
+          grace_period_sms_sent_at: accepted ? completedAt : null,
+          grace_period_completed_at: completedAt,
+          last_error: smsError, updated_at: completedAt,
+        }).eq("id", row.id);
+        gracePeriodCompleted++;
+      }
+    }
+  }
 
   // Student one-month remaining notice. The 90-day end date is derived from
   // the first positive payment and respects any manually adjusted end date.
