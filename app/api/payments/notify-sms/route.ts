@@ -143,7 +143,89 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, smsSent: false, error: result.error || "SMS could not be sent." }, { status: 502 });
     }
 
-    return NextResponse.json({ success: true, smsSent: true });
+    // The welcome message is strictly sequenced after an accepted receipt SMS.
+    // It is sent only for the first positive payment on this enrollment.
+    let welcomeSmsSent = false;
+    let welcomeSmsSkipped: string | undefined;
+    if (payment.enrollment_id) {
+      const { data: firstPayment, error: firstPaymentError } = await supabaseServer
+        .from("payments")
+        .select("id")
+        .eq("enrollment_id", payment.enrollment_id)
+        .gt("amount", 0)
+        .order("payment_date", { ascending: true })
+        .order("created_at", { ascending: true })
+        .limit(1)
+        .maybeSingle();
+
+      if (firstPaymentError) {
+        console.error("Could not identify first enrollment payment for welcome SMS:", firstPaymentError);
+        welcomeSmsSkipped = "Could not verify whether this is the first payment.";
+      } else if (firstPayment?.id !== payment.id) {
+        welcomeSmsSkipped = "Welcome SMS is only sent after the first payment for an enrollment.";
+      } else {
+        const welcomeSource = `student_welcome_first_payment:${payment.enrollment_id}`;
+        const { data: priorWelcome, error: priorWelcomeError } = await supabaseServer
+          .from("sms_messages")
+          .select("id")
+          .eq("source", welcomeSource)
+          .eq("status", "accepted")
+          .limit(1)
+          .maybeSingle();
+
+        if (priorWelcomeError) {
+          console.error("Could not check prior welcome SMS:", priorWelcomeError);
+          welcomeSmsSkipped = "Could not verify whether a welcome message was already sent.";
+        } else if (priorWelcome) {
+          welcomeSmsSkipped = "A welcome message has already been accepted for this enrollment.";
+        } else {
+          const { data: welcomeTemplate, error: welcomeTemplateError } = await supabaseServer
+            .from("student_welcome_sms_templates")
+            .select("message,enabled")
+            .eq("template_key", "first_payment_welcome")
+            .maybeSingle();
+
+          if (welcomeTemplateError) {
+            console.error("Could not load first-payment welcome template:", welcomeTemplateError);
+            welcomeSmsSkipped = "Welcome template could not be loaded.";
+          } else if (!welcomeTemplate || !welcomeTemplate.enabled) {
+            welcomeSmsSkipped = "The new student welcome SMS template is disabled.";
+          } else {
+            const fullName = String(student.full_name || "there").trim();
+            const firstName = fullName.split(/\\s+/)[0] || "there";
+            const welcomeMessage = String(welcomeTemplate.message)
+              .replace(/{{\\s*full_name\\s*}}/gi, fullName)
+              .replace(/{{\\s*first_name\\s*}}/gi, firstName);
+            const welcomeResult = await sendAirTouchSms(student.whatsapp_number, welcomeMessage);
+            const welcomeSentAt = new Date().toISOString();
+            const { error: welcomeHistoryError } = await supabaseServer.from("sms_messages").insert({
+              recipient_name: student.full_name || null,
+              recipient_phone: student.whatsapp_number,
+              message: welcomeMessage,
+              provider: "airtouch",
+              provider_status: welcomeResult.success ? "1000" : String(welcomeResult.errorCode || welcomeResult.status || "error"),
+              provider_response: welcomeResult.response || welcomeResult.error || null,
+              provider_message_id: welcomeResult.providerMessageId || null,
+              status: welcomeResult.success ? "accepted" : "failed",
+              delivery_status: welcomeResult.success ? "accepted_by_provider" : "not_accepted",
+              delivery_status_updated_at: welcomeSentAt,
+              source: welcomeSource,
+              sent_by: authData.user.id,
+            });
+            if (welcomeHistoryError) console.error("Welcome SMS history insert failed:", welcomeHistoryError);
+            welcomeSmsSent = welcomeResult.success;
+            if (!welcomeResult.success) {
+              welcomeSmsSkipped = welcomeResult.error || "Welcome SMS was not accepted by AirTouch.";
+              console.error("First-payment welcome SMS failed:", welcomeResult.error);
+            }
+          }
+        }
+      }
+    } else {
+      welcomeSmsSkipped = "This payment is not linked to an enrollment.";
+    }
+
+    return NextResponse.json({ success: true, smsSent: true, welcomeSmsSent, welcomeSmsSkipped });
   } catch (error) {
     console.error("Payment SMS notification error:", error);
     return NextResponse.json({
