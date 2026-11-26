@@ -12,7 +12,7 @@
   "icons": [
     {
       "src": "/admin/icons/admin-icon.svg",
-      "sizes": "any",
+      "sizes": "192x192 512x512",
       "type": "image/svg+xml",
       "purpose": "any maskable"
     }
