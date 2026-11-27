@@ -147,6 +147,8 @@ export async function POST(request: NextRequest) {
     // It is sent only for the first positive payment on this enrollment.
     let welcomeSmsSent = false;
     let welcomeSmsSkipped: string | undefined;
+    let progressReviewScheduled = false;
+    let progressReviewScheduleError: string | undefined;
     if (payment.enrollment_id) {
       const { data: firstPayment, error: firstPaymentError } = await supabaseServer
         .from("payments")
@@ -164,6 +166,28 @@ export async function POST(request: NextRequest) {
       } else if (firstPayment?.id !== payment.id) {
         welcomeSmsSkipped = "Welcome SMS is only sent after the first payment for an enrollment.";
       } else {
+        // Schedule the 30-day progress/review SMS from the moment the first
+        // payment receipt was accepted by AirTouch. Unique enrollment_id keeps
+        // repeat receipt actions from creating duplicate follow-ups.
+        const receiptAcceptedAt = new Date();
+        const { error: progressScheduleError } = await supabaseServer
+          .from("student_progress_review_sms_schedule")
+          .upsert({
+            enrollment_id: payment.enrollment_id,
+            student_id: student.id,
+            first_payment_id: payment.id,
+            receipt_accepted_at: receiptAcceptedAt.toISOString(),
+            scheduled_for: new Date(receiptAcceptedAt.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+            status: "pending",
+            updated_at: receiptAcceptedAt.toISOString(),
+          }, { onConflict: "enrollment_id", ignoreDuplicates: true });
+        if (progressScheduleError) {
+          console.error("Could not schedule 30-day student progress/review SMS:", progressScheduleError);
+          progressReviewScheduleError = progressScheduleError.message;
+        } else {
+          progressReviewScheduled = true;
+        }
+
         const welcomeSource = `student_welcome_first_payment:${payment.enrollment_id}`;
         const { data: priorWelcome, error: priorWelcomeError } = await supabaseServer
           .from("sms_messages")
@@ -225,7 +249,7 @@ export async function POST(request: NextRequest) {
       welcomeSmsSkipped = "This payment is not linked to an enrollment.";
     }
 
-    return NextResponse.json({ success: true, smsSent: true, welcomeSmsSent, welcomeSmsSkipped });
+    return NextResponse.json({ success: true, smsSent: true, welcomeSmsSent, welcomeSmsSkipped, progressReviewScheduled, progressReviewScheduleError });
   } catch (error) {
     console.error("Payment SMS notification error:", error);
     return NextResponse.json({
