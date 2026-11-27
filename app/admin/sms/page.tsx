@@ -16,6 +16,7 @@ type StudentCompletionTemplate = { id: string; template_key: "student_completion
 type StudentWelcomeTemplate = { id: string; template_key: "first_payment_welcome"; name: string; message: string; enabled: boolean };
 type StudentOneMonthNoticeTemplate = { id: string; template_key: "one_month_remaining"; name: string; message: string; enabled: boolean };
 type GracePeriodTemplate = { id: string; template_key: "grace_period_ended"; name: string; message: string; enabled: boolean };
+type ProgressReviewTemplate = { id: string; template_key: "student_30_day_progress_review"; name: string; message: string; review_link: string; enabled: boolean };
 type Log = { id: string; recipient_name: string | null; recipient_phone: string; message: string; status: string; provider_status: string | null; delivery_status?: string | null; provider_message_id?: string | null; source?: string | null; created_at: string };
 
 export default function AdminSmsPage() {
@@ -42,6 +43,7 @@ export default function AdminSmsPage() {
   const [studentWelcomeTemplates, setStudentWelcomeTemplates] = useState<StudentWelcomeTemplate[]>([]);
   const [studentOneMonthNoticeTemplates, setStudentOneMonthNoticeTemplates] = useState<StudentOneMonthNoticeTemplate[]>([]);
   const [gracePeriodTemplates, setGracePeriodTemplates] = useState<GracePeriodTemplate[]>([]);
+  const [progressReviewTemplates, setProgressReviewTemplates] = useState<ProgressReviewTemplate[]>([]);
   const [followupStats, setFollowupStats] = useState<Record<string, number>>({});
   const [savingFollowupId, setSavingFollowupId] = useState<string | null>(null);
   const [logs, setLogs] = useState<Log[]>([]);
@@ -66,7 +68,7 @@ export default function AdminSmsPage() {
 
   async function load() {
     setLoading(true); setError("");
-    try { const data = await request("/"); setLogs(data.logs || []); setTemplates(data.templates || []); setManychatFollowupTemplates(data.manychatFollowupTemplates || []); setTrialEventTemplates(data.trialEventTemplates || []); setCoreSmsTemplates(data.coreTemplates || []); setTrialReminderTemplates(data.trialReminderTemplates || []); setPaymentDueTemplates(data.paymentDueTemplates || []); setStudentCompletionTemplates(data.studentCompletionTemplates || []); setStudentWelcomeTemplates(data.studentWelcomeTemplates || []); setStudentOneMonthNoticeTemplates(data.studentOneMonthNoticeTemplates || []); setGracePeriodTemplates(data.gracePeriodTemplates || []); setFollowupStats(data.manychatFollowupStats || {}); }
+    try { const data = await request("/"); setLogs(data.logs || []); setTemplates(data.templates || []); setManychatFollowupTemplates(data.manychatFollowupTemplates || []); setTrialEventTemplates(data.trialEventTemplates || []); setCoreSmsTemplates(data.coreTemplates || []); setTrialReminderTemplates(data.trialReminderTemplates || []); setPaymentDueTemplates(data.paymentDueTemplates || []); setStudentCompletionTemplates(data.studentCompletionTemplates || []); setStudentWelcomeTemplates(data.studentWelcomeTemplates || []); setStudentOneMonthNoticeTemplates(data.studentOneMonthNoticeTemplates || []); setGracePeriodTemplates(data.gracePeriodTemplates || []); setProgressReviewTemplates(data.progressReviewTemplates || []); setFollowupStats(data.manychatFollowupStats || {}); }
     catch (e) { setError(e instanceof Error ? e.message : "Could not load SMS records."); }
     finally { setLoading(false); }
   }
@@ -243,6 +245,15 @@ export default function AdminSmsPage() {
     finally { setSavingFollowupId(null); }
   }
 
+  async function saveProgressReviewTemplate(template: ProgressReviewTemplate) {
+    setSavingFollowupId(template.id); setError(""); setNotice("");
+    try {
+      await request("/", { action: "save-progress-review-template", id: template.id, message: template.message, review_link: template.review_link, enabled: template.enabled });
+      setNotice("30-day student progress and review SMS template saved.");
+      await load();
+    } catch (e) { setError(e instanceof Error ? e.message : "Could not save progress and review template."); }
+    finally { setSavingFollowupId(null); }
+  }
   async function saveTrialEventTemplate(template: TrialEventTemplate) {
     setSavingFollowupId(template.id); setError(""); setNotice("");
     try {
@@ -391,6 +402,21 @@ export default function AdminSmsPage() {
               <div className="mt-2 flex items-center justify-between"><span className="text-[9px] text-gray-400">{template.message.length}/480 characters</span><button className="st-button st-button-secondary" disabled={savingFollowupId===template.id||!template.message.trim()} onClick={()=>saveStudentWelcomeTemplate(template)}><Save size={13}/>{savingFollowupId===template.id?"Saving...":"Save template"}</button></div>
             </div>)}
             {!studentWelcomeTemplates.length&&<p className="text-xs text-gray-500">No new student welcome template found. Refresh after the database migration.</p>}
+          </div>
+        </section>
+        <section className="st-card p-5">
+          <div className="mb-3 flex items-center gap-2"><MessageSquare size={18}/><h2 className="m-0 text-base font-semibold">30-day student progress &amp; review SMS</h2><span className="rounded-full bg-blue-50 px-2 py-1 text-[9px] font-semibold text-blue-700">Scheduled automatically</span></div>
+          <p className="mb-3 text-[10px] leading-relaxed text-gray-500">Sent once, 30 days after the first successful payment receipt SMS is accepted by AirTouch. Existing learners whose 30-day date has already passed are excluded; only upcoming dates are scheduled. Completed lessons are calculated from attended/completed bookings. Placeholders: {{first_name}}, {{full_name}}, {{lessons_completed}}, {{lessons_remaining}}, {{instrument}}, {{programme_name}}, {{review_link}}.</p>
+          <div className="space-y-3">
+            {progressReviewTemplates.map(template => <div key={template.id} className="rounded-xl border border-gray-100 p-3">
+              <div className="mb-2 flex items-center justify-between gap-2"><b className="text-xs">{template.name}</b><label className="flex items-center gap-1 text-[10px]"><input type="checkbox" checked={template.enabled} onChange={e=>setProgressReviewTemplates(current=>current.map(item=>item.id===template.id?{...item,enabled:e.target.checked}:item))}/> Enabled</label></div>
+              <label className="mb-1 block text-[10px] font-semibold text-gray-600">Review link</label>
+              <input type="url" placeholder="https://..." value={template.review_link} onChange={e=>setProgressReviewTemplates(current=>current.map(item=>item.id===template.id?{...item,review_link:e.target.value}:item))} className="mb-3 w-full rounded-lg border border-gray-200 p-2 text-[11px]"/>
+              <label className="mb-1 block text-[10px] font-semibold text-gray-600">SMS message</label>
+              <textarea maxLength={480} value={template.message} onChange={e=>setProgressReviewTemplates(current=>current.map(item=>item.id===template.id?{...item,message:e.target.value}:item))} className="min-h-24 w-full rounded-lg border border-gray-200 p-2 text-[11px] leading-relaxed"/>
+              <div className="mt-2 flex items-center justify-between"><span className="text-[9px] text-gray-400">{template.message.length}/480 characters</span><button className="st-button st-button-secondary" disabled={savingFollowupId===template.id||!template.message.trim()} onClick={()=>saveProgressReviewTemplate(template)}><Save size={13}/>{savingFollowupId===template.id?"Saving...":"Save template"}</button></div>
+            </div>)}
+            {!progressReviewTemplates.length&&<p className="text-xs text-gray-500">No progress and review template found. Refresh after the database migration.</p>}
           </div>
         </section>
         <section className="st-card p-5">
