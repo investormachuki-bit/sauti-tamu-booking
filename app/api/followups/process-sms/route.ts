@@ -1049,6 +1049,119 @@ async function processSms(request: NextRequest) {
     }
   }
 
+  // 30-day progress and review SMS, anchored to the first accepted payment receipt.
+  // The cron runs every five minutes; sends are restricted to 08:00–17:59 Nairobi time.
+  let progressReviewSent = 0;
+  let progressReviewFailed = 0;
+  let progressReviewSkipped = 0;
+  if (withinPaymentWindow) {
+    const { data: dueProgressRows, error: progressQueryError } = await supabaseServer
+      .from("student_progress_review_sms_schedule")
+      .select("id,enrollment_id,student_id,receipt_accepted_at,scheduled_for,attempt_count")
+      .lte("scheduled_for", new Date().toISOString())
+      .in("status", ["pending", "failed"])
+      .order("scheduled_for", { ascending: true })
+      .limit(50);
+    if (progressQueryError) {
+      console.error("30-day progress/review schedule query failed:", progressQueryError);
+      progressReviewFailed++;
+    } else {
+      for (const schedule of dueProgressRows || []) {
+        const claimTime = new Date().toISOString();
+        const { data: claimed, error: claimError } = await supabaseServer
+          .from("student_progress_review_sms_schedule")
+          .update({ status: "processing", attempt_count: Number(schedule.attempt_count || 0) + 1, last_error: null, updated_at: claimTime })
+          .eq("id", schedule.id).in("status", ["pending", "failed"]).select("id").maybeSingle();
+        if (claimError || !claimed) continue;
+        let attemptedPhone = "";
+        let attemptedName = "";
+        let attemptedMessage = "";
+        let providerAccepted = false;
+        try {
+          const [{ data: student, error: studentError }, { data: enrollment, error: enrollmentError }, { data: template, error: templateError }] = await Promise.all([
+            supabaseServer.from("students").select("id,full_name,whatsapp_number,status,lead_id").eq("id", schedule.student_id).maybeSingle(),
+            supabaseServer.from("student_enrollments").select("id,student_id,status,instrument,programme_name").eq("id", schedule.enrollment_id).maybeSingle(),
+            supabaseServer.from("student_progress_review_sms_templates").select("message,review_link,enabled").eq("template_key", "student_30_day_progress_review").maybeSingle(),
+          ]);
+          if (studentError) throw studentError;
+          if (enrollmentError) throw enrollmentError;
+          if (templateError) throw templateError;
+          if (!student || !enrollment || student.status !== "active" || enrollment.status !== "active") {
+            await supabaseServer.from("student_progress_review_sms_schedule").update({ status: "skipped", last_error: "Student or enrollment is no longer active.", updated_at: new Date().toISOString() }).eq("id", schedule.id).eq("status", "processing");
+            progressReviewSkipped++;
+            continue;
+          }
+          if (!template || !template.enabled) {
+            await supabaseServer.from("student_progress_review_sms_schedule").update({ status: "skipped", last_error: "Progress/review SMS template is disabled or missing.", updated_at: new Date().toISOString() }).eq("id", schedule.id).eq("status", "processing");
+            progressReviewSkipped++;
+            continue;
+          }
+          if (!student.whatsapp_number?.trim()) throw new Error("Student has no mobile number on record.");
+          if (!student.lead_id) throw new Error("Student has no linked lead record for lesson progress.");
+          const { data: completedBookings, error: bookingsError } = await supabaseServer
+            .from("bookings").select("slot_id").eq("lead_id", student.lead_id).eq("status", "completed");
+          if (bookingsError) throw bookingsError;
+          const slotIds = [...new Set((completedBookings || []).map((booking: { slot_id: string }) => booking.slot_id).filter(Boolean))];
+          let lessonsCompleted = 0;
+          if (slotIds.length) {
+            const { data: completedSlots, error: slotsError } = await supabaseServer.from("lesson_slots")
+              .select("id,starts_at").in("id", slotIds).gte("starts_at", schedule.receipt_accepted_at);
+            if (slotsError) throw slotsError;
+            lessonsCompleted = (completedSlots || []).length;
+          }
+          const programmeName = String(enrollment.programme_name || "3-month music programme");
+          const instrument = String(enrollment.instrument || "music").toLowerCase();
+          const totalLessons = 36;
+          const lessonsRemaining = Math.max(totalLessons - lessonsCompleted, 0);
+          const fullName = String(student.full_name || "there").trim() || "there";
+          const firstName = fullName.split(/\s+/)[0] || "there";
+          attemptedPhone = student.whatsapp_number;
+          attemptedName = fullName;
+          attemptedMessage = String(template.message)
+            .replace(/{{\s*full_name\s*}}/gi, fullName)
+            .replace(/{{\s*first_name\s*}}/gi, firstName)
+            .replace(/{{\s*lessons_completed\s*}}/gi, String(lessonsCompleted))
+            .replace(/{{\s*lessons_remaining\s*}}/gi, String(lessonsRemaining))
+            .replace(/{{\s*instrument\s*}}/gi, instrument)
+            .replace(/{{\s*programme_name\s*}}/gi, programmeName)
+            .replace(/{{\s*review_link\s*}}/gi, String(template.review_link || ""));
+          const sendResult = await sendAirTouchSms(attemptedPhone, attemptedMessage);
+          if (!sendResult.success) throw new Error(sendResult.error || "AirTouch did not accept the progress/review SMS.");
+          providerAccepted = true;
+          const sentAt = new Date().toISOString();
+          const source = `student_30_day_progress_review:${schedule.enrollment_id}`;
+          const { error: historyError } = await supabaseServer.from("sms_messages").insert({
+            recipient_name: attemptedName, recipient_phone: attemptedPhone, message: attemptedMessage,
+            provider: "airtouch", provider_status: "1000", provider_response: sendResult.response || null,
+            provider_message_id: sendResult.providerMessageId || null, status: "accepted",
+            delivery_status: "accepted_by_provider", delivery_status_updated_at: sentAt, source, sent_by: null,
+          });
+          if (historyError) console.error("30-day progress/review SMS history insert failed:", historyError);
+          await supabaseServer.from("student_progress_review_sms_schedule").update({
+            status: "accepted", provider_message_id: sendResult.providerMessageId || null, sent_at: sentAt, last_error: null, updated_at: sentAt,
+          }).eq("id", schedule.id).eq("status", "processing");
+          progressReviewSent++;
+        } catch (error) {
+          const errorMessage = error instanceof Error ? error.message : "Unknown progress/review SMS error.";
+          progressReviewFailed++;
+          console.error("30-day progress/review SMS failed:", schedule.enrollment_id, errorMessage);
+          if (!providerAccepted && attemptedPhone && attemptedMessage) {
+            const { error: historyError } = await supabaseServer.from("sms_messages").insert({
+              recipient_name: attemptedName || null, recipient_phone: attemptedPhone, message: attemptedMessage,
+              provider: "airtouch", provider_status: "error", provider_response: errorMessage, status: "failed",
+              delivery_status: "not_accepted", delivery_status_updated_at: new Date().toISOString(),
+              source: `student_30_day_progress_review:${schedule.enrollment_id}`, sent_by: null,
+            });
+            if (historyError) console.error("Progress/review SMS failure history insert failed:", historyError);
+          }
+          await supabaseServer.from("student_progress_review_sms_schedule").update({
+            status: providerAccepted ? "accepted" : "failed", last_error: errorMessage.slice(0, 500),
+            updated_at: new Date().toISOString(), ...(providerAccepted ? { sent_at: new Date().toISOString() } : {}),
+          }).eq("id", schedule.id).eq("status", "processing");
+        }
+      }
+    }
+  }
   if (followupError) {
     console.error("ManyChat follow-up queue query failed:", followupError);
     return responseError("Could not load ManyChat follow-up queue.");
@@ -1074,6 +1187,9 @@ async function processSms(request: NextRequest) {
     gracePeriodCompleted,
     gracePeriodSmsSent,
     gracePeriodSmsFailed,
+    progressReviewSent,
+    progressReviewFailed,
+    progressReviewSkipped,
     results,
   });
 }
